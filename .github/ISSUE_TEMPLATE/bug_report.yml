@@ -1,0 +1,58 @@
+name: Bug report
+description: Something is drawn wrong, missing or the card does not load.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please fill in as much as you can – a screenshot and your card YAML help most.
+  - type: input
+    id: version
+    attributes:
+      label: Card version
+      description: Shown in the browser console as "HEATPUMP-FLOW-CARD x.y.z" or in HACS.
+      placeholder: 0.3.1
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: 2026.10.1
+    validations:
+      required: true
+  - type: dropdown
+    id: preset
+    attributes:
+      label: Preset
+      options:
+        - lambda
+        - vicare
+        - vaillant
+        - emsesp
+        - heishamon
+        - none (manual entities)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: yaml
+    attributes:
+      label: Card configuration (YAML)
+      render: yaml
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Drag & drop an image here.
+  - type: textarea
+    id: console
+    attributes:
+      label: Browser console errors
+      description: F12 → Console, copy any red lines mentioning heatpump-flow-card.
+      render: text

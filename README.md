@@ -2,6 +2,10 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Validate](https://github.com/Sturmi77/heatpump-flow-card/actions/workflows/validate.yml/badge.svg)](https://github.com/Sturmi77/heatpump-flow-card/actions/workflows/validate.yml)
+[![GitHub release](https://img.shields.io/github/v/release/Sturmi77/heatpump-flow-card)](https://github.com/Sturmi77/heatpump-flow-card/releases)
+
+[![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Sturmi77&repository=heatpump-flow-card&category=plugin)
 
 An **animated hydraulic schematic** for air-to-water heat pumps in Home Assistant.
 
@@ -18,7 +22,7 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 > [!NOTE]
 > The **Viessmann**, **Vaillant**, **EMS-ESP** and **HeishaMon** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open an issue](https://github.com/Sturmi77/heatpump-flow-card/issues) with your entity list if something is missing or wrong. The Lambda preset runs on a real installation.
 
-![Live view while heating](docs/live-heating.jpg)
+![Animated demo: heating, hot water and defrost](docs/demo.gif)
 
 ## Features
 
@@ -42,9 +46,14 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 |---|---|---|---|
 | ![](docs/emsesp-heating.jpg) | ![](docs/heishamon-radiator.jpg) | ![](docs/other-brand-minimal.jpg) | ![](docs/dark.jpg) |
 
+| Live on a real Lambda installation |
+|---|
+| ![Live view while heating](docs/live-heating.jpg) |
+
 ## Installation
 
 ### HACS (custom repository)
+Click the **Open in HACS** button above, or:
 1. HACS → ⋮ → **Custom repositories** → URL `https://github.com/Sturmi77/heatpump-flow-card`, type **Dashboard**.
 2. Install **Heatpump Flow Card** and reload the browser.
 
@@ -215,6 +224,11 @@ Presets live in `HFC_PRESETS` in `dist/heatpump-flow-card.js`. A preset consists
 `ctx.key(platform, domain, translation_key)` looks entities up in the entity registry, independent of language and entity ids. `ctx.match(regex, platform)` matches entity ids by pattern.
 
 Pull requests for other brands are very welcome.
+
+## Feedback
+- **Your heat pump works (or not) with a preset?** Please use the [preset feedback form](https://github.com/Sturmi77/heatpump-flow-card/issues/new?template=preset_feedback.yml) – "works" reports help as much as bug reports.
+- **Another brand?** Use the same form with "Request a new brand" and paste your entity list.
+- **Something broken?** [Bug report](https://github.com/Sturmi77/heatpump-flow-card/issues/new?template=bug_report.yml).
 
 ## Development
 `test/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, light/dark) without Home Assistant. Open it via a local web server.

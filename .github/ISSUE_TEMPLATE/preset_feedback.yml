@@ -1,0 +1,58 @@
+name: Preset feedback / new brand
+description: Report how a preset works on your real installation, or request support for another heat pump.
+labels: [preset]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The Viessmann, Vaillant, EMS-ESP and HeishaMon presets are built from the integrations' source code and have **not yet been tested on real installations** – your feedback is exactly what is needed. "It works" reports are welcome too!
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type
+      options:
+        - Feedback on an existing preset
+        - Request a new brand / integration
+    validations:
+      required: true
+  - type: input
+    id: heatpump
+    attributes:
+      label: Heat pump brand and model
+      placeholder: e.g. Viessmann Vitocal 250-A, Buderus Logatherm WLW196i, Panasonic Aquarea J-series
+    validations:
+      required: true
+  - type: input
+    id: integration
+    attributes:
+      label: Home Assistant integration (with link)
+      placeholder: e.g. ViCare (core), myPyllant, EMS-ESP 3.7.2, heishamon-homeassistant
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result with the preset
+      options:
+        - Works as expected
+        - Works partly (see below)
+        - Does not work
+        - No preset yet (new brand)
+  - type: textarea
+    id: entities
+    attributes:
+      label: Entity list
+      description: |
+        Developer tools → States, filter by your heat pump, and paste entity ids with example states and units
+        (e.g. `sensor.xyz_flow_temperature = 34.5 °C`). Remove anything private.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What is missing or wrong? Which state means heating / hot water / defrost?
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot of the card

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 – 2026-10-19
+- README: animated demo GIF, "Open in HACS" button, CI and release badges, feedback section.
+- Issue templates: bug report and preset feedback / new brand.
+- No functional changes to the card.
+
 ## 0.3.0 – 2026-10-19
 - **Preset `emsesp`** (not yet tested on real installations): Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc and iVT heat pumps via the EMS-ESP gateway; instance prefix detection, English and German activity texts.
 - **Preset `heishamon`** (not yet tested on real installations): Panasonic Aquarea via HeishaMon + heishamon-homeassistant; MQTT prefix detection.
