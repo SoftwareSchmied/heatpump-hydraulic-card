@@ -68,6 +68,37 @@ const otherStates = (s) => ({
   'binary_sensor.heizkreispumpe': s === 'idle' ? 'off' : 'on',
 });
 
+// ViCare: German entity ids, resolved via translation_key in the entity registry. Values may carry units.
+const vicareReg = {
+  'sensor.vitocal_verdichterphase': 'compressor_phase', 'binary_sensor.vitocal_verdichter': 'compressor',
+  'binary_sensor.vitocal_warmwasser_laden': 'domestic_hot_water_charging', 'sensor.vitocal_vorlauf_sekundar': 'secondary_circuit_supply_temperature',
+  'sensor.vitocal_rucklauf_sekundar': 'secondary_circuit_return_temperature', 'sensor.vitocal_volumenstrom': 'volumetric_flow',
+  'sensor.vitocal_vorlauf_primar': 'primary_circuit_supply_temperature', 'sensor.vitocal_aussentemperatur': 'outside_temperature',
+  'sensor.vitocal_speicher_oben': 'dhw_storage_top_temperature', 'sensor.vitocal_speicher_unten': 'dhw_storage_bottom_temperature',
+  'binary_sensor.vitocal_heizkreispumpe': 'circulation_pump', 'sensor.vitocal_cop_heizen': 'cop_heating', 'sensor.vitocal_cop_ww': 'cop_dhw',
+  'sensor.vitocal_stromverbrauch_heute': 'power_consumption_today', 'sensor.vitocal_verdichterstarts': 'compressor_starts',
+};
+const vicareStates = (s) => ({
+  'sensor.vitocal_verdichterphase': { heat: 'heating', dhw: 'heating', defrost: 'defrost', idle: 'pause' }[s],
+  'binary_sensor.vitocal_verdichter': s === 'idle' ? 'off' : 'on', 'binary_sensor.vitocal_warmwasser_laden': s === 'dhw' ? 'on' : 'off',
+  'sensor.vitocal_vorlauf_sekundar': [{ heat: '42.5', dhw: '51.0', defrost: '25', idle: '30' }[s], '°C'],
+  'sensor.vitocal_rucklauf_sekundar': [{ heat: '36.0', dhw: '45.5', defrost: '27', idle: '29.5' }[s], '°C'],
+  'sensor.vitocal_volumenstrom': [s === 'idle' ? '0' : '0.95', 'm³/h'], 'sensor.vitocal_vorlauf_primar': ['2.1', '°C'],
+  'sensor.vitocal_aussentemperatur': ['1.4', '°C'], 'sensor.vitocal_speicher_oben': ['49.0', '°C'], 'sensor.vitocal_speicher_unten': ['41.0', '°C'],
+  'binary_sensor.vitocal_heizkreispumpe': s === 'idle' ? 'off' : 'on', 'sensor.vitocal_cop_heizen': '3.9', 'sensor.vitocal_cop_ww': '3.1',
+  'sensor.vitocal_stromverbrauch_heute': ['8.4', 'kWh'], 'sensor.vitocal_verdichterstarts': '4123',
+});
+const vaillantStates = (s) => ({
+  'sensor.zuhause_energy_manager_state': { heat: 'HEATING', dhw: 'DHW', defrost: 'HEATING', idle: 'STANDBY' }[s],
+  'sensor.zuhause_system_flow_temperature': [{ heat: '34.0', dhw: '52.5', defrost: '30', idle: '28' }[s], '°C'],
+  'sensor.zuhause_outdoor_temperature': ['3.5', '°C'], 'sensor.zuhause_domestic_hot_water_0_tank_temperature': ['47.0', '°C'],
+  'sensor.zuhause_domestic_hot_water_0_setpoint': ['50', '°C'], 'sensor.zuhause_circuit_0_current_flow_temperature': ['32.8', '°C'],
+  'sensor.zuhause_circuit_0_flow_temperature_setpoint': ['33.5', '°C'], 'sensor.zuhause_circuit_0_state': s === 'idle' ? 'STANDBY' : 'HEATING',
+  'sensor.zuhause_device_1_arotherm_plus_current_power': [s === 'idle' ? '0.01' : '1.35', 'kW'],
+  'sensor.zuhause_zone_wohnen_current_temperature': ['21.6', '°C'], 'sensor.zuhause_zone_wohnen_desired_temperature': ['21.5', '°C'],
+  'binary_sensor.zuhause_trouble_codes': s === 'idle' ? 'on' : 'off',
+});
+
 const setups = {
   'Lambda (Mike, legacy prefix)': {
     states: (s) => ({ ...lambdaStates('lambdaeu10l_', s), ...extras(s) }),
@@ -84,6 +115,16 @@ const setups = {
   'Lambda (new naming, English, zero-config)': {
     states: (s) => lambdaStates('', s),
     config: { preset: 'lambda' },
+  },
+  'Viessmann (ViCare, German ids, radiators)': {
+    states: vicareStates,
+    registry: Object.fromEntries(Object.entries(vicareReg).map(([id, tk]) => [id, { platform: 'vicare', translation_key: tk }])),
+    config: { preset: 'vicare', title: 'Vitocal', hc_type: 'radiator' },
+  },
+  'Vaillant (myPyllant)': {
+    states: vaillantStates,
+    registry: { 'sensor.zuhause_energy_manager_state': { platform: 'mypyllant' } },
+    config: { preset: 'vaillant', title: 'aroTHERM plus', language: 'en' },
   },
   'Other brand (no preset, no buffer, no power sources)': {
     states: otherStates,
@@ -104,8 +145,11 @@ function draw() {
   card.setConfig(setups[cur].config);
   wrap.appendChild(card);
   const states = {};
-  for (const [k, v] of Object.entries(setups[cur].states(scen))) states[k] = { entity_id: k, state: v, attributes: {} };
-  card.hass = { states, locale: { language: 'de' }, language: 'de' };
+  for (const [k, v] of Object.entries(setups[cur].states(scen))) {
+    const [state, unit] = Array.isArray(v) ? v : [v];
+    states[k] = { entity_id: k, state, attributes: unit ? { unit_of_measurement: unit } : {} };
+  }
+  card.hass = { states, entities: setups[cur].registry || {}, locale: { language: 'de' }, language: 'de' };
   card.addEventListener('hass-more-info', (e) => console.log('more-info', e.detail.entityId));
   document.querySelectorAll('button[data-s]').forEach((b) => b.classList.toggle('sel', b.dataset.s === cur || b.dataset.s === scen));
 }
