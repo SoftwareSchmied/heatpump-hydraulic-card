@@ -99,6 +99,34 @@ const vaillantStates = (s) => ({
   'binary_sensor.zuhause_trouble_codes': s === 'idle' ? 'on' : 'off',
 });
 
+// EMS-ESP (Bosch/Buderus …), German enum texts, entity format with instance prefix.
+const emsStates = (s) => ({
+  'sensor.ems_esp_boiler_hpactivity': { heat: 'Heizen', dhw: 'Warmwasser', defrost: 'Abtauen', idle: 'aus' }[s],
+  'binary_sensor.ems_esp_boiler_hpcompon': s === 'idle' ? 'off' : 'on', 'binary_sensor.ems_esp_boiler_hp3way': s === 'dhw' ? 'on' : 'off',
+  'sensor.ems_esp_boiler_hpcurrpower': [{ heat: '1450', dhw: '1900', defrost: '700', idle: '0' }[s], 'W'],
+  'sensor.ems_esp_boiler_hptc1': [{ heat: '38.5', dhw: '52.0', defrost: '24', idle: '29' }[s], '°C'],
+  'sensor.ems_esp_boiler_hptc0': [{ heat: '33.0', dhw: '46.5', defrost: '27', idle: '28.5' }[s], '°C'],
+  'sensor.ems_esp_boiler_pc0flow': [s === 'idle' ? '0' : '1080', 'l/h'], 'sensor.ems_esp_boiler_hptl2': ['3.4', '°C'],
+  'sensor.ems_esp_boiler_outdoortemp': ['2.8', '°C'], 'sensor.ems_esp_boiler_dhw_curtemp': ['47.5', '°C'], 'sensor.ems_esp_boiler_dhw_seltemp': ['52', '°C'],
+  'sensor.ems_esp_thermostat_hc1_currtemp': ['21.4', '°C'], 'sensor.ems_esp_thermostat_hc1_seltemp': ['21.5', '°C'],
+  'sensor.ems_esp_mixer_hc1_flowtemphc': ['34.0', '°C'],
+});
+// HeishaMon (Panasonic Aquarea): no operating-mode entity, valve as Room/Tank, flow in L/min, power in W.
+const hmStates = (s) => ({
+  'sensor.panasonic_heat_pump_main_main_outlet_temp': [{ heat: '36.0', dhw: '50.5', defrost: '23', idle: '30' }[s], '°C'],
+  'sensor.panasonic_heat_pump_main_main_inlet_temp': [{ heat: '31.0', dhw: '45.0', defrost: '26', idle: '29.5' }[s], '°C'],
+  'sensor.panasonic_heat_pump_main_pump_flow': [s === 'idle' ? '0' : '18.5', 'L/min'],
+  'sensor.panasonic_heat_pump_main_compressor_freq': [s === 'idle' ? '0' : '42', 'Hz'],
+  'sensor.panasonic_heat_pump_main_threeway_valve_state': s === 'dhw' ? 'Tank' : 'Room',
+  'binary_sensor.panasonic_heat_pump_main_defrosting_state': s === 'defrost' ? 'on' : 'off',
+  'sensor.panasonic_heat_pump_main_heat_power_consumption': [s === 'idle' ? '0' : '1250', 'W'],
+  'sensor.panasonic_heat_pump_main_heat_power_production': [{ heat: '5400', dhw: '4900', defrost: '0', idle: '0' }[s], 'W'],
+  'sensor.panasonic_heat_pump_main_outside_temp': ['4.0', '°C'], 'sensor.panasonic_heat_pump_main_dhw_temp': ['48.0', '°C'],
+  'number.panasonic_heat_pump_main_dhw_target_temp': ['50', '°C'], 'sensor.panasonic_heat_pump_main_z1_water_temp': ['35.5', '°C'],
+  'sensor.panasonic_heat_pump_main_main_target_temp': ['36', '°C'], 'sensor.panasonic_heat_pump_main_z1_temp': ['21.0', '°C'],
+});
+const regOf = (fn, platform) => Object.fromEntries(Object.keys(fn('heat')).map((id) => [id, { platform }]));
+
 const setups = {
   'Lambda (Mike, legacy prefix)': {
     states: (s) => ({ ...lambdaStates('lambdaeu10l_', s), ...extras(s) }),
@@ -125,6 +153,14 @@ const setups = {
     states: vaillantStates,
     registry: { 'sensor.zuhause_energy_manager_state': { platform: 'mypyllant' } },
     config: { preset: 'vaillant', title: 'aroTHERM plus', language: 'en' },
+  },
+  'EMS-ESP (Buderus/Bosch, German enums)': {
+    states: emsStates, registry: regOf(emsStates, 'mqtt'),
+    config: { preset: 'emsesp', title: 'Buderus WLW' },
+  },
+  'Panasonic Aquarea (HeishaMon, radiators)': {
+    states: hmStates, registry: regOf(hmStates, 'aquarea'),
+    config: { preset: 'heishamon', title: 'Aquarea', hc_type: 'radiator', language: 'en' },
   },
   'Other brand (no preset, no buffer, no power sources)': {
     states: otherStates,

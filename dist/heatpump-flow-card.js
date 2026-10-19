@@ -2,11 +2,12 @@
  * Heatpump Flow Card
  * Animated hydraulic schematic for air-to-water heat pumps in Home Assistant:
  * power sources (PV / battery / grid) → heat pump → diverter valve → DHW tank / buffer → heating circuit.
- * Vendor-neutral core with presets: Lambda (lambda_heat_pumps), Viessmann (ViCare), Vaillant (myPyllant).
+ * Vendor-neutral core with presets: Lambda, Viessmann (ViCare), Vaillant (myPyllant),
+ * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …) and Panasonic Aquarea (HeishaMon).
  *
  * https://github.com/Sturmi77/heatpump-flow-card · MIT License
  */
-const HFC_VERSION = '0.2.0';
+const HFC_VERSION = '0.3.0';
 
 /* ------------------------------------------------------------------ */
 /* Presets                                                             */
@@ -167,6 +168,77 @@ const HFC_PRESETS = {
     hc_mode_map: { HEATING: 'heating', COOLING: 'cooling', STANDBY: 'idle' },
     stat_labels: { cop_heating_today: { de: 'Effizienz Heizen', en: 'Heating efficiency' } },
   },
+
+  // Bosch, Buderus, Junkers, Nefit, Worcester and other EMS-bus heat pumps via the EMS-ESP gateway (MQTT discovery).
+  // Entity ids come from EMS-ESP short names (boiler_hpactivity, …) and do not depend on the language;
+  // the "multiple instances" entity format adds a prefix, which is detected. Enum texts follow the EMS-ESP language.
+  emsesp: {
+    name: 'EMS-ESP (Bosch, Buderus, Junkers, Nefit …)',
+    detect: (ctx) => {
+      const id = ctx.match(/^sensor\.(?:(.+)_)?boiler_(hpactivity|hptc1|curflowtemp)$/, 'mqtt');
+      return id === undefined ? undefined : (id.match(/^sensor\.(?:(.+)_)?boiler_/)[1] || '');
+    },
+    entities: (p, i) => {
+      const x = p ? `${p}_` : '';
+      const b = (k) => [`binary_sensor.${x}boiler_${k}`, `sensor.${x}boiler_${k}`];
+      const s = (...ks) => ks.map((k) => `sensor.${x}${k}`);
+      const hc = `hc${i.hc}`;
+      return {
+        mode: s('boiler_hpactivity'),
+        compressor: b('hpcompon'),
+        valve: b('hp3way'),
+        power: s('boiler_hpcurrpower'),
+        flow: s('boiler_hptc1', 'boiler_curflowtemp'),
+        return: s('boiler_hptc0', 'boiler_rettemp'),
+        volume: s('boiler_pc0flow'),
+        source_in: s('boiler_hptl2', 'boiler_hpbrinein'),
+        outdoor: s('boiler_outdoortemp', 'thermostat_outdoortemp'),
+        dhw_top: s('boiler_dhw_curtemp', 'boiler_wwcurtemp', 'boiler_dhw_storagetemp1'),
+        dhw_bottom: s('boiler_dhw_storagetemp2'),
+        dhw_target: s('boiler_dhw_seltemp', 'boiler_wwseltemp'),
+        circulation: b('dhw_circ').concat(b('wwcirc')),
+        hc_pump: [`binary_sensor.${x}mixer_${hc}_pumpstatus`, `sensor.${x}mixer_${hc}_pumpstatus`],
+        hc_flow: s(`mixer_${hc}_flowtemphc`, `thermostat_${hc}_targetflowtemp`),
+        room: s(`thermostat_${hc}_currtemp`),
+        room_target: s(`thermostat_${hc}_seltemp`),
+      };
+    },
+    mode_map: {
+      off: 'idle', heating: 'heating', cooling: 'cooling', 'hot water': 'dhw', pool: 'heating', 'pool heating': 'heating',
+      defrost: 'defrost', 'compressor alarm': 'off',
+      aus: 'idle', heizen: 'heating', kühlen: 'cooling', warmwasser: 'dhw', 'pool beheizen': 'heating', abtauen: 'defrost',
+      'alarm kompressor': 'off',
+    },
+  },
+
+  // Panasonic Aquarea via HeishaMon and the "heishamon-homeassistant" integration (domain aquarea).
+  // Entity ids are slugs of the MQTT topics: sensor.<prefix>_main_<topic>, prefix default panasonic_heat_pump.
+  heishamon: {
+    name: 'Panasonic Aquarea (HeishaMon)',
+    detect: (ctx) => {
+      const id = ctx.match(/^sensor\.(.+)_main_main_outlet_temp$/, 'aquarea');
+      return id === undefined ? undefined : id.replace(/^sensor\./, '').replace(/_main_main_outlet_temp$/, '');
+    },
+    entities: (p) => {
+      const m = `${p}_main_`;
+      return {
+        compressor: `sensor.${m}compressor_freq`,
+        valve: `sensor.${m}threeway_valve_state`,
+        defrost: [`binary_sensor.${m}defrosting_state`, `switch.${m}defrosting_state`],
+        power: `sensor.${m}heat_power_consumption`,
+        heat: `sensor.${m}heat_power_production`,
+        flow: `sensor.${m}main_outlet_temp`,
+        return: `sensor.${m}main_inlet_temp`,
+        volume: `sensor.${m}pump_flow`,
+        outdoor: `sensor.${m}outside_temp`,
+        dhw_top: `sensor.${m}dhw_temp`,
+        dhw_target: [`number.${m}dhw_target_temp`, `sensor.${m}dhw_target_temp`],
+        hc_flow: `sensor.${m}z1_water_temp`,
+        hc_setpoint: `sensor.${m}main_target_temp`,
+        room: `sensor.${m}z1_temp`,
+      };
+    },
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -205,10 +277,10 @@ const HFC_EDITOR = {
     title: 'Title', language: 'Language', power_threshold: 'Running above (W)', hc_type: 'Heat emitter',
     hc_underfloor: 'Underfloor heating', hc_radiator: 'Radiators',
     sec_hp: 'Heat pump', sec_storage: 'Storage', sec_hc: 'Heating circuit & house', sec_power: 'Power sources', sec_stats: 'Statistics',
-    mode: 'Operating mode', status: 'Status / sub-state', compressor: 'Compressor running (binary)', power: 'Electrical power',
+    mode: 'Operating mode', status: 'Status / sub-state', compressor: 'Compressor running (binary or frequency)', defrost: 'Defrost active (binary)', power: 'Electrical power',
     heat: 'Heat output', flow: 'Flow temperature', return: 'Return temperature', volume: 'Flow rate heating side',
     source_volume: 'Flow rate source side', source_in: 'Source / air inlet temperature', outdoor: 'Outdoor temperature',
-    valve: 'Diverter valve on DHW (binary)',
+    valve: 'Diverter valve on DHW (binary or Tank/Room)',
     dhw_top: 'DHW tank top', dhw_bottom: 'DHW tank bottom', dhw_target: 'DHW target', dhw_mode: 'DHW mode',
     circulation: 'Circulation pump', buffer_top: 'Buffer top', buffer_bottom: 'Buffer bottom', buffer_mode: 'Buffer mode',
     hc_flow: 'Circuit flow temperature', hc_return: 'Circuit return temperature', hc_setpoint: 'Circuit flow target',
@@ -223,10 +295,10 @@ const HFC_EDITOR = {
     title: 'Titel', language: 'Sprache', power_threshold: 'Läuft ab (W)', hc_type: 'Wärmeabgabe',
     hc_underfloor: 'Flächenheizung', hc_radiator: 'Heizkörper',
     sec_hp: 'Wärmepumpe', sec_storage: 'Speicher', sec_hc: 'Heizkreis & Haus', sec_power: 'Stromquellen', sec_stats: 'Kennzahlen',
-    mode: 'Betriebsart', status: 'Status / Unterzustand', compressor: 'Verdichter läuft (binär)', power: 'Leistungsaufnahme',
+    mode: 'Betriebsart', status: 'Status / Unterzustand', compressor: 'Verdichter läuft (binär oder Frequenz)', defrost: 'Abtauen aktiv (binär)', power: 'Leistungsaufnahme',
     heat: 'Wärmeleistung', flow: 'Vorlauftemperatur', return: 'Rücklauftemperatur', volume: 'Volumenstrom Heizseite',
     source_volume: 'Volumenstrom Quelle', source_in: 'Quelle / Luft-Eintritt', outdoor: 'Außentemperatur',
-    valve: 'Umschaltventil auf WW (binär)',
+    valve: 'Umschaltventil auf WW (binär oder Tank/Room)',
     dhw_top: 'WW-Speicher oben', dhw_bottom: 'WW-Speicher unten', dhw_target: 'WW-Soll', dhw_mode: 'WW-Betriebsart',
     circulation: 'Zirkulationspumpe', buffer_top: 'Puffer oben', buffer_bottom: 'Puffer unten', buffer_mode: 'Puffer-Betriebsart',
     hc_flow: 'Heizkreis-Vorlauf', hc_return: 'Heizkreis-Rücklauf', hc_setpoint: 'Heizkreis-Vorlauf-Soll',
@@ -239,13 +311,13 @@ const HFC_EDITOR = {
 };
 
 const HFC_ENTITY_GROUPS = {
-  sec_hp: ['mode', 'status', 'compressor', 'power', 'heat', 'flow', 'return', 'volume', 'source_volume', 'source_in', 'outdoor', 'valve'],
+  sec_hp: ['mode', 'status', 'compressor', 'defrost', 'power', 'heat', 'flow', 'return', 'volume', 'source_volume', 'source_in', 'outdoor', 'valve'],
   sec_storage: ['dhw_top', 'dhw_bottom', 'dhw_target', 'dhw_mode', 'circulation', 'buffer_top', 'buffer_bottom', 'buffer_mode'],
   sec_hc: ['hc_flow', 'hc_return', 'hc_setpoint', 'hc_mode', 'hc_pump', 'hc_volume', 'room', 'room_target'],
   sec_power: ['pv', 'battery', 'grid'],
   sec_stats: ['cop_heating_today', 'cop_dhw_today', 'energy_today', 'pv_share_today', 'starts_today'],
 };
-const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'circulation'];
+const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'circulation', 'defrost'];
 
 /* ------------------------------------------------------------------ */
 /* Card                                                                */
@@ -616,7 +688,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const P = this._parts;
     const rawMode = this._s('mode');
     const status = this._s('status') || '';
-    const hp = this._norm(this._maps.mode, rawMode);
+    let hp = this._norm(this._maps.mode, rawMode);
     const dhwMode = this._norm(this._maps.dhw, this._s('dhw_mode'));
     const bufMode = this._norm(this._maps.buffer, this._s('buffer_mode'));
     const hcMode = this._norm(this._maps.hc, this._s('hc_mode'));
@@ -624,12 +696,18 @@ class HeatpumpFlowCard extends HTMLElement {
     const vol = this._lh('volume');
     const tFlow = this._n('flow'); const tRet = this._n('return');
     const spread = Number.isFinite(tFlow) && Number.isFinite(tRet) ? tFlow - tRet : NaN;
-    const running = (this._e.compressor && this._on('compressor')) || power > this._threshold || this._runningStates.includes(status)
-      || (!this._e.compressor && !this._e.power && !this._e.status && ['heating', 'dhw', 'cooling', 'defrost'].includes(hp));
-    const defrost = hp === 'defrost' || status.toUpperCase().includes('DEFROST');
+    // Compressor may be a binary sensor or a numeric one (frequency / speed > 0 means running).
+    const compOn = this._has('compressor') && (this._on('compressor') || this._n('compressor') > 0);
+    const running = compOn || power > this._threshold || this._runningStates.includes(status)
+      || (!this._has('compressor') && !this._has('power') && !this._has('status') && ['heating', 'dhw', 'cooling', 'defrost'].includes(hp));
+    const defrost = hp === 'defrost' || status.toUpperCase().includes('DEFROST') || (this._has('defrost') && this._on('defrost'));
+    // Valve: binary (on = DHW) or a state such as "Tank" / "DHW".
+    const valveDhw = this._has('valve') && (this._on('valve') || ['tank', 'dhw', 'hot water', 'warmwasser'].includes(String(this._s('valve')).toLowerCase()));
+    // Integrations without an operating-mode entity: a running compressor means heating unless the valve says DHW.
+    if (!this._has('mode')) hp = !running ? 'idle' : (defrost ? 'defrost' : (valveDhw ? 'dhw' : 'heating'));
     const cooling = hp === 'cooling' || bufMode === 'cooling';
 
-    const dhwActive = P.dhw && (hp === 'dhw' || ['dhw', 'legionella'].includes(dhwMode) || (this._e.valve && this._on('valve')));
+    const dhwActive = P.dhw && (hp === 'dhw' || ['dhw', 'legionella'].includes(dhwMode) || valveDhw);
     const toDhw = dhwActive && (running || dhwMode === 'trailing' || hp === 'dhw');
     const toHeat = !toDhw && (['heating', 'defrost', 'cooling'].includes(hp) || ['heating', 'cooling'].includes(bufMode));
     const loop = toDhw || toHeat;
@@ -658,7 +736,8 @@ class HeatpumpFlowCard extends HTMLElement {
     this._cls('coil', toDhw);
 
     if (P.hc) {
-      const hcOn = this._e.hc_pump ? this._on('hc_pump') : ['heating', 'cooling'].includes(hcMode);
+      // Circuit pump, else circuit mode, else assume the circuit runs whenever the heat pump heats or cools.
+      const hcOn = this._has('hc_pump') ? this._on('hc_pump') : (this._has('hc_mode') ? ['heating', 'cooling'].includes(hcMode) : toHeat);
       // Without circuit sensors fall back to the buffer / main loop temperatures.
       const pick = (...v) => v.find((x) => Number.isFinite(x)) ?? NaN;
       const tHc = pick(this._n('hc_flow'), this._n('buffer_top'), toHeat ? tFlow : tRet);
@@ -871,7 +950,7 @@ if (!window.customCards.some((c) => c.type === 'heatpump-flow-card')) {
   window.customCards.push({
     type: 'heatpump-flow-card',
     name: 'Heatpump Flow Card',
-    description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann, Vaillant.',
+    description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann, Vaillant, EMS-ESP (Bosch/Buderus/Junkers/Nefit), Panasonic Aquarea (HeishaMon).',
     preview: true,
     documentationURL: 'https://github.com/Sturmi77/heatpump-flow-card',
   });
