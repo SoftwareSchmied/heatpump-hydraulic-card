@@ -10,6 +10,9 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 - **Viessmann Vitocal** via the core [ViCare](https://www.home-assistant.io/integrations/vicare/) integration
 - **Vaillant aroTHERM** via [myPyllant](https://github.com/signalkraft/mypyllant-component)
 
+> [!NOTE]
+> The **Viessmann** and **Vaillant** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open an issue](https://github.com/Sturmi77/heatpump-flow-card/issues) with your entity list if something is missing or wrong. The Lambda preset runs on a real installation.
+
 ![Live view while heating](docs/live-heating.jpg)
 
 ## Features
@@ -68,7 +71,7 @@ badges:
     label: 🚀 Boost
 ```
 
-### Viessmann (ViCare)
+### Viessmann (ViCare) – untested, feedback welcome
 ```yaml
 type: custom:heatpump-flow-card
 preset: vicare
@@ -86,7 +89,7 @@ What you get:
 
 ViCare has no live electrical power, so add `power` from a meter if you have one; the heat output is estimated from flow rate × spread.
 
-### Vaillant (myPyllant)
+### Vaillant (myPyllant) – untested, feedback welcome
 ```yaml
 type: custom:heatpump-flow-card
 preset: vaillant
@@ -172,7 +175,7 @@ Pull requests for other brands are very welcome.
 `test/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, light/dark) without Home Assistant. Open it via a local web server.
 
 ## Deutsch (Kurzfassung)
-Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen für Lambda, Viessmann (ViCare) und Vaillant (myPyllant) erkennen die Entitäten automatisch. Andere Hersteller werden über `entities` und `mode_map` angebunden. Heizkreis wahlweise als Flächenheizung oder Heizkörper. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch.
+Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen für Lambda, Viessmann (ViCare) und Vaillant (myPyllant) erkennen die Entitäten automatisch. Viessmann und Vaillant sind noch nicht mit einer echten Anlage getestet – Rückmeldungen gern als Issue. Andere Hersteller werden über `entities` und `mode_map` angebunden. Heizkreis wahlweise als Flächenheizung oder Heizkörper. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch.
 
 ## License
 MIT © 2026 Sturmi77

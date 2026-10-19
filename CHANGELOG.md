@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.2.0 – 2026-10-19
-- **Presets** for Viessmann (core ViCare integration, language-independent via entity registry translation keys) and Vaillant aroTHERM (myPyllant, home prefix auto-detected).
+- **Presets** (not yet tested on real installations) for Viessmann (core ViCare integration, language-independent via entity registry translation keys) and Vaillant aroTHERM (myPyllant, home prefix auto-detected).
 - **Heat emitter:** `hc_type: radiator` draws radiators with rising heat waves; underfloor now shows a screed layer.
 - **Flow rates:** shown on the heating-side loop; new optional `hc_volume` and `source_volume`.
 - **Estimated heat output** from flow rate × spread when no heat sensor exists (marked ≈), including COP.
