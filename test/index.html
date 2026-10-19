@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heatpump Flow Card – dev preview</title>
+<style>
+  body { margin: 0; padding: 16px; font-family: Roboto, system-ui, sans-serif; background: #f5f5f5;
+    --primary-text-color: #212121; --secondary-text-color: #727272; --card-background-color: #fff;
+    --secondary-background-color: #f0f0f0; --divider-color: rgba(0,0,0,.12); }
+  body.dark { background: #111; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+    --card-background-color: #1c1c1c; --secondary-background-color: #2a2a2a; --divider-color: rgba(255,255,255,.12); }
+  ha-card { display: block; background: var(--card-background-color); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+  .bar { margin-bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+  button { padding: 6px 10px; } button.sel { outline: 2px solid #f97316; }
+  .wrap { max-width: 1100px; }
+</style>
+</head>
+<body>
+<div class="bar" id="setups"></div>
+<div class="bar" id="states"></div>
+<div class="bar"><button onclick="document.body.classList.toggle('dark')">light / dark</button></div>
+<div class="wrap" id="wrap"></div>
+<script src="../dist/heatpump-flow-card.js"></script>
+<script>
+/* ---------- simulated installations ---------- */
+const lambdaStates = (x, s) => {
+  const v = {
+    [`${x}hp1_operating_state`]: 'CH', [`${x}hp1_state`]: 'REGULATION',
+    [`${x}hp1_inverter_power_consumption`]: '1240', [`${x}hp1_actual_heating_capacity`]: '6.3',
+    [`${x}hp1_flow_line_temperature`]: '32.4', [`${x}hp1_return_line_temperature`]: '27.9',
+    [`${x}hp1_volume_flow_heat_sink`]: '2281', [`${x}hp1_energy_source_inlet_temperature`]: '9.8',
+    [`${x}ambient_temperature_calculated`]: '10.4',
+    [`${x}boil1_actual_high_temperature`]: '46.0', [`${x}boil1_actual_low_temperature`]: '38.5',
+    [`${x}boil1_target_high_temperature`]: '50.0', [`${x}boil1_operating_state`]: 'STBY',
+    [`${x}boil1_actual_circulation_pump_state`]: 'Off',
+    [`${x}buff1_actual_high_temperature`]: '31.2', [`${x}buff1_actual_low_temperature`]: '27.4', [`${x}buff1_operating_state`]: 'HEATING',
+    [`${x}hc1_flow_line_temperature`]: '30.1', [`${x}hc1_flow_line_temperature_setpoint`]: '30.2', [`${x}hc1_operating_state`]: 'HEATING',
+    [`${x}hc1_room_device_temperature`]: 'unknown', [`${x}hc1_target_room_temperature`]: '23.0',
+    [`${x}hp1_heating_cop_daily`]: '5.05', [`${x}hp1_hot_water_cop_daily`]: '4.15', [`${x}hp1_compressor_start_cycling_daily`]: '3',
+    [`${x}hp1_error_number`]: '0', [`${x}boil1_error_number`]: '0', [`${x}buff1_error_number`]: '0', [`${x}hc1_error_number`]: '0', [`${x}ambient_error_number`]: '0',
+  };
+  const S = {
+    heat: {},
+    dhw: { [`${x}hp1_operating_state`]: 'DHW', [`${x}boil1_operating_state`]: 'DHW', [`${x}buff1_operating_state`]: 'STBY',
+      [`${x}hp1_flow_line_temperature`]: '48.6', [`${x}hp1_return_line_temperature`]: '43.1', [`${x}hp1_inverter_power_consumption`]: '1650',
+      [`${x}hp1_actual_heating_capacity`]: '6.9', [`${x}boil1_actual_circulation_pump_state`]: 'On' },
+    defrost: { [`${x}hp1_operating_state`]: 'DEFROST', [`${x}hp1_flow_line_temperature`]: '24.0', [`${x}hp1_actual_heating_capacity`]: '0' },
+    idle: { [`${x}hp1_operating_state`]: 'STBY', [`${x}hp1_state`]: 'READY', [`${x}hp1_inverter_power_consumption`]: '0',
+      [`${x}hp1_actual_heating_capacity`]: '0', [`${x}buff1_operating_state`]: 'STBY', [`${x}hp1_error_number`]: '7' },
+  }[s];
+  const out = {};
+  for (const [k, val] of Object.entries({ ...v, ...S })) out[`sensor.${k}`] = val;
+  return out;
+};
+const extras = (s) => ({
+  'sensor.lambda_raumtemperatur_mittel': '22.8', 'sensor.lambda_strom_taglich': '5.111', 'sensor.lambda_wp_pv_anteil_heute': '24',
+  'sensor.lambda_kompressor_starts_taglich': '3',
+  'sensor.lambda_wp_aus_pv': s === 'heat' ? '820' : '0', 'sensor.lambda_wp_aus_batterie': s === 'dhw' ? '1650' : '0',
+  'sensor.lambda_wp_aus_netz': s === 'heat' ? '420' : '0', 'input_boolean.lambda_boost_aktiv': s === 'dhw' ? 'on' : 'off',
+});
+const otherStates = (s) => ({
+  'sensor.wp_betriebsart': { heat: 'Heating', dhw: 'Hot water', defrost: 'Defrost', idle: 'Standby' }[s],
+  'sensor.wp_vorlauf': { heat: '35.2', dhw: '52.0', defrost: '22', idle: '29' }[s],
+  'sensor.wp_ruecklauf': { heat: '30.4', dhw: '46.5', defrost: '24', idle: '28.5' }[s],
+  'sensor.wp_leistung': { heat: '1800', dhw: '2100', defrost: '900', idle: '3' }[s],
+  'sensor.ww_temperatur': '47.5', 'sensor.aussen': '-2.4',
+  'binary_sensor.heizkreispumpe': s === 'idle' ? 'off' : 'on',
+});
+
+const setups = {
+  'Lambda (Mike, legacy prefix)': {
+    states: (s) => ({ ...lambdaStates('lambdaeu10l_', s), ...extras(s) }),
+    config: {
+      preset: 'lambda', prefix: 'lambdaeu10l', title: 'Lambda · Hydraulik', language: 'de',
+      entities: {
+        room: 'sensor.lambda_raumtemperatur_mittel', pv: 'sensor.lambda_wp_aus_pv', battery: 'sensor.lambda_wp_aus_batterie',
+        grid: 'sensor.lambda_wp_aus_netz', energy_today: 'sensor.lambda_strom_taglich', pv_share_today: 'sensor.lambda_wp_pv_anteil_heute',
+        starts_today: 'sensor.lambda_kompressor_starts_taglich',
+      },
+      badges: [{ entity: 'input_boolean.lambda_boost_aktiv', label: '🚀 Boost' }],
+    },
+  },
+  'Lambda (new naming, English, zero-config)': {
+    states: (s) => lambdaStates('', s),
+    config: { preset: 'lambda' },
+  },
+  'Other brand (no preset, no buffer, no power sources)': {
+    states: otherStates,
+    config: {
+      title: 'Heat pump', language: 'en',
+      entities: { mode: 'sensor.wp_betriebsart', flow: 'sensor.wp_vorlauf', return: 'sensor.wp_ruecklauf', power: 'sensor.wp_leistung',
+        dhw_top: 'sensor.ww_temperatur', outdoor: 'sensor.aussen', hc_pump: 'binary_sensor.heizkreispumpe' },
+      mode_map: { Heating: 'heating', 'Hot water': 'dhw', Defrost: 'defrost', Standby: 'idle' },
+    },
+  },
+};
+
+let cur = Object.keys(setups)[0]; let scen = 'heat';
+const wrap = document.getElementById('wrap');
+function draw() {
+  wrap.innerHTML = '';
+  const card = document.createElement('heatpump-flow-card');
+  card.setConfig(setups[cur].config);
+  wrap.appendChild(card);
+  const states = {};
+  for (const [k, v] of Object.entries(setups[cur].states(scen))) states[k] = { entity_id: k, state: v, attributes: {} };
+  card.hass = { states, locale: { language: 'de' }, language: 'de' };
+  card.addEventListener('hass-more-info', (e) => console.log('more-info', e.detail.entityId));
+  document.querySelectorAll('button[data-s]').forEach((b) => b.classList.toggle('sel', b.dataset.s === cur || b.dataset.s === scen));
+}
+const mk = (bar, label, key, fn) => { const b = document.createElement('button'); b.textContent = label; b.dataset.s = key; b.onclick = fn; document.getElementById(bar).appendChild(b); };
+Object.keys(setups).forEach((k) => mk('setups', k, k, () => { cur = k; draw(); }));
+[['heat', 'Heizen'], ['dhw', 'Warmwasser'], ['defrost', 'Abtauen'], ['idle', 'Standby + Fehler']].forEach(([k, l]) => mk('states', l, k, () => { scen = k; draw(); }));
+const q = new URLSearchParams(location.search);
+if (q.get('setup')) cur = Object.keys(setups)[+q.get('setup')];
+if (q.get('s')) scen = q.get('s');
+draw();
+</script>
+</body>
+</html>

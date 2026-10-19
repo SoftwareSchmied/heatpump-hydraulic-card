@@ -1,0 +1,4 @@
+# generated local preview with the script inlined
+test/preview.html
+node_modules/
+.DS_Store
