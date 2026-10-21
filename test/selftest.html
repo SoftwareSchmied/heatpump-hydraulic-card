@@ -149,6 +149,8 @@
     check(t['COP heating · month'] === '4.62', `preset period entity (${t['COP heating · month']})`);
     check(t['Electricity · today'] === '5.1 kWh · 24 % PV', `energy with PV share (${t['Electricity · today']})`);
     check(t['Defrosts · yesterday'] === '4', 'Lambda defrost tile');
+    const small = (await tilesOf(s, ['energy_standby'])).t;
+    check(small['Standby · today'] === '0.12 kWh', `small energy keeps two decimals (${small['Standby · today']})`);
     check(t['Electricity heating · week'] === '61.3 kWh', `week from statistics (${t['Electricity heating · week']})`);
     const more = (await tilesOf(s, ['heat_heating', 'cop_total', 'energy_aux', { key: 'cost', period: 'today', price: 0.3 }, { entity: 'sensor.heating_curve_flow', name: 'Curve' },
       { key: 'energy', entity: 'sensor.heatpump_energy_today', name: 'Mine' }, 'spread', 'outdoor', { key: 'cop_heating', period: 'month', name: 'Monthly', decimals: 1 }])).t;

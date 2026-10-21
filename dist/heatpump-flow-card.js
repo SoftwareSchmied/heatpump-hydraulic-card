@@ -1296,7 +1296,8 @@ class HeatpumpFlowCard extends HTMLElement {
     const v = this._srcValue(src, def.kind, period);
     const approx = src.ratio ? '≈' : '';
     if (def.kind === 'cop') return Number.isFinite(v) ? `${approx}${this._fmt(v, dec(2))}` : '–';
-    if (def.kind === 'energy') return period === 'now' ? out(v, 0, 'W') : out(v, Math.abs(v) >= 100 ? 0 : 1, 'kWh');
+    // Small amounts (standby, defrost) keep two decimals so they do not read as 0.0.
+    if (def.kind === 'energy') return period === 'now' ? out(v, 0, 'W') : out(v, Math.abs(v) >= 100 ? 0 : Math.abs(v) < 1 ? 2 : 1, 'kWh');
     if (def.kind === 'count') return out(v, 0, '');
     if (def.perStart) return !Number.isFinite(v) ? '–' : `${approx}${v < 1 ? out(v * 60, 0, 'min') : out(v, 1, 'h')}`;
     if (def.kind === 'hours') return out(v, Math.abs(v) >= 100 ? 0 : 1, 'h');
