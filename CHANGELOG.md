@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- PV / battery / grid from the Energy dashboard: without own `pv` / `battery` / `grid` sensors, the card reads the power sensors of the Energy dashboard and splits the heat pump's power by the current supply mix (marked ≈). New option `power_sources: auto | manual`.
 - Live demo on GitHub Pages (`demo/`, formerly `test/index.html`): all presets and scenarios, light/dark, English/German, with the matching card configuration.
 - README: "Where the numbers come from" section, link to the live demo and the community thread; emojis removed.
 - Card: the error chip and the defrost indicator use drawn SVG symbols instead of the ⚠ and ❄ characters, which some devices render as colour emoji.

@@ -275,6 +275,7 @@ const HFC_EDITOR = {
   en: {
     preset: 'Preset', prefix: 'Prefix (empty = auto-detect)', device: 'Device (optional, restricts the preset)',
     title: 'Title', language: 'Language', power_threshold: 'Running above (W)', hc_type: 'Heat emitter',
+    power_sources: 'PV / battery / grid', ps_auto: 'Energy dashboard, unless set below', ps_manual: 'Only the sensors below',
     hc_underfloor: 'Underfloor heating', hc_radiator: 'Radiators',
     sec_hp: 'Heat pump', sec_storage: 'Storage', sec_hc: 'Heating circuit & house', sec_power: 'Power sources', sec_stats: 'Statistics',
     mode: 'Operating mode', status: 'Status / sub-state', compressor: 'Compressor running (binary or frequency)', defrost: 'Defrost active (binary)', power: 'Electrical power',
@@ -293,6 +294,7 @@ const HFC_EDITOR = {
   de: {
     preset: 'Voreinstellung', prefix: 'Präfix (leer = automatisch erkennen)', device: 'Gerät (optional, schränkt die Voreinstellung ein)',
     title: 'Titel', language: 'Sprache', power_threshold: 'Läuft ab (W)', hc_type: 'Wärmeabgabe',
+    power_sources: 'PV / Akku / Netz', ps_auto: 'Energie-Dashboard, außer unten gesetzt', ps_manual: 'Nur die Sensoren unten',
     hc_underfloor: 'Flächenheizung', hc_radiator: 'Heizkörper',
     sec_hp: 'Wärmepumpe', sec_storage: 'Speicher', sec_hc: 'Heizkreis & Haus', sec_power: 'Stromquellen', sec_stats: 'Kennzahlen',
     mode: 'Betriebsart', status: 'Status / Unterzustand', compressor: 'Verdichter läuft (binär oder Frequenz)', defrost: 'Abtauen aktiv (binär)', power: 'Leistungsaufnahme',
@@ -367,6 +369,7 @@ class HeatpumpFlowCard extends HTMLElement {
             { name: 'language', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' }] } } },
             { name: 'hc_type', selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } },
             { name: 'power_threshold', selector: { number: { min: 0, max: 2000, step: 10, mode: 'box', unit_of_measurement: 'W' } } },
+            { name: 'power_sources', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: L.ps_auto }, { value: 'manual', label: L.ps_manual }] } } },
           ],
         },
         ...Object.entries(HFC_ENTITY_GROUPS).map(([sec, keys]) => ({
@@ -439,6 +442,58 @@ class HeatpumpFlowCard extends HTMLElement {
     this._lastTry = Date.now();
   }
 
+  // PV / battery / grid power from the Energy dashboard (its "stat_rate" power sensors), loaded once per page.
+  // Conventions of the Energy dashboard: battery positive = discharging, grid positive = import.
+  _loadEnergy() {
+    if (this._energyReq || this._config.power_sources === 'manual' || typeof this._hass.callWS !== 'function') return;
+    this._energyReq = true;
+    HeatpumpFlowCard._energyPrefs = HeatpumpFlowCard._energyPrefs || this._hass.callWS({ type: 'energy/get_prefs' });
+    HeatpumpFlowCard._energyPrefs.then((prefs) => {
+      const rate = (src) => {
+        const pc = src.power_config;
+        if (pc && (pc.stat_rate_from || pc.stat_rate_to)) return { from: pc.stat_rate_from, to: pc.stat_rate_to };
+        if (pc && pc.stat_rate) return { id: pc.stat_rate, inv: !!pc.stat_rate_inverted };
+        return src.stat_rate ? { id: src.stat_rate } : null;
+      };
+      const of = (type) => (prefs?.energy_sources || []).filter((s) => s.type === type).map(rate).filter(Boolean);
+      const energy = { solar: of('solar'), battery: of('battery'), grid: of('grid') };
+      this._energy = energy.solar.length || energy.battery.length || energy.grid.length ? energy : null;
+      if (this._energy && this._hass) { this._rendered = false; this.hass = this._hass; }
+    }).catch(() => { this._energy = null; });
+  }
+
+  // Manual pv/battery/grid entities win; otherwise the Energy dashboard is used (needs the heat pump power).
+  _powerMode() {
+    if (['pv', 'battery', 'grid'].some((k) => this._has(k))) return 'manual';
+    if (this._energy && this._config.power_sources !== 'manual' && this._has('power')) return 'energy';
+    return '';
+  }
+
+  _rateW(r) {
+    const w = (id) => {
+      const st = id && this._hass.states[id]; const v = parseFloat(st?.state);
+      if (!Number.isFinite(v)) return NaN;
+      return String(st.attributes?.unit_of_measurement || '').toLowerCase() === 'kw' ? v * 1000 : v;
+    };
+    if (r.id) return w(r.id) * (r.inv ? -1 : 1);
+    return (r.from ? w(r.from) : 0) - (r.to ? w(r.to) : 0);
+  }
+
+  // Splits the heat pump's power by the house's current supply mix: PV used in the house, battery discharge, grid import.
+  // PV first covers battery charging and export. Returns W per source, or null while a sensor is unavailable.
+  _energySplit() {
+    const sum = (list) => list.reduce((a, r) => a + this._rateW(r), 0);
+    const pv = sum(this._energy.solar); const bat = sum(this._energy.battery); const grid = sum(this._energy.grid);
+    if (![pv, bat, grid].every(Number.isFinite)) return null;
+    const charge = Math.max(-bat, 0); const discharge = Math.max(bat, 0);
+    const imp = Math.max(grid, 0); const exp = Math.max(-grid, 0);
+    const pvHome = Math.max(Math.max(pv, 0) - charge - exp, 0);
+    const total = pvHome + discharge + imp;
+    const hp = Math.max(this._w('power'), 0);
+    if (!(total > 50) || !Number.isFinite(hp)) return { pv: 0, battery: 0, grid: 0 };
+    return { pv: hp * pvHome / total, battery: hp * discharge / total, grid: hp * imp / total };
+  }
+
   getCardSize() { return 9; }
   getGridOptions() { return { columns: 'full', min_columns: 6, rows: 'auto' }; }
 
@@ -448,6 +503,7 @@ class HeatpumpFlowCard extends HTMLElement {
     if (!this._config) return;
     // Retry detection at most every 30 s while the integration's entities are not there yet.
     if (this._needsBuild && (!this._rendered || Date.now() - this._lastTry > 30000)) { this._build(); this._rendered = false; }
+    this._loadEnergy();
     const sig = this._layoutSignature();
     if (!this._rendered || sig !== this._sig) this._render();
     this._update();
@@ -502,7 +558,8 @@ class HeatpumpFlowCard extends HTMLElement {
   _layoutSignature() {
     if (!this._hass || !this._e) return '';
     const parts = {
-      power: ['pv', 'battery', 'grid'].some((k) => this._has(k)),
+      power: this._powerMode(),
+      sources: this._powerMode() === 'energy' ? [this._energy.solar.length, this._energy.battery.length, this._energy.grid.length].join() : '',
       dhw: this._has('dhw_top') || this._has('dhw_mode'),
       buffer: this._has('buffer_top') || this._has('buffer_mode'),
       hc: this._has('hc_flow') || this._has('hc_mode') || this._has('hc_pump'),
@@ -573,7 +630,7 @@ class HeatpumpFlowCard extends HTMLElement {
           </defs>
 
           ${P.power ? `
-            ${this._source('pv', 70, i.pv, e.pv)}${this._source('bat', 170, i.battery, e.battery)}${this._source('grid', 270, i.grid, e.grid)}
+            ${this._source('pv', 70, i.pv, this._srcEntity('pv'))}${this._source('bat', 170, i.battery, this._srcEntity('battery'))}${this._source('grid', 270, i.grid, this._srcEntity('grid'))}
             <path class="eline pv" d="${P_SRC}"/><path class="eline bat" d="M170 70 V190"/><path class="eline grid" d="${G_SRC}"/>
             <path class="eflow pv" id="ef-pv" d="${P_SRC}"/><path class="eflow bat" id="ef-bat" d="M170 70 V190"/><path class="eflow grid" id="ef-grid" d="${G_SRC}"/>` : ''}
 
@@ -657,6 +714,13 @@ class HeatpumpFlowCard extends HTMLElement {
     this.shadowRoot.querySelector('.head').addEventListener('click', tap);
     this._$('stats').addEventListener('click', tap);
     this._rendered = true;
+  }
+
+  // Entity behind a power source: the manual entity, or the Energy dashboard's power sensor.
+  _srcEntity(key) {
+    if (this._parts.power !== 'energy') return this._e[key];
+    const r = this._energy[{ pv: 'solar', battery: 'battery', grid: 'grid' }[key]][0];
+    return r && (r.id || r.from || r.to);
   }
 
   _source(key, x, label, entity) {
@@ -817,10 +881,11 @@ class HeatpumpFlowCard extends HTMLElement {
 
     // power sources
     if (P.power) {
+      const split = P.power === 'energy' ? this._energySplit() : null;
       [['pv', 'pv', i.pv], ['bat', 'battery', i.battery], ['grid', 'grid', i.grid]].forEach(([id, key, label]) => {
-        const w = this._w(key); const on = w > 10;
+        const w = P.power === 'energy' ? (split ? split[key] : NaN) : this._w(key); const on = w > 10;
         this._cls(`ef-${id}`, on); this._cls(`src-${id}`, on);
-        this._txt(`t-src-${id}`, on ? `${label} ${this._fmt(w, 0)} W` : label);
+        this._txt(`t-src-${id}`, on ? `${label} ${P.power === 'energy' ? '≈' : ''}${this._fmt(w, 0)} W` : label);
       });
     }
 

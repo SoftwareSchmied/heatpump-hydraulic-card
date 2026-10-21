@@ -75,7 +75,7 @@
       <div class="panel"><h2>Operating state</h2><div class="opts row" id="states"></div></div>
       <div class="panel"><h2>Display</h2><div class="opts row" id="display"></div></div>
       <div class="panel"><div class="yhead"><h2>Card configuration</h2><button id="copy">Copy</button></div><pre id="yaml"></pre>
-        <p class="note">Entities not listed are found by the preset.</p></div>
+        <p class="note" id="ynote">Entities not listed are found by the preset.</p></div>
     </aside>
   </div>
 </main>
@@ -186,6 +186,18 @@ const hmStates = (s) => ({
 });
 const regOf = (fn, platform) => Object.fromEntries(Object.keys(fn('heat')).map((id) => [id, { platform }]));
 
+// Energy dashboard of the simulated house: power sensors (stat_rate) for PV, battery (+ = discharging) and grid (+ = import).
+const energyPrefs = { energy_sources: [
+  { type: 'solar', stat_energy_from: 'sensor.pv_energy_today', stat_rate: 'sensor.pv_power' },
+  { type: 'battery', stat_energy_from: 'sensor.battery_out_today', stat_energy_to: 'sensor.battery_in_today', stat_rate: 'sensor.battery_power' },
+  { type: 'grid', stat_energy_from: 'sensor.grid_import_today', stat_energy_to: 'sensor.grid_export_today', stat_rate: 'sensor.grid_power' },
+] };
+const houseStates = (s) => ({
+  'sensor.pv_power': [{ heat: '1800', dhw: '300', defrost: '0', idle: '900' }[s], 'W'],
+  'sensor.battery_power': [{ heat: '-300', dhw: '1400', defrost: '0', idle: '-480' }[s], 'W'],
+  'sensor.grid_power': [{ heat: '200', dhw: '100', defrost: '1500', idle: '-150' }[s], 'W'],
+});
+
 const setups = [
   {
     name: 'Lambda', sub: 'legacy naming, with PV/battery split and Boost badge',
@@ -200,8 +212,9 @@ const setups = [
     },
   },
   {
-    name: 'Lambda', sub: 'new naming, zero-config',
-    states: (s) => lambdaStates('', s),
+    name: 'Lambda', sub: 'new naming, zero-config, PV/battery/grid from the Energy dashboard',
+    states: (s) => ({ ...lambdaStates('', s), ...houseStates(s) }),
+    energy: energyPrefs,
     config: { preset: 'lambda' },
   },
   {
@@ -271,12 +284,17 @@ function draw() {
     const [state, unit] = Array.isArray(v) ? v : [v];
     states[k] = { entity_id: k, state, attributes: unit ? { unit_of_measurement: unit } : {} };
   }
-  card.hass = { states, entities: setup.registry || {}, locale: { language: lang }, language: lang };
+  customElements.get('heatpump-flow-card')._energyPrefs = null; // the card caches the Energy dashboard per page
+  const callWS = (msg) => (msg.type === 'energy/get_prefs' && setup.energy ? Promise.resolve(setup.energy) : Promise.reject(new Error('not simulated')));
+  card.hass = { states, entities: setup.registry || {}, locale: { language: lang }, language: lang, callWS };
   card.addEventListener('hass-more-info', (e) => {
     toast.textContent = `In Home Assistant this opens the more-info dialog of ${e.detail.entityId}`;
     toast.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('on'), 2500);
   });
   document.getElementById('yaml').textContent = yaml({ type: 'custom:heatpump-flow-card', ...setup.config });
+  document.getElementById('ynote').textContent = setup.energy
+    ? 'Entities not listed are found by the preset. PV, battery and grid come from the Energy dashboard: the heat pump power is split by the current supply mix of the house.'
+    : 'Entities not listed are found by the preset.';
   document.querySelectorAll('#setups button').forEach((b, i) => b.classList.toggle('sel', i === cur));
   document.querySelectorAll('#states button').forEach((b) => b.classList.toggle('sel', b.dataset.k === scen));
   document.querySelectorAll('#display button').forEach((b) => b.classList.toggle('sel', b.dataset.k === lang || b.dataset.k === (dark ? 'dark' : 'light')));
