@@ -194,6 +194,8 @@ Normalized modes: `heating`, `dhw`, `cooling`, `defrost`, `idle`, `blocked`, `fr
 
 ## Configuration
 
+Everything can be set in the **UI editor**. With a preset, the editor shows whether the integration was detected and fills in every entity the preset found ("Found by the preset"). Only your changes are saved: pick another entity to override one, clear a field to hide it (saved as `null`).
+
 | Option | Description |
 |---|---|
 | `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon` or omit. Fills entities, mode maps and error sensors. |

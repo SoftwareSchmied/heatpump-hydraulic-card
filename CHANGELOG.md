@@ -4,7 +4,7 @@
 - Card editor shows the entities found by the preset (marked "Found by the preset"); only differences are saved: another entity overrides, a cleared field hides the entity (`null`).
 - The preset field reports the detection (prefix, number of entities) or why nothing was found; the card shows a hint when the preset finds nothing.
 - Editor offers circuit 2/3 fields only up to `hc_count`.
-- New cards: `hc_count` and `source_type` are detected where reliable (Lambda, EMS-ESP, ViCare, Vaillant circuits; EMS-ESP brine).
+- New cards: `hc_count` and `source_type` are detected where reliable (circuits: Lambda, EMS-ESP, Vaillant; brine: EMS-ESP).
 
 ## 0.4.1 – 2026-10-21
 - Details drawer: energy counters reported in Wh (e.g. Lambda) are shown in kWh.
