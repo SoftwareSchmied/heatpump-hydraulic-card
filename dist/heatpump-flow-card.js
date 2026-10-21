@@ -346,7 +346,8 @@ const HFC_EDITOR = {
     hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
-    from_preset: 'Found by the preset - pick another entity to override, clear to hide',
+    from_preset: 'Found by the preset',
+    preset_help: 'Found entities are filled in below. Pick another entity to override one, clear a field to hide it.',
     from_energy: 'Empty: taken from the Energy dashboard',
     detected: 'Detected', entities_found: 'entities', not_detected: 'Not found in this Home Assistant - check the integration, the prefix or choose another preset',
     source_out: 'Source outlet temperature', heater: 'Backup / inline heater active',
@@ -375,7 +376,8 @@ const HFC_EDITOR = {
     hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
-    from_preset: 'Von der Voreinstellung gefunden - andere Entität wählen zum Überschreiben, leeren zum Ausblenden',
+    from_preset: 'Von der Voreinstellung gefunden',
+    preset_help: 'Gefundene Entitäten sind unten eingetragen. Andere Entität wählen zum Überschreiben, Feld leeren zum Ausblenden.',
     from_energy: 'Leer: aus dem Energie-Dashboard',
     detected: 'Erkannt', entities_found: 'Entitäten', not_detected: 'In diesem Home Assistant nicht gefunden - Integration und Präfix prüfen oder andere Voreinstellung wählen',
     source_out: 'Quelle Austritt', heater: 'Heizstab / Zusatzheizer aktiv',
@@ -1448,7 +1450,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     this._form.computeHelper = (s) => {
       if (s.name === 'preset') {
         if (!r.preset) return '';
-        return r.ready ? `${L.detected}${r.prefix ? ` · ${r.prefix}` : ''} · ${found} ${L.entities_found}` : L.not_detected;
+        return r.ready ? `${L.detected}${r.prefix ? ` · ${r.prefix}` : ''} · ${found} ${L.entities_found}. ${L.preset_help}` : L.not_detected;
       }
       if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
       if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;
