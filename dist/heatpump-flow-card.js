@@ -561,7 +561,7 @@ class HeatpumpFlowCard extends HTMLElement {
           <div class="chips">
             <span class="chip" id="chip-mode" ${de('mode')}></span>
             ${this._badges.map((b, n) => `<span class="chip badge" id="chip-b${n}" data-entity="${this._esc(b.entity)}">${this._esc(b.label || b.entity)}</span>`).join('')}
-            <span class="chip err" id="chip-err">⚠ ${i.error}</span>
+            <span class="chip err" id="chip-err"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20.5h19z" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke-linecap="round"/></svg>${i.error}</span>
           </div>
         </div>
         <svg viewBox="0 0 1000 560" id="svg" role="img" aria-label="${T}">
@@ -600,7 +600,7 @@ class HeatpumpFlowCard extends HTMLElement {
               ${[0, 120, 240].map((a) => `<path class="blade" d="M170 288 C160 262 168 246 182 244 C186 262 180 278 170 288Z" transform="rotate(${a} 170 288)"/>`).join('')}
               <circle cx="170" cy="288" r="7" class="hub"/>
             </g>
-            <text class="snow" id="snow" x="170" y="300" text-anchor="middle">❄</text>
+            <g class="snow" id="snow" transform="translate(170 288)"><circle class="snow-bg" r="18"/><g class="snow-flake"><path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/><g transform="rotate(60)"><path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/></g><g transform="rotate(120)"><path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/></g></g></g>
             <text class="unit-status" id="t-hp-status" x="170" y="366" text-anchor="middle"></text>
             <text class="unit-val" id="t-hp-power" x="170" y="390" text-anchor="middle"></text>
             <text class="unit-val strong" id="t-hp-cop" x="170" y="412" text-anchor="middle"></text>
@@ -873,6 +873,7 @@ HeatpumpFlowCard.styles = `
   .chip.badge, .chip.err { display: none; }
   .chip.badge.on { display: inline-block; background: rgba(168,85,247,.18); color: #9333ea; }
   .chip.err.on { display: inline-block; background: rgba(239,68,68,.2); color: #dc2626; }
+  .chip .ico { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -.2em; margin-right: 4px; fill: none; stroke: currentColor; stroke-width: 2.2; }
   svg { width: 100%; height: auto; display: block; }
   text { fill: var(--primary-text-color); font-family: var(--ha-font-family-body, inherit); }
   .tap { cursor: pointer; }
@@ -891,7 +892,9 @@ HeatpumpFlowCard.styles = `
   .fan { transform-box: view-box; transform-origin: 170px 288px; }
   .fan.on { animation: hfc-spin var(--hfc-fan, 1s) linear infinite; }
   .fan.on .blade { fill: #38bdf8; opacity: .9; }
-  .snow { font-size: 34px; fill: #0ea5e9; opacity: 0; }
+  .snow { opacity: 0; }
+  .snow-bg { fill: var(--card-background-color, #fff); opacity: .85; }
+  .snow-flake { fill: none; stroke: #0ea5e9; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
   .snow.on { opacity: 1; animation: hfc-pulse 1.6s ease-in-out infinite; }
   .pipe { fill: none; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; opacity: .22; stroke: var(--hfc-muted); transition: opacity .5s, stroke .5s; }
   .pipe.on { opacity: 1; }
