@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Heatpump Flow Card – self-test</title>
+<!--
+  Runs in a headless browser (see .github/workflows/validate.yml):
+  every demo installation in every scenario, broken entity states, edge-case configs,
+  preset detection (including gas boilers that must not be taken for heat pumps) and the computed values.
+  Result: <pre id="result">PASS</pre> or FAIL with the failed checks.
+-->
+</head>
+<body>
+<pre id="result">RUNNING</pre>
+<pre id="log"></pre>
+<script src="../dist/heatpump-flow-card.js"></script>
+<script src="../demo/setups.js"></script>
+<script>
+(async () => {
+  const C = customElements.get('heatpump-flow-card');
+  const fails = []; const log = []; let checks = 0;
+  const check = (ok, label) => { checks++; if (!ok) fails.push(label); };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Same state format as the demo: value, [value, unit] or {state, attributes}.
+  const toStates = (obj) => {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v && typeof v === 'object' && !Array.isArray(v)) { out[k] = { entity_id: k, attributes: {}, ...v }; continue; }
+      const [state, unit] = Array.isArray(v) ? v : [v];
+      out[k] = { entity_id: k, state, attributes: unit ? { unit_of_measurement: unit } : {} };
+    }
+    return out;
+  };
+  const hassOf = (states, registry = {}, energy) => ({
+    states, entities: registry, locale: { language: 'en' }, language: 'en',
+    callWS: (m) => (m.type === 'energy/get_prefs' && energy ? Promise.resolve(energy) : Promise.reject(new Error('n/a'))),
+    callService: () => Promise.resolve(),
+  });
+  const mount = (config, hass) => {
+    C._energyPrefs = null;
+    const card = document.createElement('heatpump-flow-card');
+    card.setConfig(config);
+    document.body.appendChild(card);
+    card.hass = hass; card.hass = { ...hass };
+    return card;
+  };
+  const ok = (card) => !card._failed && !!card.shadowRoot.getElementById('svg');
+
+  // 1. every installation and scenario renders, presets are detected
+  for (const [i, s] of setups.entries()) {
+    for (const [scen] of scenarios) {
+      const card = mount(s.config, hassOf(toStates(s.states(scen)), s.registry || {}, s.energy));
+      await wait(5);
+      check(ok(card), `render ${i}/${scen}`);
+      check(card.shadowRoot.getElementById('chip-mode')?.textContent.trim().length > 0, `mode chip ${i}/${scen}`);
+      if (s.config.preset) check(!card._needsBuild, `preset detected ${i}/${scen}`);
+      card.remove();
+    }
+  }
+
+  // 2. broken states never break the card
+  const variants = ['unavailable', 'unknown', '', 'abc', '-999', '1e9', 'NaN'];
+  for (const [i, s] of setups.entries()) {
+    const base = toStates(s.states('heat'));
+    for (const v of variants) {
+      const broken = {}; for (const [k, o] of Object.entries(base)) broken[k] = { ...o, state: v, attributes: v === '' ? {} : o.attributes };
+      const card = mount(s.config, hassOf(broken, s.registry || {}));
+      check(ok(card), `broken state "${v}" in setup ${i}`);
+      card.remove();
+    }
+  }
+
+  // 3. edge-case configs
+  const edge = [{}, { preset: 'none' }, { entities: { flow: 'sensor.nope', power: 'sensor.nope2' } }, { hc_count: 3, hc2_type: 'radiator' },
+    { hc_count: '7' }, { controls: ['switch.nope', { entity: 'select.nope' }, null, 5] }, { details: ['sensor.nope', null] },
+    { badges: [{ entity: 'x' }] }, { stats: [{ entity: 'sensor.nope' }] }, { source_type: 'brine' },
+    { source_type: 'water', entities: { heater: 'sensor.h', dhw_heater: 'sensor.d' } }, { preset: 'lambda' }];
+  for (const cfg of edge) { const card = mount(cfg, hassOf(toStates({ 'sensor.h': '7', 'sensor.d': 'weird' }))); check(ok(card), `edge config ${JSON.stringify(cfg)}`); card.remove(); }
+
+  // 4. invalid configs give a readable error
+  for (const cfg of [{ preset: 'foo' }, { hc_type: 'x' }, { source_type: 'lava' }, null]) {
+    let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
+    check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
+  }
+
+  // 5. detection: the right preset for each installation, nothing for gas boilers or foreign entities
+  const stub = (states, registry) => C.getStubConfig(hassOf(toStates(states), registry));
+  const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp' };
+  for (const [i, p] of Object.entries(expect)) {
+    const s = setups[i]; const st = stub(s.states('heat'), s.registry || {});
+    check(st.preset === p, `stub preset ${i} = ${p} (got ${st.preset})`);
+    if (+i === 6) { check(st.source_type === 'brine', 'stub source_type brine'); check(st.hc_count === 2, `stub hc_count 2 (got ${st.hc_count})`); }
+  }
+  const detects = (preset, states, registry) => HFC_PRESETS[preset].detect(C._ctx(hassOf(toStates(states), registry), undefined, { hp: 1, dhw: 1, buffer: 1, hc: 1 })) !== undefined;
+  check(!detects('emsesp', { 'sensor.boiler_curflowtemp': '45', 'sensor.boiler_outdoortemp': '5' }, { 'sensor.boiler_curflowtemp': { platform: 'mqtt' } }), 'EMS-ESP gas boiler is not a heat pump');
+  check(!detects('vicare', { 'sensor.vitodens_outside_temperature': '5', 'sensor.vitodens_boiler_temperature': '60' },
+    { 'sensor.vitodens_outside_temperature': { platform: 'vicare', translation_key: 'outside_temperature' } }), 'ViCare gas boiler is not a heat pump');
+  check(!detects('lambda', { 'sensor.other_hp1_operating_state': 'x' }, { 'sensor.other_hp1_operating_state': { platform: 'something_else' } }), 'foreign hp1_operating_state is not Lambda');
+
+  // 6. computed values
+  {
+    const s = setups[1];
+    const card = mount(s.config, hassOf(toStates(s.states('heat')), {}, s.energy));
+    await wait(20);
+    const txt = (id) => card.shadowRoot.getElementById(id)?.textContent || '';
+    check(card._powerMode() === 'energy', 'Energy dashboard mode');
+    check(/1,094/.test(txt('t-src-pv')) && /146/.test(txt('t-src-grid')), `Energy dashboard split (${txt('t-src-pv')} / ${txt('t-src-grid')})`);
+    card.remove();
+  }
+  {
+    const s = setups[0];
+    const card = mount(s.config, hassOf(toStates(s.states('heat'))));
+    const rows = Object.fromEntries([...card.shadowRoot.querySelectorAll('.drow')].map((r) => [r.querySelector('span').textContent, r.querySelector('b').textContent]));
+    check(rows.Superheat === '4.8 K', `superheat (${rows.Superheat})`);
+    check(rows['COP total'] === '≈4.55', `total COP (${rows['COP total']})`);
+    card._hass.states['sensor.eu08l_hp1_compressor_power_consumption_accumulated'] = { entity_id: 'x', state: '211072', attributes: { unit_of_measurement: 'Wh' } };
+    check(card._fmtState('energy_total') === '211 kWh', `Wh shown as kWh (${card._fmtState('energy_total')})`);
+    card.remove();
+  }
+
+  // 7. an unexpected error shows a message instead of an empty card
+  {
+    const s = setups[0];
+    const card = mount(s.config, hassOf(toStates(s.states('heat'))));
+    card._update = () => { throw new Error('boom'); };
+    const orig = console.error; console.error = () => {};
+    card.hass = { ...card._hass };
+    console.error = orig;
+    check(card._failed && /boom/.test(card.shadowRoot.textContent), 'error boundary shows a message');
+    card.remove();
+  }
+
+  log.push(`${checks} checks, ${fails.length} failed`);
+  document.getElementById('log').textContent = [...log, ...fails.map((f) => `FAIL ${f}`)].join('\n');
+  document.getElementById('result').textContent = fails.length ? 'FAIL' : 'PASS';
+  document.title = fails.length ? 'FAIL' : 'PASS';
+})().catch((e) => { document.getElementById('result').textContent = 'FAIL'; document.getElementById('log').textContent = String(e && e.stack || e); });
+</script>
+</body>
+</html>

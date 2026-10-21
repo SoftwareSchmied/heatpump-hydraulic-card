@@ -25,3 +25,15 @@ jobs:
         with:
           node-version: 22
       - run: node --check dist/heatpump-flow-card.js
+
+  selftest:
+    name: Self-test (headless browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run test/selftest.html in headless Chrome
+        run: |
+          google-chrome --headless=new --disable-gpu --no-sandbox --allow-file-access-from-files \
+            --virtual-time-budget=15000 --dump-dom "file://$PWD/test/selftest.html" > selftest-out.html
+          grep -A200 '<pre id="log">' selftest-out.html | sed '/<\/pre>/q'
+          grep -q '<pre id="result">PASS</pre>' selftest-out.html

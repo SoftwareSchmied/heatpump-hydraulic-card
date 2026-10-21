@@ -22,10 +22,11 @@ const HFC_VERSION = '0.4.2';
 const HFC_PRESETS = {
   lambda: {
     name: 'Lambda (lambda_heat_pumps)',
+    tested: true,
     // Legacy naming: sensor.<prefix>_hp1_…; new naming (no prefix): sensor.hp1_…
     detect: (ctx) => {
       const re = new RegExp(`^sensor\\.(?:(.+)_)?hp${ctx.idx.hp}_operating_state$`);
-      const id = ctx.ids.find((e) => re.test(e));
+      const id = ctx.match(re, 'lambda_heat_pumps');
       return id === undefined ? undefined : (id.match(re)[1] || '');
     },
     entities: (p, i) => {
@@ -108,7 +109,9 @@ const HFC_PRESETS = {
   // so entity ids and the HA language do not matter. Restrict to one device with `device:`.
   vicare: {
     name: 'Viessmann (ViCare)',
-    detect: (ctx) => (ctx.key('vicare', 'sensor', 'outside_temperature') || ctx.key('vicare', 'binary_sensor', 'compressor') ? '' : undefined),
+    // Gas boilers also report outside_temperature, so only compressor entities count as a heat pump.
+    detect: (ctx) => (ctx.key('vicare', 'binary_sensor', 'compressor') || ctx.key('vicare', 'sensor', 'compressor_phase')
+      || ctx.key('vicare', 'sensor', 'compressor_starts') ? '' : undefined),
     entities: (p, i, ctx) => {
       const s = (...tks) => tks.map((tk) => ctx.key('vicare', 'sensor', tk)).filter(Boolean);
       const b = (tk) => ctx.key('vicare', 'binary_sensor', tk);
@@ -199,7 +202,8 @@ const HFC_PRESETS = {
     name: 'EMS-ESP (Bosch, Buderus, Junkers, Nefit …)',
     source_type: (e, hass) => (/hpbrinein$/.test(e.source_in || '') && hass.states[e.source_in] ? 'brine' : 'air'),
     detect: (ctx) => {
-      const id = ctx.match(/^sensor\.(?:(.+)_)?boiler_(hpactivity|hptc1|curflowtemp)$/, 'mqtt');
+      // Gas boilers have curflowtemp as well; only heat pump entities count.
+      const id = ctx.match(/^sensor\.(?:(.+)_)?boiler_(hpactivity|hptc1)$/, 'mqtt');
       return id === undefined ? undefined : (id.match(/^sensor\.(?:(.+)_)?boiler_/)[1] || '');
     },
     entities: (p, i) => {
@@ -348,6 +352,8 @@ const HFC_EDITOR = {
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
     from_preset: 'Found by the preset',
     sec_advanced: 'Advanced',
+    untested: 'untested',
+    untested_help: 'Not yet tested on a real installation. Please report whether it works: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
     warn_title: 'Missing in the card',
     warn_running: 'No operating mode, compressor, status or power: the card cannot tell whether the heat pump runs.',
     warn_power: 'No electrical power: no live COP, and no PV / battery / grid split from the Energy dashboard.',
@@ -384,6 +390,8 @@ const HFC_EDITOR = {
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
     from_preset: 'Von der Voreinstellung gefunden',
     sec_advanced: 'Erweitert',
+    untested: 'ungetestet',
+    untested_help: 'Noch nicht mit einer echten Anlage getestet. Bitte melden, ob es funktioniert: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
     warn_title: 'Fehlt in der Karte',
     warn_running: 'Keine Betriebsart, kein Verdichter, kein Status und keine Leistung: Die Karte kann nicht erkennen, ob die Wärmepumpe läuft.',
     warn_power: 'Keine Leistungsaufnahme: kein Live-COP und keine Aufteilung PV / Akku / Netz aus dem Energie-Dashboard.',
@@ -484,7 +492,7 @@ class HeatpumpFlowCard extends HTMLElement {
       schema: [
         {
           name: 'preset',
-          selector: { select: { mode: 'dropdown', options: [{ value: 'none', label: '—' }, ...Object.entries(HFC_PRESETS).map(([k, p]) => ({ value: k, label: p.name }))] } },
+          selector: { select: { mode: 'dropdown', options: [{ value: 'none', label: '—' }, ...Object.entries(HFC_PRESETS).map(([k, p]) => ({ value: k, label: p.tested ? p.name : `${p.name} · ${L.untested}` }))] } },
         },
         {
           type: 'grid', name: '', schema: [
@@ -557,7 +565,7 @@ class HeatpumpFlowCard extends HTMLElement {
     this._rendered = false;
     this._e = this._e || {};
     this._errors = this._errors || [];
-    if (this.shadowRoot && this._hass) { this._build(); this._render(); this._update(); }
+    if (this.shadowRoot && this._hass) { try { this._build(); this._render(); this._update(); } catch (err) { this._fail(err); } }
   }
 
   // Resolves preset + user entities. Needs hass for detection and registry lookups.
@@ -662,12 +670,25 @@ class HeatpumpFlowCard extends HTMLElement {
     this._hass = hass;
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
     if (!this._config) return;
+    try { this._apply(); } catch (err) { this._fail(err); }
+  }
+
+  _apply() {
     // Retry detection at most every 30 s while the integration's entities are not there yet.
     if (this._needsBuild && (!this._rendered || Date.now() - this._lastTry > 30000)) { this._build(); this._rendered = false; }
     this._loadEnergy();
     const sig = this._layoutSignature();
     if (!this._rendered || sig !== this._sig) this._render();
     this._update();
+  }
+
+  // Unexpected data must not leave an empty card: show a short message and log the details once.
+  _fail(err) {
+    if (!this._failed) console.error('heatpump-flow-card:', err);
+    this._failed = true;
+    this._rendered = false;
+    const msg = this._esc(err && err.message ? err.message : String(err));
+    this.shadowRoot.innerHTML = `<style>${HeatpumpFlowCard.styles}</style><ha-card><div class="hint">Heatpump Flow Card: ${msg}<br>Details in the browser console. Please report it: github.com/Sturmi77/heatpump-flow-card/issues</div></ha-card>`;
   }
 
   /* ---------- helpers ---------- */
@@ -1449,6 +1470,10 @@ class HeatpumpFlowCardEditor extends HTMLElement {
   }
 
   _render() {
+    try { this._renderForm(); } catch (err) { console.error('heatpump-flow-card editor:', err); }
+  }
+
+  _renderForm() {
     if (!this._config || !this._hass) return;
     if (!this._form) {
       this._form = document.createElement('ha-form');
@@ -1483,7 +1508,8 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     this._form.computeHelper = (s) => {
       if (s.name === 'preset') {
         if (!r.preset) return '';
-        return r.ready ? `${L.detected}${r.prefix ? ` · ${r.prefix}` : ''} · ${found} ${L.entities_found}. ${L.preset_help}` : L.not_detected;
+        const status = r.ready ? `${L.detected}${r.prefix ? ` · ${r.prefix}` : ''} · ${found} ${L.entities_found}. ${L.preset_help}` : L.not_detected;
+        return r.preset.tested ? status : `${status} ${L.untested_help}`;
       }
       if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
       if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;
