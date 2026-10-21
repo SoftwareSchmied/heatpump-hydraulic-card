@@ -64,6 +64,16 @@ const HFC_PRESETS = {
         cop_heating_today: `${hp}_heating_cop_daily`,
         cop_dhw_today: `${hp}_hot_water_cop_daily`,
         starts_today: `${hp}_compressor_start_cycling_daily`,
+        starts_total: `${hp}_compressor_start_cycling_total`,
+        energy_total: `${hp}_compressor_power_consumption_accumulated`,
+        heat_total: `${hp}_compressor_thermal_energy_output_accumulated`,
+        compressor_speed: `${hp}_compressor_unit_rating`,
+        evap_temp: `${hp}_evaporation_temperature`,
+        cond_temp: `${hp}_condensation_temperature`,
+        suction_temp: `${hp}_suction_gas_temperature`,
+        hot_gas: `${hp}_hot_gas_temperature`,
+        subcooling: `${hp}_subcooling_temperature`,
+        eev: `${hp}_expansion_valve_opening_angle`,
       };
     },
     errors: (p, i) => {
@@ -122,6 +132,16 @@ const HFC_PRESETS = {
         cop_dhw_today: s('cop_dhw'),
         energy_today: s('power_consumption_today'),
         starts_today: s('compressor_starts'),
+        hours: s('compressor_hours'),
+        aux_hours: s('heating_rod_hours'),
+        compressor_speed: s('compressor_modulation'),
+        suction_temp: s('compressor_inlet_temperature'),
+        hot_gas: s('compressor_outlet_temperature'),
+        low_pressure: s('compressor_inlet_pressure', 'suction_gas_pressure'),
+        high_pressure: s('compressor_outlet_pressure', 'hot_gas_pressure'),
+        liquid_temp: s('condenser_liquid_temperature'),
+        subcooling: s('condenser_subcooling_temperature'),
+        superheat: s('evaporator_overheat_temperature'),
       };
     },
     mode_map: {
@@ -206,6 +226,16 @@ const HFC_PRESETS = {
         hc_flow: s(`mixer_${hc}_flowtemphc`, `thermostat_${hc}_targetflowtemp`),
         room: s(`thermostat_${hc}_currtemp`),
         room_target: s(`thermostat_${hc}_seltemp`),
+        hours: s('boiler_uptimecomp', 'boiler_uptimetotal'),
+        starts_total: s('boiler_totalcompstarts'),
+        energy_total: s('boiler_nrgconstotal'),
+        heat_total: s('boiler_nrgsupptotal'),
+        compressor_speed: s('boiler_hpcompspd'),
+        evap_temp: s('boiler_hppl1'),
+        cond_temp: s('boiler_hpph1'),
+        suction_temp: s('boiler_hptr5'),
+        hot_gas: s('boiler_hptr6'),
+        liquid_temp: s('boiler_hptr3'),
       };
     },
     mode_map: {
@@ -243,6 +273,14 @@ const HFC_PRESETS = {
         hc_flow: `sensor.${m}${z}_water_temp`,
         hc_setpoint: i.hc === 1 ? `sensor.${m}main_target_temp` : undefined,
         room: `sensor.${m}z1_temp`,
+        hours: `sensor.${m}operations_hours`,
+        starts_total: `sensor.${m}operations_counter`,
+        aux_hours: `sensor.${m}room_heater_operations_hours`,
+        compressor_speed: `sensor.${m}compressor_freq`,
+        hot_gas: `sensor.${m}discharge_temp`,
+        high_pressure: `sensor.${m}high_pressure`,
+        low_pressure: `sensor.${m}low_pressure`,
+        eev: `sensor.${m}expansion_valve`,
       };
     },
   },
@@ -256,6 +294,13 @@ const HFC_I18N = {
     title: 'Heat pump', heat_pump: 'Heat pump', dhw: 'Hot water', buffer: 'Buffer', heating_circuit: 'Heating circuit',
     house: 'Rooms', running: 'running', compressor_off: 'Compressor off', source_in: 'Air inlet', outdoor: 'Outdoor',
     brine_in: 'Brine in', brine_out: 'Brine out', well_in: 'Well in', well_out: 'Well out',
+    details: 'Details', sec_operation: 'Operation', sec_refrigerant: 'Refrigerant circuit', sec_more: 'More',
+    det: {
+      hours: 'Compressor hours', starts_total: 'Compressor starts total', aux_hours: 'Heater hours', energy_total: 'Electricity total',
+      heat_total: 'Heat total', cop_total: 'COP total', compressor_speed: 'Compressor', evap_temp: 'Evaporation', cond_temp: 'Condensation',
+      suction_temp: 'Suction gas', hot_gas: 'Hot gas', liquid_temp: 'Liquid line', low_pressure: 'Low pressure', high_pressure: 'High pressure',
+      eev: 'Expansion valve', superheat: 'Superheat', subcooling: 'Subcooling',
+    },
     source_flow: 'Source', target: 'Target', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW',
     valve_heating: 'Heating', valve_cooling: 'Cooling', pv: 'PV', battery: 'Battery', grid: 'Grid',
     stat_cop_heating: 'COP heating today', stat_cop_dhw: 'COP DHW today', stat_energy: 'Energy today',
@@ -269,6 +314,13 @@ const HFC_I18N = {
     title: 'Wärmepumpe', heat_pump: 'Wärmepumpe', dhw: 'Warmwasser', buffer: 'Puffer', heating_circuit: 'Heizkreis',
     house: 'Wohnräume', running: 'läuft', compressor_off: 'Verdichter aus', source_in: 'Luft-Eintritt', outdoor: 'Außen',
     brine_in: 'Sole ein', brine_out: 'Sole aus', well_in: 'Brunnen ein', well_out: 'Brunnen aus',
+    details: 'Details', sec_operation: 'Betrieb', sec_refrigerant: 'Kältekreis', sec_more: 'Weitere',
+    det: {
+      hours: 'Betriebsstunden Verdichter', starts_total: 'Verdichterstarts gesamt', aux_hours: 'Betriebsstunden Heizstab', energy_total: 'Strom gesamt',
+      heat_total: 'Wärme gesamt', cop_total: 'COP gesamt', compressor_speed: 'Verdichter', evap_temp: 'Verdampfung', cond_temp: 'Kondensation',
+      suction_temp: 'Sauggas', hot_gas: 'Heißgas', liquid_temp: 'Flüssigkeitsleitung', low_pressure: 'Niederdruck', high_pressure: 'Hochdruck',
+      eev: 'Expansionsventil', superheat: 'Überhitzung', subcooling: 'Unterkühlung',
+    },
     source_flow: 'Quelle', target: 'Soll', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW',
     valve_heating: 'Heizen', valve_cooling: 'Kühlen', pv: 'PV', battery: 'Akku', grid: 'Netz',
     stat_cop_heating: 'COP Heizen heute', stat_cop_dhw: 'COP WW heute', stat_energy: 'Strom heute',
@@ -288,7 +340,8 @@ const HFC_EDITOR = {
     source_type: 'Heat source', src_air: 'Air', src_brine: 'Ground (brine)', src_water: 'Groundwater',
     hc_count: 'Heating circuits', hc2_type: 'Circuit 2 emitter', hc3_type: 'Circuit 3 emitter',
     hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
-    sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3',
+    sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit',
+    controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
     source_out: 'Source outlet temperature', heater: 'Backup / inline heater active',
     dhw_heater: 'DHW heater rod active', buffer_heater: 'Buffer heater rod active',
     hc_underfloor: 'Underfloor heating', hc_radiator: 'Radiators',
@@ -313,7 +366,8 @@ const HFC_EDITOR = {
     source_type: 'Wärmequelle', src_air: 'Luft', src_brine: 'Erdreich (Sole)', src_water: 'Grundwasser',
     hc_count: 'Heizkreise', hc2_type: 'Wärmeabgabe Heizkreis 2', hc3_type: 'Wärmeabgabe Heizkreis 3',
     hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
-    sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3',
+    sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis',
+    controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
     source_out: 'Quelle Austritt', heater: 'Heizstab / Zusatzheizer aktiv',
     dhw_heater: 'Heizstab Warmwasser aktiv', buffer_heater: 'Heizstab Puffer aktiv',
     hc_underfloor: 'Flächenheizung', hc_radiator: 'Heizkörper',
@@ -340,8 +394,13 @@ const HFC_ENTITY_GROUPS = {
   sec_hc2: ['hc2_flow', 'hc2_return', 'hc2_setpoint', 'hc2_mode', 'hc2_pump', 'hc2_volume'],
   sec_hc3: ['hc3_flow', 'hc3_return', 'hc3_setpoint', 'hc3_mode', 'hc3_pump', 'hc3_volume'],
   sec_power: ['pv', 'battery', 'grid'],
+  sec_details: ['hours', 'starts_total', 'aux_hours', 'energy_total', 'heat_total'],
+  sec_refrigerant: ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev', 'superheat', 'subcooling'],
   sec_stats: ['cop_heating_today', 'cop_dhw_today', 'energy_today', 'pv_share_today', 'starts_today'],
 };
+// Entity domains usable as quick controls and the service each one calls.
+const HFC_CONTROL_DOMAINS = ['switch', 'input_boolean', 'light', 'fan', 'automation', 'button', 'input_button', 'script', 'scene',
+  'select', 'input_select', 'water_heater', 'climate', 'number', 'input_number'];
 const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'hc2_pump', 'hc3_pump', 'circulation', 'defrost', 'heater', 'dhw_heater', 'buffer_heater'];
 
 /* ------------------------------------------------------------------ */
@@ -397,14 +456,19 @@ class HeatpumpFlowCard extends HTMLElement {
             { name: 'hc_count', selector: { number: { min: 1, max: 3, step: 1, mode: 'box' } } },
             ...['hc2_type', 'hc3_type'].map((name) => ({ name, selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } })),
             ...['hc_name', 'hc2_name', 'hc3_name'].map((name) => ({ name, selector: { text: {} } })),
+            { name: 'details_open', selector: { boolean: {} } },
           ],
+        },
+        {
+          name: 'controls',
+          selector: { entity: { multiple: true, domain: HFC_CONTROL_DOMAINS } },
         },
         ...Object.entries(HFC_ENTITY_GROUPS).map(([sec, keys]) => ({
           type: 'expandable', name: 'entities', title: L[sec], schema: keys.map(entitySchema),
         })),
       ],
       // Keys of circuits 2 and 3 reuse the labels of circuit 1 (hc2_flow → hc_flow).
-      computeLabel: (s) => L[s.name] || L[String(s.name).replace(/^hc[23]_/, 'hc_')] || s.name,
+      computeLabel: (s) => L[s.name] || L[String(s.name).replace(/^hc[23]_/, 'hc_')] || (HFC_I18N[lang] || HFC_I18N.en).det[s.name] || s.name,
     };
   }
 
@@ -618,6 +682,8 @@ class HeatpumpFlowCard extends HTMLElement {
       hcs: this._hcCount > 1 ? this._hcTypes.slice(0, this._hcCount).join() : '',
       src: this._sourceType,
       heaters: ['heater', 'dhw_heater', 'buffer_heater'].map((k) => (this._has(k) ? 1 : 0)).join(''),
+      controls: this._controlList().map((c) => c.entity).join(),
+      drawer: this._drawerRows().map(([s, r]) => s + r.map((x) => x[0]).join('.')).join('|'),
       lang: this._lang,
     };
     this._parts = parts;
@@ -754,14 +820,155 @@ class HeatpumpFlowCard extends HTMLElement {
               <text class="small" id="t-outdoor" x="830" y="226" text-anchor="middle"></text>
             </g>` : (this._has('outdoor') ? `<g class="tap" ${de('outdoor')}><text class="small" id="t-outdoor" x="880" y="120" text-anchor="middle"></text></g>` : '')}
         </svg>
+        ${this._controlsHtml()}
         <div class="stats" id="stats"></div>
+        ${this._drawerHtml()}
       </ha-card>`;
 
     const tap = (ev) => this._tap(ev);
     this._$('svg').addEventListener('click', tap);
     this.shadowRoot.querySelector('.head').addEventListener('click', tap);
     this._$('stats').addEventListener('click', tap);
+    const drawer = this._$('drawer-body');
+    if (drawer) {
+      drawer.addEventListener('click', tap);
+      this._$('drawer-toggle').addEventListener('click', () => {
+        this._drawerOpen = !this._drawerOpen;
+        drawer.hidden = !this._drawerOpen;
+        this._$('drawer-toggle').setAttribute('aria-expanded', String(this._drawerOpen));
+      });
+    }
+    const ctl = this._$('controls');
+    if (ctl) {
+      ctl.addEventListener('click', (ev) => { const b = ev.target.closest('button[data-ctl]'); if (b) this._control(+b.dataset.ctl); });
+      ctl.addEventListener('change', (ev) => { const el = ev.target.closest('[data-ctl]'); if (el) this._control(+el.dataset.ctl, el.value); });
+    }
     this._rendered = true;
+  }
+
+  /* ---------- quick controls ---------- */
+  _controlList() {
+    return (this._config.controls || []).map((c) => (typeof c === 'string' ? { entity: c } : c))
+      .filter((c) => c && c.entity && this._hass.states[c.entity]);
+  }
+
+  _controlKind(id) {
+    const d = id.split('.')[0];
+    if (['button', 'input_button', 'script', 'scene'].includes(d)) return 'press';
+    if (['select', 'input_select', 'water_heater', 'climate'].includes(d)) return 'select';
+    if (['number', 'input_number'].includes(d)) return 'number';
+    return 'toggle';
+  }
+
+  _controlOptions(st) {
+    const d = st.entity_id.split('.')[0];
+    if (d === 'water_heater') return st.attributes.operation_list || [];
+    if (d === 'climate') return st.attributes.hvac_modes || [];
+    return st.attributes.options || [];
+  }
+
+  _stateText(st, value) {
+    try { if (this._hass.formatEntityState) return this._hass.formatEntityState(st, value); } catch (e) { /* older HA */ }
+    return value;
+  }
+
+  _controlsHtml() {
+    const list = this._controlList();
+    if (!list.length) return '';
+    return `<div class="controls" id="controls">${list.map((c, n) => {
+      const st = this._hass.states[c.entity];
+      const name = this._esc(c.name || st.attributes.friendly_name || c.entity);
+      const kind = this._controlKind(c.entity);
+      if (kind === 'select') {
+        return `<label class="ctl sel"><span>${name}</span><select data-ctl="${n}" id="ctl-${n}">${this._controlOptions(st).map((o) => `<option value="${this._esc(o)}">${this._esc(this._stateText(st, o))}</option>`).join('')}</select></label>`;
+      }
+      if (kind === 'number') {
+        const a = st.attributes;
+        return `<label class="ctl num"><span>${name}</span><input type="number" data-ctl="${n}" id="ctl-${n}" min="${a.min ?? ''}" max="${a.max ?? ''}" step="${a.step ?? 'any'}"><em>${this._esc(a.unit_of_measurement || '')}</em></label>`;
+      }
+      return `<button class="ctl ${kind}" data-ctl="${n}" id="ctl-${n}">${name}</button>`;
+    }).join('')}</div>`;
+  }
+
+  _control(n, value) {
+    const c = this._controlList()[n]; if (!c) return;
+    const id = c.entity; const d = id.split('.')[0]; const kind = this._controlKind(id);
+    const call = (domain, service, data = {}) => this._hass.callService(domain, service, { entity_id: id, ...data });
+    if (kind === 'press') {
+      if (d === 'script' || d === 'scene') call(d, 'turn_on'); else call(d, 'press');
+    } else if (kind === 'select') {
+      if (d === 'water_heater') call(d, 'set_operation_mode', { operation_mode: value });
+      else if (d === 'climate') call(d, 'set_hvac_mode', { hvac_mode: value });
+      else call(d, 'select_option', { option: value });
+    } else if (kind === 'number') {
+      const v = parseFloat(value); if (Number.isFinite(v)) call(d, 'set_value', { value: v });
+    } else {
+      call(['switch', 'input_boolean', 'light', 'fan', 'automation'].includes(d) ? d : 'homeassistant', 'toggle');
+    }
+  }
+
+  _updateControls() {
+    this._controlList().forEach((c, n) => {
+      const el = this._$(`ctl-${n}`); if (!el) return;
+      const st = this._hass.states[c.entity];
+      const kind = this._controlKind(c.entity);
+      if (kind === 'toggle') el.classList.toggle('on', ['on', 'open', 'heat', 'auto'].includes(st.state));
+      else if (kind === 'select') { if (el.value !== st.state && this.shadowRoot.activeElement !== el) el.value = st.state; }
+      else if (kind === 'number') { if (this.shadowRoot.activeElement !== el) el.value = st.state; }
+    });
+  }
+
+  /* ---------- details drawer ---------- */
+  // Rows of the drawer: [section, [[id, label, entity, value()]]]. Only existing entities (or computable values) are shown.
+  _drawerRows() {
+    const i = this._i; const D = i.det;
+    const kwh = (key) => {
+      const v = this._n(key); const u = this._unit(key);
+      return u === 'wh' ? v / 1000 : u === 'mwh' ? v * 1000 : v;
+    };
+    // Entities that are unknown or unavailable (not reported by this model) are left out.
+    const ok = (key) => this._has(key) && !['unknown', 'unavailable'].includes(this._s(key));
+    const row = (key) => (ok(key) ? [key, D[key], this._e[key], () => this._fmtState(key)] : null);
+    const op = ['hours', 'starts_total', 'aux_hours', 'energy_total', 'heat_total'].map(row);
+    if (ok('energy_total') && ok('heat_total')) {
+      op.push(['cop_total', D.cop_total, this._e.heat_total, () => { const c = kwh('heat_total') / kwh('energy_total'); return Number.isFinite(c) && c > 0 ? `≈${this._fmt(c, 2)}` : '–'; }]);
+    }
+    const rf = ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev'].map(row);
+    // Superheat = suction gas − evaporation, subcooling = condensation − liquid line, unless the integration provides them.
+    const diff = (a, b) => { const v = this._n(a) - this._n(b); return Number.isFinite(v) ? `${this._fmt(v, 1)} K` : '–'; };
+    rf.push(row('superheat') || (ok('suction_temp') && ok('evap_temp') ? ['superheat', D.superheat, this._e.suction_temp, () => diff('suction_temp', 'evap_temp')] : null));
+    rf.push(row('subcooling') || (ok('cond_temp') && ok('liquid_temp') ? ['subcooling', D.subcooling, this._e.liquid_temp, () => diff('cond_temp', 'liquid_temp')] : null));
+    const more = (this._config.details || []).map((d, n) => (typeof d === 'string' ? { entity: d } : d)).filter((d) => d && this._hass.states[d.entity])
+      .map((d, n) => [`x${n}`, d.name || this._hass.states[d.entity].attributes.friendly_name || d.entity, d.entity, () => this._fmtState(null, d)]);
+    return [[i.sec_operation, op.filter(Boolean)], [i.sec_refrigerant, rf.filter(Boolean)], [i.sec_more, more]].filter(([, r]) => r.length);
+  }
+
+  // Formats an entity value with its unit: integers without decimals, large values with none, others with one.
+  _fmtState(key, spec) {
+    const id = spec ? spec.entity : this._e[key];
+    const st = this._hass.states[id]; if (!st) return '–';
+    const v = parseFloat(st.state);
+    if (!Number.isFinite(v)) return ['unknown', 'unavailable'].includes(st.state) ? '–' : this._stateText(st, st.state);
+    const unit = spec?.unit ?? st.attributes.unit_of_measurement ?? '';
+    const d = spec?.decimals ?? (Number.isInteger(v) || Math.abs(v) >= 100 ? 0 : 1);
+    return `${this._fmt(v, d)} ${unit}`.trim();
+  }
+
+  _drawerHtml() {
+    const sections = this._drawerRows();
+    if (!sections.length) return '';
+    if (this._drawerOpen === undefined) this._drawerOpen = !!this._config.details_open;
+    const chevron = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+    return `<div class="drawer">
+      <button class="drawer-toggle" id="drawer-toggle" aria-expanded="${this._drawerOpen}">${this._i.details}${chevron}</button>
+      <div class="drawer-body" id="drawer-body" ${this._drawerOpen ? '' : 'hidden'}>${sections.map(([title, rows]) => `<div class="dsec"><div class="dsec-title">${this._esc(title)}</div>
+        <div class="dgrid">${rows.map(([id, label, entity]) => `<div class="drow" data-entity="${this._esc(entity)}"><span>${this._esc(label)}</span><b id="d-${id}"></b></div>`).join('')}</div></div>`).join('')}</div>
+    </div>`;
+  }
+
+  _updateDrawer() {
+    if (!this._$('drawer-body')) return;
+    this._drawerRows().forEach(([, rows]) => rows.forEach(([id, , , value]) => this._txt(`d-${id}`, value())));
   }
 
   // Heating circuit n (1-3). Circuits 2 and 3 sit below circuit 1, fed by risers from its flow and return.
@@ -1047,6 +1254,8 @@ class HeatpumpFlowCard extends HTMLElement {
     const html = tiles.map(([l, v, id]) => `<div class="stat" data-entity="${this._esc(id)}"><div class="sv">${this._esc(v)}</div><div class="sl">${this._esc(l)}</div></div>`).join('');
     const box = this._$('stats');
     if (box._html !== html) { box.innerHTML = html; box._html = html; box.style.display = tiles.length ? '' : 'none'; }
+    this._updateControls();
+    this._updateDrawer();
   }
 }
 
@@ -1134,6 +1343,26 @@ HeatpumpFlowCard.styles = `
   .wave { fill: none; stroke: #f97316; stroke-width: 3; stroke-linecap: round; opacity: 0; }
   .waves.on .wave { animation: hfc-rise 2.4s ease-in-out infinite; }
   .waves.on .wave:nth-child(2) { animation-delay: .8s; } .waves.on .wave:nth-child(3) { animation-delay: 1.6s; }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 4px 0; }
+  .ctl { font: inherit; font-size: .88em; color: var(--primary-text-color); background: var(--secondary-background-color, rgba(127,127,127,.12));
+    border: 1px solid var(--divider-color, rgba(127,127,127,.3)); border-radius: 999px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 6px; }
+  button.ctl { cursor: pointer; }
+  button.ctl.toggle.on { background: rgba(249,115,22,.18); border-color: #f97316; color: #ea580c; }
+  button.ctl.press:active { background: rgba(249,115,22,.25); }
+  .ctl select, .ctl input { font: inherit; color: inherit; background: transparent; border: none; outline: none; max-width: 11em; }
+  .ctl input { width: 3.5em; }
+  .ctl em { font-style: normal; color: var(--hfc-muted); }
+  .ctl select option { color: #000; }
+  .drawer { margin: 6px 4px 0; }
+  .drawer-toggle { font: inherit; font-size: .9em; color: var(--hfc-muted); background: none; border: none; cursor: pointer; padding: 4px 0; display: inline-flex; align-items: center; gap: 4px; }
+  .drawer-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; transition: transform .2s; }
+  .drawer-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .dsec { margin: 4px 0 10px; }
+  .dsec-title { font-size: .78em; text-transform: uppercase; letter-spacing: .04em; color: var(--hfc-muted); margin-bottom: 4px; }
+  .dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 16px; }
+  .drow { cursor: pointer; display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider-color, rgba(127,127,127,.18)); font-size: .9em; color: var(--primary-text-color); }
+  .drow span { color: var(--hfc-muted); }
+  .drow b { white-space: nowrap; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 6px; margin-top: 6px; }
   .stat { cursor: pointer; background: var(--secondary-background-color, rgba(127,127,127,.1)); border-radius: 10px; padding: 6px 8px; text-align: center; }
   .sv { font-weight: 700; font-size: 1.05em; color: var(--primary-text-color); }

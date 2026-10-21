@@ -38,6 +38,8 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 - **Estimated heat output:** without a heat output sensor, the card calculates it from flow rate × spread (≈ marker) and derives the COP from it.
 - **Statistics row:** COP heating/DHW today, energy today with PV share, compressor starts, spread, flow rate, plus your own tiles.
 - **Status chips:** mode, freely defined badges (e.g. "Boost"), error chip when any error code is ≠ 0.
+- **Quick controls** (`controls`): switches and booleans as toggle buttons, buttons and scripts as push buttons, selects, water heater and climate modes as dropdowns, numbers as input fields, directly on the card.
+- **Details drawer:** a collapsible section below the statistics with operating hours, total starts, total electricity and heat (and the total COP from them), the **refrigerant circuit** (compressor speed, evaporation, condensation, suction gas, hot gas, liquid line, pressures, expansion valve, superheat, subcooling) and your own values (`details`). Presets fill it where the integration provides the data.
 - **Optional blocks:** whatever you don't have (buffer, DHW tank, power sources, house) is simply not drawn.
 - **UI editor** with grouped entity pickers. **English and German**, following the HA language. Light/dark via your theme. Every element opens the more-info dialog. `prefers-reduced-motion` is respected.
 
@@ -45,9 +47,9 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 |---|---|---|
 | ![](docs/vicare-radiator.jpg) | ![](docs/vaillant-dhw.jpg) | ![](docs/zero-config-dhw.jpg) |
 
-| Ground source, two circuits, heater rod | EMS-ESP preset (Buderus) | HeishaMon preset (Panasonic), radiators | Other brand, minimal setup | Dark theme |
-|---|---|---|---|---|
-| ![](docs/ground-source.png) | ![](docs/emsesp-heating.jpg) | ![](docs/heishamon-radiator.jpg) | ![](docs/other-brand-minimal.jpg) | ![](docs/dark.jpg) |
+| Details drawer and quick controls | Ground source, two circuits, heater rod | EMS-ESP preset (Buderus) | HeishaMon preset (Panasonic), radiators | Other brand, minimal setup | Dark theme |
+|---|---|---|---|---|---|
+| ![](docs/details.png) | ![](docs/ground-source.png) | ![](docs/emsesp-heating.jpg) | ![](docs/heishamon-radiator.jpg) | ![](docs/other-brand-minimal.jpg) | ![](docs/dark.jpg) |
 
 | Live on a real Lambda installation |
 |---|
@@ -70,7 +72,7 @@ Copy `dist/heatpump-flow-card.js` to `/config/www/` and add `/local/heatpump-flo
 type: custom:heatpump-flow-card
 preset: lambda
 ```
-That's it. The card finds your entities itself, including the 2nd heating stage as backup heater (`sensor.<prefix>_hp1_…` with legacy naming, or `sensor.hp1_…` with the new naming). If you have several heat pumps or the detection picks the wrong one, set the prefix explicitly (`prefix: eu08l`) or the unit numbers (`index: {hp: 2, hc: 2}`).
+That's it. The card finds your entities itself, including the 2nd heating stage as backup heater, total starts, energy and heat, and the refrigerant circuit values for the details drawer (`sensor.<prefix>_hp1_…` with legacy naming, or `sensor.hp1_…` with the new naming). If you have several heat pumps or the detection picks the wrong one, set the prefix explicitly (`prefix: eu08l`) or the unit numbers (`index: {hp: 2, hc: 2}`).
 
 PV, battery and grid come from your Energy dashboard automatically, as long as it has power sensors configured (Settings → Dashboards → Energy). If you already have sensors for the heat pump's share of PV, battery and grid, or want a room average, add them yourself; own `pv` / `battery` / `grid` sensors replace the Energy dashboard:
 ```yaml
@@ -103,6 +105,7 @@ What you get:
 - compressor phase, with DHW recognised via "DHW charging"
 - compressor running and circulation pump
 - COP heating and DHW, energy today, compressor starts
+- details: compressor hours and starts, heater rod hours, compressor modulation, inlet/outlet temperatures and pressures, liquid line, subcooling and superheat
 
 ViCare has no live electrical power, so add `power` from a meter if you have one; the heat output is estimated from flow rate × spread. For a Vitocal with a ground source, set `source_type: brine`: the primary circuit supply and return become brine in and out. Circuits 2 and 3 share the same translation keys in ViCare, so map their entities manually (`hc2_flow`, …).
 
@@ -142,6 +145,7 @@ What you get:
 - DHW temperature, target and circulation
 - mixer circuit 1 flow and pump
 - thermostat room temperature and target
+- details: compressor operating time and starts, total energy consumed and supplied, compressor speed, refrigerant temperatures (PL1, PH1, TR3, TR5, TR6)
 
 Without a heat output sensor, the heat output is estimated from flow rate × spread. With `hc_count: 2` (or 3) the mixer and thermostat entities of circuits 2 and 3 are added; `index: {hc: 2}` starts at circuit 2 instead.
 
@@ -163,6 +167,7 @@ What you get:
 - DHW temperature and target
 - zone 1 water and room temperature; zone 2 becomes heating circuit 2 with `hc_count: 2`
 - internal backup heater
+- details: operating hours and counter, heater hours, compressor frequency, discharge temperature, high and low pressure, expansion valve
 
 HeishaMon has no "current activity" value: the card shows heating while the compressor runs, hot water when the valve is on "Tank", and defrost from the defrost state. If you use HeishaMon with your own MQTT YAML instead of the integration, map the entities manually (see below).
 
@@ -209,6 +214,9 @@ Normalized modes: `heating`, `dhw`, `cooling`, `defrost`, `idle`, `blocked`, `fr
 | `running_states` | Raw `status` values that count as compressor running. |
 | `errors` | List of error-code sensors. A value ≠ 0 shows the error chip. |
 | `badges` | `[{entity, label}]` chips shown while the entity is on. |
+| `controls` | Quick controls: list of entity ids or `{entity, name}`. Supported: `switch`, `input_boolean`, `light`, `fan`, `automation` (toggle), `button`, `input_button`, `script`, `scene` (press), `select`, `input_select`, `water_heater`, `climate` (dropdown), `number`, `input_number` (input). |
+| `details` | Extra rows in the details drawer: list of entity ids or `{entity, name, unit, decimals}`. |
+| `details_open` | Open the details drawer by default (default `false`). |
 | `stats` | Extra tiles `[{entity, name, unit, decimals}]`. |
 
 **Entity keys:**
@@ -219,6 +227,8 @@ Normalized modes: `heating`, `dhw`, `cooling`, `defrost`, `idle`, `blocked`, `fr
 - **Heaters** (`heater`, `dhw_heater`, `buffer_heater`): binary or on/off, a power value (on above 0) or a stage number (1-3)
 - **Power sources (W):** `pv`, `battery`, `grid` – the heat pump's power from each source. Optional: without them the card uses the Energy dashboard.
 - **Statistics:** `cop_heating_today`, `cop_dhw_today`, `energy_today`, `pv_share_today`, `starts_today`
+- **Details, operation:** `hours`, `starts_total`, `aux_hours`, `energy_total`, `heat_total`
+- **Details, refrigerant circuit:** `compressor_speed`, `evap_temp`, `cond_temp`, `suction_temp`, `hot_gas`, `liquid_temp`, `low_pressure`, `high_pressure`, `eev`, `superheat`, `subcooling`
 
 ## Where the numbers come from
 The card shows what your integration provides and does not invent values. Where it has to derive something, this is how:
@@ -234,6 +244,9 @@ The card shows what your integration provides and does not invent values. Where 
 | Diverter valve | The valve entity (on, `Tank` or `DHW` = hot water), otherwise the mode. |
 | Heating circuit active | Circuit pump, else circuit mode, else "heat pump is heating". |
 | PV / battery / grid flows | Your own `pv` / `battery` / `grid` sensors if set. Otherwise **estimated** from the Energy dashboard and marked with **≈**: the heat pump's power is split by the house's current supply mix (PV used in the house, battery discharge, grid import); PV first covers battery charging and export. Needs the power sensors of the Energy dashboard and the heat pump's `power`. A flow is animated above 10 W. |
+| Superheat, subcooling | The integration's value if there is one. Otherwise superheat = suction gas − evaporation and subcooling = condensation − liquid line. |
+| COP total | Total heat ÷ total electricity (Wh, kWh and MWh are converted), marked with **≈**. |
+| Details drawer | Entities that are unknown or unavailable are left out, so values a model does not report do not show up. |
 | Heater rods | On for a binary on / "On", for power above 0, or for a stage number above 0; stage 2 or higher is drawn red. |
 | Error chip | Any error entity of the preset (or `errors`) with a value ≠ 0 or state on. |
 
@@ -266,7 +279,7 @@ Pull requests for other brands are very welcome.
 `demo/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, light/dark, English/German) without Home Assistant. It is published as the [live demo](https://sturmi77.github.io/heatpump-flow-card/demo/) via GitHub Pages; locally, open it through any static web server.
 
 ## Deutsch (Kurzfassung)
-Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Nur Lambda ist bisher mit einer echten Anlage getestet, alle anderen Voreinstellungen noch nicht – Rückmeldungen gern als Issue. Andere Hersteller werden über `entities` und `mode_map` angebunden. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-flow-card/demo/).
+Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Nur Lambda ist bisher mit einer echten Anlage getestet, alle anderen Voreinstellungen noch nicht – Rückmeldungen gern als Issue. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-flow-card/demo/).
 
 ## License
 MIT © 2026 Sturmi77

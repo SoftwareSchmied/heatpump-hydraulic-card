@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Quick controls (`controls`): toggle, press, dropdown and number input for switch, button, script, select, water_heater, climate, number and their input_* helpers.
+- Details drawer below the statistics: operating hours, total starts, total electricity and heat with total COP, refrigerant circuit (compressor speed, evaporation, condensation, suction gas, hot gas, liquid line, pressures, expansion valve, superheat, subcooling; superheat and subcooling computed when missing) and own rows (`details`, `details_open`). Presets: Lambda, ViCare, EMS-ESP, HeishaMon.
 - Up to three heating circuits (`hc_count`, `hc2_type`, `hc3_type`, `hc_name`…, entity keys `hc2_*` / `hc3_*`). Presets fill circuits 2 and 3 with the next circuit numbers (Lambda, EMS-ESP, Vaillant, HeishaMon zone 2).
 - Heat source `source_type: air | brine | water`: ground loop or groundwater wells below the heat pump, with source inlet and outlet (`source_out`).
 - Heater rods in the DHW tank and buffer (`dhw_heater`, `buffer_heater`) and a backup / inline heater (`heater`), glowing while on, red at stage 2+. Presets: Lambda 2nd heating stage, EMS-ESP auxiliary heater, HeishaMon internal heater.

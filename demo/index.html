@@ -102,16 +102,26 @@ const lambdaStates = (x, s) => {
     [`${x}hc1_room_device_temperature`]: 'unknown', [`${x}hc1_target_room_temperature`]: '23.0',
     [`${x}hp1_heating_cop_daily`]: '5.05', [`${x}hp1_hot_water_cop_daily`]: '4.15', [`${x}hp1_compressor_start_cycling_daily`]: '3',
     [`${x}hp1_relais_state_2nd_heating_stage`]: 'Off',
+    [`${x}hp1_compressor_start_cycling_total`]: ['1843', 'cycles'],
+    [`${x}hp1_compressor_power_consumption_accumulated`]: ['3120.4', 'kWh'],
+    [`${x}hp1_compressor_thermal_energy_output_accumulated`]: ['14210.8', 'kWh'],
+    [`${x}hp1_compressor_unit_rating`]: ['46', '%'],
+    [`${x}hp1_evaporation_temperature`]: ['3.6', '°C'], [`${x}hp1_condensation_temperature`]: ['36.9', '°C'],
+    [`${x}hp1_suction_gas_temperature`]: ['8.4', '°C'], [`${x}hp1_hot_gas_temperature`]: ['61.5', '°C'],
+    [`${x}hp1_subcooling_temperature`]: ['3.1', '°C'], [`${x}hp1_expansion_valve_opening_angle`]: ['38', '%'],
     [`${x}hp1_error_number`]: '0', [`${x}boil1_error_number`]: '0', [`${x}buff1_error_number`]: '0', [`${x}hc1_error_number`]: '0', [`${x}ambient_error_number`]: '0',
   };
   const S = {
     heat: {},
-    dhw: { [`${x}hp1_operating_state`]: 'DHW', [`${x}boil1_operating_state`]: 'DHW', [`${x}buff1_operating_state`]: 'STBY',
+    dhw: { [`${x}hp1_compressor_unit_rating`]: ['62', '%'], [`${x}hp1_condensation_temperature`]: ['52.4', '°C'], [`${x}hp1_hot_gas_temperature`]: ['78.0', '°C'],
+      [`${x}hp1_operating_state`]: 'DHW', [`${x}boil1_operating_state`]: 'DHW', [`${x}buff1_operating_state`]: 'STBY',
       [`${x}hp1_flow_line_temperature`]: '48.6', [`${x}hp1_return_line_temperature`]: '43.1', [`${x}hp1_inverter_power_consumption`]: '1650',
       [`${x}hp1_actual_heating_capacity`]: '6.9', [`${x}boil1_actual_circulation_pump_state`]: 'On' },
     defrost: { [`${x}hp1_operating_state`]: 'DEFROST', [`${x}hp1_flow_line_temperature`]: '24.0', [`${x}hp1_actual_heating_capacity`]: '0',
       [`${x}hp1_relais_state_2nd_heating_stage`]: 'On' },
-    idle: { [`${x}hp1_operating_state`]: 'STBY', [`${x}hp1_state`]: 'READY', [`${x}hp1_inverter_power_consumption`]: '0',
+    idle: { ...Object.fromEntries(['compressor_unit_rating', 'evaporation_temperature', 'condensation_temperature', 'suction_gas_temperature',
+        'hot_gas_temperature', 'subcooling_temperature', 'expansion_valve_opening_angle'].map((k) => [`${x}hp1_${k}`, 'unknown'])),
+      [`${x}hp1_operating_state`]: 'STBY', [`${x}hp1_state`]: 'READY', [`${x}hp1_inverter_power_consumption`]: '0',
       [`${x}hp1_actual_heating_capacity`]: '0', [`${x}buff1_operating_state`]: 'STBY', [`${x}hp1_error_number`]: '7' },
   }[s];
   const out = {};
@@ -122,7 +132,11 @@ const extras = (s) => ({
   'sensor.living_room_temperature': '22.8', 'sensor.heatpump_energy_today': '5.1', 'sensor.heatpump_pv_share_today': '24',
   'sensor.heatpump_power_from_pv': s === 'heat' ? '820' : '0', 'sensor.heatpump_power_from_battery': s === 'dhw' ? '1650' : '0',
   'sensor.heatpump_power_from_grid': s === 'heat' ? '420' : (s === 'defrost' ? '900' : '0'),
-  'input_boolean.heatpump_boost': s === 'dhw' ? 'on' : 'off',
+  'input_boolean.heatpump_boost': { state: s === 'dhw' ? 'on' : 'off', attributes: { friendly_name: 'Boost' } },
+  'select.heatpump_operating_mode': { state: 'Automatic', attributes: { friendly_name: 'Operating mode', options: ['Automatic', 'Manual', 'Summer', 'Off'] } },
+  'number.heatpump_dhw_target': { state: '50', attributes: { friendly_name: 'DHW target', min: 40, max: 60, step: 1, unit_of_measurement: '°C' } },
+  'button.heatpump_dhw_boost': { state: 'unknown', attributes: { friendly_name: 'DHW boost once' } },
+  'sensor.heating_curve_flow': ['33.5', '°C'],
 });
 const otherStates = (s) => ({
   'sensor.wp_betriebsart': { heat: 'Heating', dhw: 'Hot water', defrost: 'Defrost', idle: 'Standby' }[s],
@@ -222,7 +236,7 @@ const houseStates = (s) => ({
 
 const setups = [
   {
-    name: 'Lambda', sub: 'legacy naming, with PV/battery split and Boost badge',
+    name: 'Lambda', sub: 'legacy naming, PV/battery split, quick controls, details with refrigerant circuit',
     states: (s) => ({ ...lambdaStates('eu08l_', s), ...extras(s) }),
     config: {
       preset: 'lambda', title: 'Lambda', hc_type: 'radiator',
@@ -231,6 +245,9 @@ const setups = [
         grid: 'sensor.heatpump_power_from_grid', energy_today: 'sensor.heatpump_energy_today', pv_share_today: 'sensor.heatpump_pv_share_today',
       },
       badges: [{ entity: 'input_boolean.heatpump_boost', label: 'Boost' }],
+      controls: ['input_boolean.heatpump_boost', 'button.heatpump_dhw_boost', 'select.heatpump_operating_mode', 'number.heatpump_dhw_target'],
+      details: [{ entity: 'sensor.heating_curve_flow', name: 'Heating curve flow' }],
+      details_open: true,
     },
   },
   {
@@ -296,7 +313,7 @@ const yv = (v) => (typeof v === 'string' && (!/^[\w.\-:/ ]+$/.test(v) || /: /.te
 function yaml(obj, ind = '') {
   return Object.entries(obj).map(([k, v]) => {
     const key = /^[\w]+$/.test(k) ? k : JSON.stringify(k);
-    if (Array.isArray(v)) return `${ind}${key}:\n` + v.map((o) => ind + '  - ' + yaml(o, ind + '    ').slice(ind.length + 4)).join('\n');
+    if (Array.isArray(v)) return `${ind}${key}:\n` + v.map((o) => ind + '  - ' + (o && typeof o === 'object' ? yaml(o, ind + '    ').slice(ind.length + 4) : yv(o))).join('\n');
     if (v && typeof v === 'object') return `${ind}${key}:\n${yaml(v, ind + '  ')}`;
     return `${ind}${key}: ${yv(v)}`;
   }).join('\n');
@@ -305,6 +322,36 @@ function yaml(obj, ind = '') {
 const wrap = document.getElementById('wrap');
 const toast = document.getElementById('toast');
 let toastTimer;
+const say = (text) => {
+  toast.textContent = text;
+  toast.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('on'), 2500);
+};
+// States changed through the quick controls, kept until the heat pump or scenario changes.
+let overrides = {};
+function refresh(card = document.querySelector('heatpump-flow-card')) {
+  const setup = setups[cur];
+  const states = {};
+  for (const [k, v] of Object.entries({ ...setup.states(scen), ...overrides })) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) { states[k] = { entity_id: k, attributes: {}, ...v }; continue; }
+    const [state, unit] = Array.isArray(v) ? v : [v];
+    states[k] = { entity_id: k, state, attributes: unit ? { unit_of_measurement: unit } : {} };
+  }
+  const callWS = (msg) => (msg.type === 'energy/get_prefs' && setup.energy ? Promise.resolve(setup.energy) : Promise.reject(new Error('not simulated')));
+  // Simulated services for the quick controls.
+  const callService = (domain, service, data) => {
+    const id = data.entity_id; const st = states[id];
+    const keep = (state) => { overrides[id] = { ...st, state: String(state) }; };
+    if (service === 'toggle') keep(st.state === 'on' ? 'off' : 'on');
+    else if (service === 'select_option') keep(data.option);
+    else if (service === 'set_operation_mode') keep(data.operation_mode);
+    else if (service === 'set_hvac_mode') keep(data.hvac_mode);
+    else if (service === 'set_value') keep(data.value);
+    say(`In Home Assistant this calls ${domain}.${service} for ${id}`);
+    refresh(card);
+    return Promise.resolve();
+  };
+  card.hass = { states, entities: setup.registry || {}, locale: { language: lang }, language: lang, callWS, callService };
+}
 function draw() {
   const setup = setups[cur];
   document.documentElement.classList.toggle('dark', dark);
@@ -312,18 +359,10 @@ function draw() {
   const card = document.createElement('heatpump-flow-card');
   card.setConfig(setup.config);
   wrap.appendChild(card);
-  const states = {};
-  for (const [k, v] of Object.entries(setup.states(scen))) {
-    const [state, unit] = Array.isArray(v) ? v : [v];
-    states[k] = { entity_id: k, state, attributes: unit ? { unit_of_measurement: unit } : {} };
-  }
+  overrides = {};
   customElements.get('heatpump-flow-card')._energyPrefs = null; // the card caches the Energy dashboard per page
-  const callWS = (msg) => (msg.type === 'energy/get_prefs' && setup.energy ? Promise.resolve(setup.energy) : Promise.reject(new Error('not simulated')));
-  card.hass = { states, entities: setup.registry || {}, locale: { language: lang }, language: lang, callWS };
-  card.addEventListener('hass-more-info', (e) => {
-    toast.textContent = `In Home Assistant this opens the more-info dialog of ${e.detail.entityId}`;
-    toast.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('on'), 2500);
-  });
+  refresh(card);
+  card.addEventListener('hass-more-info', (e) => say(`In Home Assistant this opens the more-info dialog of ${e.detail.entityId}`));
   document.getElementById('yaml').textContent = yaml({ type: 'custom:heatpump-flow-card', ...setup.config });
   document.getElementById('ynote').textContent = setup.energy
     ? 'Entities not listed are found by the preset. PV, battery and grid come from the Energy dashboard: the heat pump power is split by the current supply mix of the house.'
@@ -334,7 +373,7 @@ function draw() {
     b.textContent = setup.scenarioLabels?.[b.dataset.k] || Object.fromEntries(scenarios)[b.dataset.k];
   });
   document.querySelectorAll('#display button').forEach((b) => b.classList.toggle('sel', b.dataset.k === lang || b.dataset.k === (dark ? 'dark' : 'light')));
-  const p = new URLSearchParams({ setup: cur, s: scen, lang, dark: dark ? 1 : 0 });
+  const p = new URLSearchParams({ setup: cur, s: scen, lang, dark: dark ? 1 : 0, ...(q.get('embed') === '1' ? { embed: 1 } : {}) });
   history.replaceState(null, '', `?${p}`);
 }
 const mk = (bar, html, key, fn) => {
