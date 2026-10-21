@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.3 – 2026-10-21
 - Detection: Viessmann (ViCare) and EMS-ESP gas boilers are no longer taken for heat pumps; ViCare needs a compressor entity, EMS-ESP needs heat pump entities (`hpactivity` / `hptc1`). The Lambda preset only accepts entities of the lambda_heat_pumps integration.
 - Error boundary: unexpected data shows a short message in the card instead of an empty card; the editor never breaks the dialog.
 - Editor marks presets that are not yet tested on a real installation and asks for feedback.
