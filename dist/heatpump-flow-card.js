@@ -197,6 +197,7 @@ const HFC_PRESETS = {
   // the "multiple instances" entity format adds a prefix, which is detected. Enum texts follow the EMS-ESP language.
   emsesp: {
     name: 'EMS-ESP (Bosch, Buderus, Junkers, Nefit …)',
+    source_type: (e, hass) => (/hpbrinein$/.test(e.source_in || '') && hass.states[e.source_in] ? 'brine' : 'air'),
     detect: (ctx) => {
       const id = ctx.match(/^sensor\.(?:(.+)_)?boiler_(hpactivity|hptc1|curflowtemp)$/, 'mqtt');
       return id === undefined ? undefined : (id.match(/^sensor\.(?:(.+)_)?boiler_/)[1] || '');
@@ -250,6 +251,7 @@ const HFC_PRESETS = {
   // Entity ids are slugs of the MQTT topics: sensor.<prefix>_main_<topic>, prefix default panasonic_heat_pump.
   heishamon: {
     name: 'Panasonic Aquarea (HeishaMon)',
+    auto_circuits: false,
     detect: (ctx) => {
       const id = ctx.match(/^sensor\.(.+)_main_main_outlet_temp$/, 'aquarea');
       return id === undefined ? undefined : id.replace(/^sensor\./, '').replace(/_main_main_outlet_temp$/, '');
@@ -291,6 +293,7 @@ const HFC_PRESETS = {
 /* ------------------------------------------------------------------ */
 const HFC_I18N = {
   en: {
+    not_found: 'No entities of this preset found. Check the integration and the prefix, or open the card editor.',
     title: 'Heat pump', heat_pump: 'Heat pump', dhw: 'Hot water', buffer: 'Buffer', heating_circuit: 'Heating circuit',
     house: 'Rooms', running: 'running', compressor_off: 'Compressor off', source_in: 'Air inlet', outdoor: 'Outdoor',
     brine_in: 'Brine in', brine_out: 'Brine out', well_in: 'Well in', well_out: 'Well out',
@@ -311,6 +314,7 @@ const HFC_I18N = {
     },
   },
   de: {
+    not_found: 'Keine Entitäten dieser Voreinstellung gefunden. Integration und Präfix prüfen oder den Karteneditor öffnen.',
     title: 'Wärmepumpe', heat_pump: 'Wärmepumpe', dhw: 'Warmwasser', buffer: 'Puffer', heating_circuit: 'Heizkreis',
     house: 'Wohnräume', running: 'läuft', compressor_off: 'Verdichter aus', source_in: 'Luft-Eintritt', outdoor: 'Außen',
     brine_in: 'Sole ein', brine_out: 'Sole aus', well_in: 'Brunnen ein', well_out: 'Brunnen aus',
@@ -342,6 +346,9 @@ const HFC_EDITOR = {
     hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
+    from_preset: 'Found by the preset - pick another entity to override, clear to hide',
+    from_energy: 'Empty: taken from the Energy dashboard',
+    detected: 'Detected', entities_found: 'entities', not_detected: 'Not found in this Home Assistant - check the integration, the prefix or choose another preset',
     source_out: 'Source outlet temperature', heater: 'Backup / inline heater active',
     dhw_heater: 'DHW heater rod active', buffer_heater: 'Buffer heater rod active',
     hc_underfloor: 'Underfloor heating', hc_radiator: 'Radiators',
@@ -368,6 +375,9 @@ const HFC_EDITOR = {
     hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
+    from_preset: 'Von der Voreinstellung gefunden - andere Entität wählen zum Überschreiben, leeren zum Ausblenden',
+    from_energy: 'Leer: aus dem Energie-Dashboard',
+    detected: 'Erkannt', entities_found: 'Entitäten', not_detected: 'In diesem Home Assistant nicht gefunden - Integration und Präfix prüfen oder andere Voreinstellung wählen',
     source_out: 'Quelle Austritt', heater: 'Heizstab / Zusatzheizer aktiv',
     dhw_heater: 'Heizstab Warmwasser aktiv', buffer_heater: 'Heizstab Puffer aktiv',
     hc_underfloor: 'Flächenheizung', hc_radiator: 'Heizkörper',
@@ -425,14 +435,32 @@ class HeatpumpFlowCard extends HTMLElement {
   static getStubConfig(hass) {
     for (const [name, preset] of Object.entries(HFC_PRESETS)) {
       const ctx = HeatpumpFlowCard._ctx(hass, undefined, { hp: 1, dhw: 1, buffer: 1, hc: 1, ...(preset.index || {}) });
-      if (hass && preset.detect(ctx) !== undefined) return { preset: name };
+      if (hass && preset.detect(ctx) !== undefined) {
+        const stub = { preset: name };
+        // Further circuits count when the preset finds a different, reporting flow or mode entity for them.
+        const base = HeatpumpFlowCard._resolve({ preset: name, hc_count: 3 }, hass).fromPreset;
+        const live = (id) => id && hass.states[id] && !['unknown', 'unavailable'].includes(hass.states[id].state);
+        let n = 1;
+        while (n < 3 && preset.auto_circuits !== false && ['flow', 'mode', 'pump'].some((k) => live(base[`hc${n + 1}_${k}`]) && base[`hc${n + 1}_${k}`] !== base[`hc_${k}`])) n++;
+        if (n > 1) stub.hc_count = n;
+        if (preset.source_type) { const st = preset.source_type(base, hass); if (st && st !== 'air') stub.source_type = st; }
+        return stub;
+      }
     }
     return { preset: 'lambda' };
   }
 
-  static getConfigForm() {
+  static getConfigElement() { return document.createElement('heatpump-flow-card-editor'); }
+
+  static getConfigForm() { return HeatpumpFlowCard._formSchema(); }
+
+  // Form schema. With a config, circuit fields and groups are limited to hc_count.
+  static _formSchema(config) {
     const lang = (document.querySelector('home-assistant')?.hass?.locale?.language || navigator.language || 'en').slice(0, 2);
     const L = HFC_EDITOR[lang] || HFC_EDITOR.en;
+    const hcCount = config ? Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3) : 3;
+    const keep = (name) => !(/^hc2_/.test(name) && hcCount < 2) && !(/^hc3_/.test(name) && hcCount < 3);
+    const groups = Object.entries(HFC_ENTITY_GROUPS).filter(([sec]) => keep(sec.replace('sec_', '') + '_'));
     const entitySchema = (key) => ({
       name: key,
       selector: { entity: HFC_BINARY_KEYS.includes(key) ? { domain: ['binary_sensor', 'switch', 'input_boolean', 'sensor'] } : {} },
@@ -454,8 +482,8 @@ class HeatpumpFlowCard extends HTMLElement {
             { name: 'power_sources', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: L.ps_auto }, { value: 'manual', label: L.ps_manual }] } } },
             { name: 'source_type', selector: { select: { mode: 'dropdown', options: ['air', 'brine', 'water'].map((v) => ({ value: v, label: L[`src_${v}`] })) } } },
             { name: 'hc_count', selector: { number: { min: 1, max: 3, step: 1, mode: 'box' } } },
-            ...['hc2_type', 'hc3_type'].map((name) => ({ name, selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } })),
-            ...['hc_name', 'hc2_name', 'hc3_name'].map((name) => ({ name, selector: { text: {} } })),
+            ...['hc2_type', 'hc3_type'].filter(keep).map((name) => ({ name, selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } })),
+            ...['hc_name', 'hc2_name', 'hc3_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
             { name: 'details_open', selector: { boolean: {} } },
           ],
         },
@@ -463,12 +491,13 @@ class HeatpumpFlowCard extends HTMLElement {
           name: 'controls',
           selector: { entity: { multiple: true, domain: HFC_CONTROL_DOMAINS } },
         },
-        ...Object.entries(HFC_ENTITY_GROUPS).map(([sec, keys]) => ({
+        ...groups.map(([sec, keys]) => ({
           type: 'expandable', name: 'entities', title: L[sec], schema: keys.map(entitySchema),
         })),
       ],
       // Keys of circuits 2 and 3 reuse the labels of circuit 1 (hc2_flow → hc_flow).
       computeLabel: (s) => L[s.name] || L[String(s.name).replace(/^hc[23]_/, 'hc_')] || (HFC_I18N[lang] || HFC_I18N.en).det[s.name] || s.name,
+      L,
     };
   }
 
@@ -511,10 +540,12 @@ class HeatpumpFlowCard extends HTMLElement {
   }
 
   // Resolves preset + user entities. Needs hass for detection and registry lookups.
-  _build() {
-    const config = this._config;
-    const preset = this._preset;
-    const ctx = HeatpumpFlowCard._ctx(this._hass, config.device, this._idx);
+  // Resolves preset and user entities. Used by the card and by the editor (which shows what the preset found).
+  static _resolve(config, hass) {
+    const preset = HFC_PRESETS[config.preset];
+    const idx = { hp: 1, dhw: 1, buffer: 1, hc: 1, ...(preset?.index || {}), ...(config.index || {}) };
+    const hcCount = Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3);
+    const ctx = HeatpumpFlowCard._ctx(hass, config.device, idx);
     let prefix = config.prefix;
     let ready = true;
     if (preset && (prefix === undefined || prefix === null || prefix === '' || prefix === 'auto')) {
@@ -522,26 +553,32 @@ class HeatpumpFlowCard extends HTMLElement {
       if (prefix === undefined) { prefix = ''; ready = false; }
     }
     prefix = String(prefix || '').trim().toLowerCase();
-    const raw = preset ? preset.entities(prefix, this._idx, ctx) : {};
-    const e = {};
+    const fromPreset = {};
     const take = (k, v) => {
       const list = (Array.isArray(v) ? v : [v]).filter(Boolean);
-      const hit = list.find((id) => this._hass.states[id]) || list[0];
-      if (hit) e[k] = hit;
+      const hit = list.find((id) => hass.states[id]) || list[0];
+      if (hit) fromPreset[k] = hit;
     };
-    Object.entries(raw).forEach(([k, v]) => take(k, v));
-    for (let n = 2; preset && n <= this._hcCount; n++) {
-      const rawN = preset.entities(prefix, { ...this._idx, hc: this._idx.hc + n - 1 }, ctx);
+    if (preset) Object.entries(preset.entities(prefix, idx, ctx)).forEach(([k, v]) => take(k, v));
+    for (let n = 2; preset && n <= hcCount; n++) {
+      const rawN = preset.entities(prefix, { ...idx, hc: idx.hc + n - 1 }, ctx);
       Object.entries(rawN).filter(([k]) => k.startsWith('hc_')).forEach(([k, v]) => take(`hc${n}_${k.slice(3)}`, v));
     }
-    // User entities override the preset; null or "none" removes a preset entity, an empty editor field keeps it.
+    const e = { ...fromPreset };
+    // User entities override the preset; null or "none" removes a preset entity.
     Object.entries(config.entities || {}).forEach(([k, v]) => {
       if (v === null || v === 'none') delete e[k];
       else if (v) e[k] = v;
     });
-    this._e = e;
-    this._errors = config.errors || (preset && preset.errors ? preset.errors(prefix, this._idx, ctx) : []);
-    this._needsBuild = !ready;
+    const errors = config.errors || (preset && preset.errors ? preset.errors(prefix, idx, ctx) : []);
+    return { preset, prefix, ready, idx, fromPreset, entities: e, errors };
+  }
+
+  _build() {
+    const r = HeatpumpFlowCard._resolve(this._config, this._hass);
+    this._e = r.entities;
+    this._errors = r.errors;
+    this._needsBuild = !r.ready;
     this._lastTry = Date.now();
   }
 
@@ -739,6 +776,7 @@ class HeatpumpFlowCard extends HTMLElement {
             <span class="chip err" id="chip-err"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20.5h19z" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke-linecap="round"/></svg>${i.error}</span>
           </div>
         </div>
+        ${this._needsBuild && this._preset ? `<div class="hint">${this._esc(i.not_found)}</div>` : ''}
         <svg viewBox="0 0 1000 ${H}" id="svg" role="img" aria-label="${T}">
           <defs>
             <linearGradient id="g-dhw" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-dhw-top"/><stop offset="100%" id="g-dhw-bottom"/></linearGradient>
@@ -1345,6 +1383,7 @@ HeatpumpFlowCard.styles = `
   .wave { fill: none; stroke: #f97316; stroke-width: 3; stroke-linecap: round; opacity: 0; }
   .waves.on .wave { animation: hfc-rise 2.4s ease-in-out infinite; }
   .waves.on .wave:nth-child(2) { animation-delay: .8s; } .waves.on .wave:nth-child(3) { animation-delay: 1.6s; }
+  .hint { margin: 4px 4px 8px; padding: 8px 12px; border-radius: 8px; background: rgba(249,115,22,.14); color: var(--primary-text-color); font-size: .9em; }
   .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 4px 0; }
   .ctl { font: inherit; font-size: .88em; color: var(--primary-text-color); background: var(--secondary-background-color, rgba(127,127,127,.12));
     border: 1px solid var(--divider-color, rgba(127,127,127,.3)); border-radius: 999px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 6px; }
@@ -1376,6 +1415,71 @@ HeatpumpFlowCard.styles = `
   @media (prefers-reduced-motion: reduce) { .flow.on, .eflow.on, .fan.on, .impeller.on, .coil.on, .snow.on, .waves.on .wave { animation: none; } .waves.on .wave { opacity: .7; } }
 `;
 
+// Card editor: the same form as getConfigForm, but entity pickers show what the preset found,
+// only the configured number of circuits is offered, and the preset field reports the detection.
+class HeatpumpFlowCardEditor extends HTMLElement {
+  setConfig(config) { this._config = config; this._resolved = null; this._render(); }
+
+  set hass(hass) {
+    const first = !this._hass;
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+    if (first) this._render();
+  }
+
+  _render() {
+    if (!this._config || !this._hass) return;
+    if (!this._form) {
+      this._form = document.createElement('ha-form');
+      this._form.addEventListener('value-changed', (ev) => { ev.stopPropagation(); this._changed(ev.detail.value); });
+      this.appendChild(this._form);
+    }
+    const r = HeatpumpFlowCard._resolve(this._config, this._hass);
+    // Only entities that exist are shown as found by the preset.
+    this._fromPreset = Object.fromEntries(Object.entries(r.fromPreset).filter(([, id]) => this._hass.states[id]));
+    const { schema, computeLabel, L } = HeatpumpFlowCard._formSchema(this._config);
+    const own = this._config.entities || {};
+    const shown = { ...this._fromPreset };
+    Object.entries(own).forEach(([k, v]) => { if (v === null || v === 'none') delete shown[k]; else if (v) shown[k] = v; });
+    const found = Object.keys(this._fromPreset).length;
+    this._form.hass = this._hass;
+    this._form.schema = schema;
+    this._form.computeLabel = computeLabel;
+    this._form.computeHelper = (s) => {
+      if (s.name === 'preset') {
+        if (!r.preset) return '';
+        return r.ready ? `${L.detected}${r.prefix ? ` · ${r.prefix}` : ''} · ${found} ${L.entities_found}` : L.not_detected;
+      }
+      if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
+      if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;
+      return '';
+    };
+    this._form.data = { ...this._config, entities: shown };
+  }
+
+  // Writes back only what differs from the preset: other entities as overrides, cleared preset entities as null.
+  _changed(value) {
+    const own = this._config.entities || {};
+    const shownBefore = { ...this._fromPreset, ...Object.fromEntries(Object.entries(own).filter(([, v]) => v)) };
+    const next = value.entities || {};
+    const ents = {};
+    new Set([...Object.keys(next), ...Object.keys(own), ...Object.keys(this._fromPreset)]).forEach((k) => {
+      const v = next[k];
+      if (v) {
+        if (v !== this._fromPreset[k] || own[k] === v) ents[k] = v;
+      } else if (this._fromPreset[k] || own[k] === null || own[k] === 'none') {
+        // A preset entity that was shown and is now empty, or one that was already removed.
+        if (shownBefore[k] || own[k] === null || own[k] === 'none') ents[k] = null;
+      }
+    });
+    const config = { ...value };
+    if (Object.keys(ents).length) config.entities = ents; else delete config.entities;
+    this._config = config;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
+    this._render();
+  }
+}
+if (!customElements.get('heatpump-flow-card-editor')) customElements.define('heatpump-flow-card-editor', HeatpumpFlowCardEditor);
 if (!customElements.get('heatpump-flow-card')) customElements.define('heatpump-flow-card', HeatpumpFlowCard);
 window.customCards = window.customCards || [];
 if (!window.customCards.some((c) => c.type === 'heatpump-flow-card')) {
