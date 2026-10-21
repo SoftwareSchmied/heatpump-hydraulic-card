@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 – 2026-10-21
+
+**What may change on existing cards after the update** (no configuration breaks):
+- Without own `pv` / `battery` / `grid` sensors, PV / battery / grid now appear if your Energy dashboard has power sensors. Turn off with `power_sources: manual`.
+- Presets now map a backup heater (Lambda: 2nd heating stage, EMS-ESP: auxiliary heater, HeishaMon: internal heater), shown as a small box in the heat pump. Hide with `entities: {heater: null}`.
+- A collapsed **Details** section appears below the statistics when the integration provides counters or refrigerant values.
+
+**New**
 - Quick controls (`controls`): toggle, press, dropdown and number input for switch, button, script, select, water_heater, climate, number and their input_* helpers.
 - Details drawer below the statistics: operating hours, total starts, total electricity and heat with total COP, refrigerant circuit (compressor speed, evaporation, condensation, suction gas, hot gas, liquid line, pressures, expansion valve, superheat, subcooling; superheat and subcooling computed when missing) and own rows (`details`, `details_open`). Presets: Lambda, ViCare, EMS-ESP, HeishaMon.
 - Up to three heating circuits (`hc_count`, `hc2_type`, `hc3_type`, `hc_name`…, entity keys `hc2_*` / `hc3_*`). Presets fill circuits 2 and 3 with the next circuit numbers (Lambda, EMS-ESP, Vaillant, HeishaMon zone 2).
