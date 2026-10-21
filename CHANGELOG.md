@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.2 – 2026-10-21
+Easier setup in the card editor.
 - Card editor shows the entities found by the preset (marked "Found by the preset"); only differences are saved: another entity overrides, a cleared field hides the entity (`null`).
 - The preset field reports the detection (prefix, number of entities) or why nothing was found; the card shows a hint when the preset finds nothing.
 - Editor offers circuit 2/3 fields only up to `hc_count`.
+- Editor layout: preset, title, emitter and number of circuits on top; prefix, device, heat source, power sources, threshold, language, circuit names and details option under "Advanced".
+- Editor warns about missing core entities and what the card cannot show without them (running state, live COP, spread, estimated heat output).
 - New cards: `hc_count` and `source_type` are detected where reliable (circuits: Lambda, EMS-ESP, Vaillant; brine: EMS-ESP).
 
 ## 0.4.1 – 2026-10-21

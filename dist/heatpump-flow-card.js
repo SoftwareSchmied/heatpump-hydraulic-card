@@ -7,7 +7,7 @@
  *
  * https://github.com/Sturmi77/heatpump-flow-card · MIT License
  */
-const HFC_VERSION = '0.4.1';
+const HFC_VERSION = '0.4.2';
 
 /* ------------------------------------------------------------------ */
 /* Presets                                                             */
