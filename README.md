@@ -13,16 +13,18 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 
 | Preset | Brands / models | Integration | Status |
 |---|---|---|---|
-| `lambda` | **Lambda** (EU-L series) | [lambda_heat_pumps](https://github.com/GuidoJeuken-6512/lambda_heat_pumps) (HACS) | ✅ tested on a real installation |
-| `vicare` | **Viessmann** (Vitocal) | [ViCare](https://www.home-assistant.io/integrations/vicare/) (core) | ⚠️ untested |
-| `vaillant` | **Vaillant** (aroTHERM, aroTHERM plus), **Saunier Duval**, **Bulex**, **Glow-worm**, **DemirDöküm** | [myPyllant](https://github.com/signalkraft/mypyllant-component) (HACS) | ⚠️ untested |
-| `emsesp` | **Bosch**, **Buderus**, **Junkers**, **Nefit**, **Worcester**, **Sieger**, **elm.leblanc**, **iVT** – EMS/EMS+ heat pumps such as Buderus Logatherm WLW, Bosch Compress, Nefit EnviLine | [EMS-ESP](https://github.com/emsesp/EMS-ESP32) gateway (MQTT discovery) | ⚠️ untested |
-| `heishamon` | **Panasonic** Aquarea (H, J, K, L generation; monoblock, split, all-in-one) | [HeishaMon](https://github.com/heishamon/HeishaMon) + [heishamon-homeassistant](https://github.com/kamaradclimber/heishamon-homeassistant) (HACS) | ⚠️ untested |
+| `lambda` | **Lambda** (EU-L series) | [lambda_heat_pumps](https://github.com/GuidoJeuken-6512/lambda_heat_pumps) (HACS) | tested on a real installation |
+| `vicare` | **Viessmann** (Vitocal) | [ViCare](https://www.home-assistant.io/integrations/vicare/) (core) | untested |
+| `vaillant` | **Vaillant** (aroTHERM, aroTHERM plus), **Saunier Duval**, **Bulex**, **Glow-worm**, **DemirDöküm** | [myPyllant](https://github.com/signalkraft/mypyllant-component) (HACS) | untested |
+| `emsesp` | **Bosch**, **Buderus**, **Junkers**, **Nefit**, **Worcester**, **Sieger**, **elm.leblanc**, **iVT** – EMS/EMS+ heat pumps such as Buderus Logatherm WLW, Bosch Compress, Nefit EnviLine | [EMS-ESP](https://github.com/emsesp/EMS-ESP32) gateway (MQTT discovery) | untested |
+| `heishamon` | **Panasonic** Aquarea (H, J, K, L generation; monoblock, split, all-in-one) | [HeishaMon](https://github.com/heishamon/HeishaMon) + [heishamon-homeassistant](https://github.com/kamaradclimber/heishamon-homeassistant) (HACS) | untested |
 
 > [!NOTE]
 > The **Viessmann**, **Vaillant**, **EMS-ESP** and **HeishaMon** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open an issue](https://github.com/Sturmi77/heatpump-flow-card/issues) with your entity list if something is missing or wrong. The Lambda preset runs on a real installation.
 
 ![Animated demo: heating, hot water and defrost](docs/demo.gif)
+
+**[Try the live demo](https://sturmi77.github.io/heatpump-flow-card/demo/)**: every preset in heating, hot water, defrost and standby, light and dark, English and German, with the matching card configuration. Runs in the browser with simulated data, no Home Assistant needed.
 
 ## Features
 
@@ -82,7 +84,7 @@ entities:
   energy_today: sensor.heatpump_energy_today # kWh
 badges:
   - entity: input_boolean.heatpump_boost
-    label: 🚀 Boost
+    label: Boost
 ```
 
 ### Viessmann Vitocal (ViCare) – untested, feedback welcome
@@ -208,6 +210,24 @@ Normalized modes: `heating`, `dhw`, `cooling`, `defrost`, `idle`, `blocked`, `fr
 - **Power sources (W):** `pv`, `battery`, `grid`
 - **Statistics:** `cop_heating_today`, `cop_dhw_today`, `energy_today`, `pv_share_today`, `starts_today`
 
+## Where the numbers come from
+The card shows what your integration provides and does not invent values. Where it has to derive something, this is how:
+
+| Value | Source |
+|---|---|
+| Temperatures, power, flow rate, daily COP, energy, starts | Read directly from the entities. Units are converted (W/kW, l/h, l/min, m³/h); nothing else is changed. |
+| Spread | Flow minus return temperature. |
+| Heat output | The heat output entity if there is one. Otherwise **estimated** as flow rate × spread × 1.163 Wh/(l·K) (water) and marked with **≈**. With glycol in the circuit the estimate is slightly too high. |
+| Live COP | Heat output ÷ electrical power while the compressor runs. Marked with **≈** when the heat output is estimated. |
+| Running | Compressor entity on (or frequency/speed > 0), electrical power above `power_threshold` (default 100 W), or a running status from the preset. |
+| Mode | The operating-mode entity, translated by the preset's `mode_map`. Without a mode entity (e.g. HeishaMon): compressor off = standby, defrost entity on = defrost, valve on DHW = hot water, otherwise heating. |
+| Diverter valve | The valve entity (on, `Tank` or `DHW` = hot water), otherwise the mode. |
+| Heating circuit active | Circuit pump, else circuit mode, else "heat pump is heating". |
+| PV / battery / grid flows | Only from your own sensors; the card does not split power itself. A flow is animated above 10 W. |
+| Error chip | Any error entity of the preset (or `errors`) with a value ≠ 0 or state on. |
+
+Each preset section above lists the entities it uses.
+
 ![UI editor](docs/editor.jpg)
 
 ## Topology
@@ -232,10 +252,10 @@ Pull requests for other brands are very welcome.
 - **Questions, ideas, showing off your setup?** Join the [Home Assistant Community thread](https://community.home-assistant.io/t/card-heatpump-flow-card-animated-hydraulic-schematic-for-heat-pumps-lambda-viessmann-vaillant-bosch-buderus-panasonic/1029598).
 
 ## Development
-`test/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, light/dark) without Home Assistant. Open it via a local web server.
+`demo/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, light/dark, English/German) without Home Assistant. It is published as the [live demo](https://sturmi77.github.io/heatpump-flow-card/demo/) via GitHub Pages; locally, open it through any static web server.
 
 ## Deutsch (Kurzfassung)
-Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Nur Lambda ist bisher mit einer echten Anlage getestet, alle anderen Voreinstellungen noch nicht – Rückmeldungen gern als Issue. Andere Hersteller werden über `entities` und `mode_map` angebunden. Heizkreis wahlweise als Flächenheizung oder Heizkörper. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch.
+Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Nur Lambda ist bisher mit einer echten Anlage getestet, alle anderen Voreinstellungen noch nicht – Rückmeldungen gern als Issue. Andere Hersteller werden über `entities` und `mode_map` angebunden. Heizkreis wahlweise als Flächenheizung oder Heizkörper. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-flow-card/demo/).
 
 ## License
 MIT © 2026 Sturmi77

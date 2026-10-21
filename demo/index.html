@@ -3,24 +3,83 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Heatpump Flow Card – dev preview</title>
+<title>Heatpump Flow Card – live demo</title>
+<meta name="description" content="Animated hydraulic schematic card for heat pumps in Home Assistant – try every preset with simulated data.">
 <style>
-  body { margin: 0; padding: 16px; font-family: Roboto, system-ui, sans-serif; background: #f5f5f5;
-    --primary-text-color: #212121; --secondary-text-color: #727272; --card-background-color: #fff;
-    --secondary-background-color: #f0f0f0; --divider-color: rgba(0,0,0,.12); }
-  body.dark { background: #111; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
-    --card-background-color: #1c1c1c; --secondary-background-color: #2a2a2a; --divider-color: rgba(255,255,255,.12); }
+  :root {
+    --bg: #f3f4f6; --surface: #ffffff; --text: #1f2937; --muted: #6b7280; --line: rgba(0,0,0,.12);
+    --accent: #ea580c; --accent-soft: #fff1e8; --code: #f8fafc;
+    /* Home Assistant variables the card reads */
+    --primary-text-color: #212121; --secondary-text-color: #6b6b6b; --card-background-color: #fff;
+    --secondary-background-color: #f0f0f0; --divider-color: rgba(0,0,0,.12);
+  }
+  :root.dark {
+    --bg: #0f1115; --surface: #1c1c1e; --text: #e5e7eb; --muted: #9ca3af; --line: rgba(255,255,255,.12);
+    --accent: #fb923c; --accent-soft: #3a2416; --code: #15171c;
+    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --card-background-color: #1c1c1c;
+    --secondary-background-color: #2a2a2a; --divider-color: rgba(255,255,255,.12);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 Roboto, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+  header h1 { margin: 0 0 4px; font-size: 26px; }
+  header p { margin: 0; color: var(--muted); }
+  .links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
+  a { color: var(--accent); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; margin-top: 20px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
   ha-card { display: block; background: var(--card-background-color); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
-  .bar { margin-bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
-  button { padding: 6px 10px; } button.sel { outline: 2px solid #f97316; }
-  .wrap { max-width: 1100px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .panel + .panel { margin-top: 14px; }
+  .panel h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .opts { display: flex; flex-direction: column; gap: 4px; }
+  .opts.row { flex-direction: row; flex-wrap: wrap; }
+  button { font: inherit; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 10px; cursor: pointer; text-align: left; }
+  button:hover { border-color: var(--accent); }
+  button.sel { background: var(--accent-soft); border-color: var(--accent); }
+  button small { display: block; color: var(--muted); font-size: 12px; }
+  pre { margin: 0; background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow-x: auto;
+    font: 12.5px/1.45 ui-monospace, Consolas, monospace; }
+  .yhead { display: flex; justify-content: space-between; align-items: center; }
+  .yhead button { padding: 2px 8px; font-size: 12px; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  .warn { display: none; margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); font-size: 14px; }
+  @media (prefers-reduced-motion: reduce) { .warn { display: block; } }
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100% - 32px);
+    background: #111827; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.on { opacity: 1; }
 </style>
 </head>
 <body>
-<div class="bar" id="setups"></div>
-<div class="bar" id="states"></div>
-<div class="bar"><button onclick="document.body.classList.toggle('dark')">light / dark</button></div>
-<div class="wrap" id="wrap"></div>
+<main>
+  <header>
+    <h1>Heatpump Flow Card</h1>
+    <p>Live demo with simulated heat pumps – no Home Assistant needed. Pick a heat pump and an operating state.</p>
+    <div class="links">
+      <a href="https://github.com/Sturmi77/heatpump-flow-card">GitHub repository and docs</a>
+      <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Sturmi77&amp;repository=heatpump-flow-card&amp;category=plugin">Install via HACS</a>
+      <a href="https://github.com/Sturmi77/heatpump-flow-card/issues/new?template=preset_feedback.yml">Preset feedback</a>
+      <a href="https://community.home-assistant.io/t/card-heatpump-flow-card-animated-hydraulic-schematic-for-heat-pumps-lambda-viessmann-vaillant-bosch-buderus-panasonic/1029598">Community thread</a>
+    </div>
+    <div class="warn">Your system asks for reduced motion, so the card shows no animations – just like it would in Home Assistant. To see the flow, turn animations back on in your operating system (Windows: Settings → Accessibility → Visual effects → Animation effects).</div>
+  </header>
+  <div class="layout">
+    <section>
+      <div id="wrap"></div>
+      <p class="note">Click any part of the card: in Home Assistant it opens the more-info dialog of that entity.</p>
+    </section>
+    <aside>
+      <div class="panel"><h2>Heat pump</h2><div class="opts" id="setups"></div>
+        <p class="note">Only the Lambda preset is tested on a real installation. The others are built from the integrations' source code – feedback welcome.</p></div>
+      <div class="panel"><h2>Operating state</h2><div class="opts row" id="states"></div></div>
+      <div class="panel"><h2>Display</h2><div class="opts row" id="display"></div></div>
+      <div class="panel"><div class="yhead"><h2>Card configuration</h2><button id="copy">Copy</button></div><pre id="yaml"></pre>
+        <p class="note">Entities not listed are found by the preset.</p></div>
+    </aside>
+  </div>
+</main>
+<div id="toast"></div>
 <script src="../dist/heatpump-flow-card.js"></script>
 <script>
 /* ---------- simulated installations ---------- */
@@ -54,10 +113,10 @@ const lambdaStates = (x, s) => {
   return out;
 };
 const extras = (s) => ({
-  'sensor.lambda_raumtemperatur_mittel': '22.8', 'sensor.lambda_strom_taglich': '5.111', 'sensor.lambda_wp_pv_anteil_heute': '24',
-  'sensor.lambda_kompressor_starts_taglich': '3',
-  'sensor.lambda_wp_aus_pv': s === 'heat' ? '820' : '0', 'sensor.lambda_wp_aus_batterie': s === 'dhw' ? '1650' : '0',
-  'sensor.lambda_wp_aus_netz': s === 'heat' ? '420' : '0', 'input_boolean.lambda_boost_aktiv': s === 'dhw' ? 'on' : 'off',
+  'sensor.living_room_temperature': '22.8', 'sensor.heatpump_energy_today': '5.1', 'sensor.heatpump_pv_share_today': '24',
+  'sensor.heatpump_power_from_pv': s === 'heat' ? '820' : '0', 'sensor.heatpump_power_from_battery': s === 'dhw' ? '1650' : '0',
+  'sensor.heatpump_power_from_grid': s === 'heat' ? '420' : (s === 'defrost' ? '900' : '0'),
+  'input_boolean.heatpump_boost': s === 'dhw' ? 'on' : 'off',
 });
 const otherStates = (s) => ({
   'sensor.wp_betriebsart': { heat: 'Heating', dhw: 'Hot water', defrost: 'Defrost', idle: 'Standby' }[s],
@@ -127,74 +186,119 @@ const hmStates = (s) => ({
 });
 const regOf = (fn, platform) => Object.fromEntries(Object.keys(fn('heat')).map((id) => [id, { platform }]));
 
-const setups = {
-  'Lambda (Mike, legacy prefix)': {
-    states: (s) => ({ ...lambdaStates('lambdaeu10l_', s), ...extras(s) }),
+const setups = [
+  {
+    name: 'Lambda', sub: 'legacy naming, with PV/battery split and Boost badge',
+    states: (s) => ({ ...lambdaStates('eu08l_', s), ...extras(s) }),
     config: {
-      preset: 'lambda', prefix: 'lambdaeu10l', title: 'Lambda · Hydraulik', language: 'de',
+      preset: 'lambda', title: 'Lambda', hc_type: 'radiator',
       entities: {
-        room: 'sensor.lambda_raumtemperatur_mittel', pv: 'sensor.lambda_wp_aus_pv', battery: 'sensor.lambda_wp_aus_batterie',
-        grid: 'sensor.lambda_wp_aus_netz', energy_today: 'sensor.lambda_strom_taglich', pv_share_today: 'sensor.lambda_wp_pv_anteil_heute',
-        starts_today: 'sensor.lambda_kompressor_starts_taglich',
+        room: 'sensor.living_room_temperature', pv: 'sensor.heatpump_power_from_pv', battery: 'sensor.heatpump_power_from_battery',
+        grid: 'sensor.heatpump_power_from_grid', energy_today: 'sensor.heatpump_energy_today', pv_share_today: 'sensor.heatpump_pv_share_today',
       },
-      badges: [{ entity: 'input_boolean.lambda_boost_aktiv', label: '🚀 Boost' }],
+      badges: [{ entity: 'input_boolean.heatpump_boost', label: 'Boost' }],
     },
   },
-  'Lambda (new naming, English, zero-config)': {
+  {
+    name: 'Lambda', sub: 'new naming, zero-config',
     states: (s) => lambdaStates('', s),
     config: { preset: 'lambda' },
   },
-  'Viessmann (ViCare, German ids, radiators)': {
+  {
+    name: 'Viessmann Vitocal', sub: 'ViCare, German entity ids, radiators',
     states: vicareStates,
     registry: Object.fromEntries(Object.entries(vicareReg).map(([id, tk]) => [id, { platform: 'vicare', translation_key: tk }])),
     config: { preset: 'vicare', title: 'Vitocal', hc_type: 'radiator' },
   },
-  'Vaillant (myPyllant)': {
+  {
+    name: 'Vaillant aroTHERM plus', sub: 'myPyllant',
     states: vaillantStates,
     registry: { 'sensor.zuhause_energy_manager_state': { platform: 'mypyllant' } },
-    config: { preset: 'vaillant', title: 'aroTHERM plus', language: 'en' },
+    config: { preset: 'vaillant', title: 'aroTHERM plus' },
   },
-  'EMS-ESP (Buderus/Bosch, German enums)': {
+  {
+    name: 'Buderus / Bosch', sub: 'EMS-ESP, German enum texts',
     states: emsStates, registry: regOf(emsStates, 'mqtt'),
     config: { preset: 'emsesp', title: 'Buderus WLW' },
   },
-  'Panasonic Aquarea (HeishaMon, radiators)': {
+  {
+    name: 'Panasonic Aquarea', sub: 'HeishaMon, radiators',
     states: hmStates, registry: regOf(hmStates, 'aquarea'),
-    config: { preset: 'heishamon', title: 'Aquarea', hc_type: 'radiator', language: 'en' },
+    config: { preset: 'heishamon', title: 'Aquarea', hc_type: 'radiator' },
   },
-  'Other brand (no preset, no buffer, no power sources)': {
+  {
+    name: 'Any other heat pump', sub: 'no preset: manual mapping, no buffer, no power sources',
     states: otherStates,
     config: {
-      title: 'Heat pump', language: 'en',
+      title: 'Heat pump',
       entities: { mode: 'sensor.wp_betriebsart', flow: 'sensor.wp_vorlauf', return: 'sensor.wp_ruecklauf', power: 'sensor.wp_leistung',
         dhw_top: 'sensor.ww_temperatur', outdoor: 'sensor.aussen', hc_pump: 'binary_sensor.heizkreispumpe' },
       mode_map: { Heating: 'heating', 'Hot water': 'dhw', Defrost: 'defrost', Standby: 'idle' },
     },
   },
-};
+];
+const scenarios = [['heat', 'Heating'], ['dhw', 'Hot water'], ['defrost', 'Defrost'], ['idle', 'Standby + error']];
 
-let cur = Object.keys(setups)[0]; let scen = 'heat';
+const q = new URLSearchParams(location.search);
+let cur = Math.min(Math.max(+q.get('setup') || 0, 0), setups.length - 1);
+let scen = scenarios.some(([k]) => k === q.get('s')) ? q.get('s') : 'heat';
+let lang = q.get('lang') === 'de' ? 'de' : 'en';
+let dark = q.has('dark') ? q.get('dark') === '1' : matchMedia('(prefers-color-scheme: dark)').matches;
+
+// Minimal YAML writer for the card config (strings, numbers, nested objects, lists of objects).
+const yv = (v) => (typeof v === 'string' && (!/^[\w.\-:/ ]+$/.test(v) || /: /.test(v)) ? JSON.stringify(v) : String(v));
+function yaml(obj, ind = '') {
+  return Object.entries(obj).map(([k, v]) => {
+    const key = /^[\w]+$/.test(k) ? k : JSON.stringify(k);
+    if (Array.isArray(v)) return `${ind}${key}:\n` + v.map((o) => ind + '  - ' + yaml(o, ind + '    ').slice(ind.length + 4)).join('\n');
+    if (v && typeof v === 'object') return `${ind}${key}:\n${yaml(v, ind + '  ')}`;
+    return `${ind}${key}: ${yv(v)}`;
+  }).join('\n');
+}
+
 const wrap = document.getElementById('wrap');
+const toast = document.getElementById('toast');
+let toastTimer;
 function draw() {
+  const setup = setups[cur];
+  document.documentElement.classList.toggle('dark', dark);
   wrap.innerHTML = '';
   const card = document.createElement('heatpump-flow-card');
-  card.setConfig(setups[cur].config);
+  card.setConfig(setup.config);
   wrap.appendChild(card);
   const states = {};
-  for (const [k, v] of Object.entries(setups[cur].states(scen))) {
+  for (const [k, v] of Object.entries(setup.states(scen))) {
     const [state, unit] = Array.isArray(v) ? v : [v];
     states[k] = { entity_id: k, state, attributes: unit ? { unit_of_measurement: unit } : {} };
   }
-  card.hass = { states, entities: setups[cur].registry || {}, locale: { language: 'de' }, language: 'de' };
-  card.addEventListener('hass-more-info', (e) => console.log('more-info', e.detail.entityId));
-  document.querySelectorAll('button[data-s]').forEach((b) => b.classList.toggle('sel', b.dataset.s === cur || b.dataset.s === scen));
+  card.hass = { states, entities: setup.registry || {}, locale: { language: lang }, language: lang };
+  card.addEventListener('hass-more-info', (e) => {
+    toast.textContent = `In Home Assistant this opens the more-info dialog of ${e.detail.entityId}`;
+    toast.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('on'), 2500);
+  });
+  document.getElementById('yaml').textContent = yaml({ type: 'custom:heatpump-flow-card', ...setup.config });
+  document.querySelectorAll('#setups button').forEach((b, i) => b.classList.toggle('sel', i === cur));
+  document.querySelectorAll('#states button').forEach((b) => b.classList.toggle('sel', b.dataset.k === scen));
+  document.querySelectorAll('#display button').forEach((b) => b.classList.toggle('sel', b.dataset.k === lang || b.dataset.k === (dark ? 'dark' : 'light')));
+  const p = new URLSearchParams({ setup: cur, s: scen, lang, dark: dark ? 1 : 0 });
+  history.replaceState(null, '', `?${p}`);
 }
-const mk = (bar, label, key, fn) => { const b = document.createElement('button'); b.textContent = label; b.dataset.s = key; b.onclick = fn; document.getElementById(bar).appendChild(b); };
-Object.keys(setups).forEach((k) => mk('setups', k, k, () => { cur = k; draw(); }));
-[['heat', 'Heizen'], ['dhw', 'Warmwasser'], ['defrost', 'Abtauen'], ['idle', 'Standby + Fehler']].forEach(([k, l]) => mk('states', l, k, () => { scen = k; draw(); }));
-const q = new URLSearchParams(location.search);
-if (q.get('setup')) cur = Object.keys(setups)[+q.get('setup')];
-if (q.get('s')) scen = q.get('s');
+const mk = (bar, html, key, fn) => {
+  const b = document.createElement('button'); b.innerHTML = html; b.dataset.k = key; b.onclick = () => { fn(); draw(); };
+  document.getElementById(bar).appendChild(b);
+};
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+setups.forEach((s, i) => mk('setups', `${esc(s.name)}<small>${esc(s.sub)}</small>`, String(i), () => { cur = i; }));
+scenarios.forEach(([k, l]) => mk('states', l, k, () => { scen = k; }));
+mk('display', 'English', 'en', () => { lang = 'en'; });
+mk('display', 'Deutsch', 'de', () => { lang = 'de'; });
+mk('display', 'Light', 'light', () => { dark = false; });
+mk('display', 'Dark', 'dark', () => { dark = true; });
+document.getElementById('copy').onclick = async (e) => {
+  try { await navigator.clipboard.writeText(document.getElementById('yaml').textContent); e.target.textContent = 'Copied'; }
+  catch { e.target.textContent = 'Select and copy'; }
+  setTimeout(() => { e.target.textContent = 'Copy'; }, 1500);
+};
 draw();
 </script>
 </body>

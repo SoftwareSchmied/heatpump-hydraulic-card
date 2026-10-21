@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- Live demo on GitHub Pages (`demo/`, formerly `test/index.html`): all presets and scenarios, light/dark, English/German, with the matching card configuration.
+- README: "Where the numbers come from" section, link to the live demo and the community thread; emojis removed.
+
 ## 0.3.1 – 2026-10-19
 - README: animated demo GIF, "Open in HACS" button, CI and release badges, feedback section.
 - Issue templates: bug report and preset feedback / new brand.
