@@ -347,6 +347,12 @@ const HFC_EDITOR = {
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
     from_preset: 'Found by the preset',
+    sec_advanced: 'Advanced',
+    warn_title: 'Missing in the card',
+    warn_running: 'No operating mode, compressor, status or power: the card cannot tell whether the heat pump runs.',
+    warn_power: 'No electrical power: no live COP, and no PV / battery / grid split from the Energy dashboard.',
+    warn_temps: 'No flow or return temperature: no spread and no estimated heat output.',
+    warn_heat: 'No heat output and no flow rate: no live COP.',
     preset_help: 'Found entities are filled in below. Pick another entity to override one, clear a field to hide it.',
     from_energy: 'Empty: taken from the Energy dashboard',
     detected: 'Detected', entities_found: 'entities', not_detected: 'Not found in this Home Assistant - check the integration, the prefix or choose another preset',
@@ -377,6 +383,12 @@ const HFC_EDITOR = {
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
     from_preset: 'Von der Voreinstellung gefunden',
+    sec_advanced: 'Erweitert',
+    warn_title: 'Fehlt in der Karte',
+    warn_running: 'Keine Betriebsart, kein Verdichter, kein Status und keine Leistung: Die Karte kann nicht erkennen, ob die Wärmepumpe läuft.',
+    warn_power: 'Keine Leistungsaufnahme: kein Live-COP und keine Aufteilung PV / Akku / Netz aus dem Energie-Dashboard.',
+    warn_temps: 'Kein Vor- oder Rücklauf: keine Spreizung und keine geschätzte Wärmeleistung.',
+    warn_heat: 'Keine Wärmeleistung und kein Volumenstrom: kein Live-COP.',
     preset_help: 'Gefundene Entitäten sind unten eingetragen. Andere Entität wählen zum Überschreiben, Feld leeren zum Ausblenden.',
     from_energy: 'Leer: aus dem Energie-Dashboard',
     detected: 'Erkannt', entities_found: 'Entitäten', not_detected: 'In diesem Home Assistant nicht gefunden - Integration und Präfix prüfen oder andere Voreinstellung wählen',
@@ -463,6 +475,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const hcCount = config ? Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3) : 3;
     const keep = (name) => !(/^hc2_/.test(name) && hcCount < 2) && !(/^hc3_/.test(name) && hcCount < 3);
     const groups = Object.entries(HFC_ENTITY_GROUPS).filter(([sec]) => keep(sec.replace('sec_', '') + '_'));
+    const hcTypeSel = (name) => ({ name, selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } });
     const entitySchema = (key) => ({
       name: key,
       selector: { entity: HFC_BINARY_KEYS.includes(key) ? { domain: ['binary_sensor', 'switch', 'input_boolean', 'sensor'] } : {} },
@@ -475,18 +488,10 @@ class HeatpumpFlowCard extends HTMLElement {
         },
         {
           type: 'grid', name: '', schema: [
-            { name: 'prefix', selector: { text: {} } },
-            { name: 'device', selector: { device: {} } },
             { name: 'title', selector: { text: {} } },
-            { name: 'language', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' }] } } },
-            { name: 'hc_type', selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } },
-            { name: 'power_threshold', selector: { number: { min: 0, max: 2000, step: 10, mode: 'box', unit_of_measurement: 'W' } } },
-            { name: 'power_sources', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: L.ps_auto }, { value: 'manual', label: L.ps_manual }] } } },
-            { name: 'source_type', selector: { select: { mode: 'dropdown', options: ['air', 'brine', 'water'].map((v) => ({ value: v, label: L[`src_${v}`] })) } } },
+            hcTypeSel('hc_type'),
             { name: 'hc_count', selector: { number: { min: 1, max: 3, step: 1, mode: 'box' } } },
-            ...['hc2_type', 'hc3_type'].filter(keep).map((name) => ({ name, selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } })),
-            ...['hc_name', 'hc2_name', 'hc3_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
-            { name: 'details_open', selector: { boolean: {} } },
+            ...['hc2_type', 'hc3_type'].filter(keep).map(hcTypeSel),
           ],
         },
         {
@@ -496,6 +501,20 @@ class HeatpumpFlowCard extends HTMLElement {
         ...groups.map(([sec, keys]) => ({
           type: 'expandable', name: 'entities', title: L[sec], schema: keys.map(entitySchema),
         })),
+        {
+          type: 'expandable', name: 'advanced', flatten: true, title: L.sec_advanced, schema: [{
+            type: 'grid', name: '', schema: [
+              { name: 'prefix', selector: { text: {} } },
+              { name: 'device', selector: { device: {} } },
+              { name: 'source_type', selector: { select: { mode: 'dropdown', options: ['air', 'brine', 'water'].map((v) => ({ value: v, label: L[`src_${v}`] })) } } },
+              { name: 'power_sources', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: L.ps_auto }, { value: 'manual', label: L.ps_manual }] } } },
+              { name: 'power_threshold', selector: { number: { min: 0, max: 2000, step: 10, mode: 'box', unit_of_measurement: 'W' } } },
+              { name: 'language', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' }] } } },
+              ...['hc_name', 'hc2_name', 'hc3_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
+              { name: 'details_open', selector: { boolean: {} } },
+            ],
+          }],
+        },
       ],
       // Keys of circuits 2 and 3 reuse the labels of circuit 1 (hc2_flow → hc_flow).
       computeLabel: (s) => L[s.name] || L[String(s.name).replace(/^hc[23]_/, 'hc_')] || (HFC_I18N[lang] || HFC_I18N.en).det[s.name] || s.name,
@@ -1434,6 +1453,8 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     if (!this._form) {
       this._form = document.createElement('ha-form');
       this._form.addEventListener('value-changed', (ev) => { ev.stopPropagation(); this._changed(ev.detail.value); });
+      this._warn = document.createElement('div');
+      this.appendChild(this._warn);
       this.appendChild(this._form);
     }
     const r = HeatpumpFlowCard._resolve(this._config, this._hass);
@@ -1444,6 +1465,18 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     const shown = { ...this._fromPreset };
     Object.entries(own).forEach(([k, v]) => { if (v === null || v === 'none') delete shown[k]; else if (v) shown[k] = v; });
     const found = Object.keys(this._fromPreset).length;
+    // Core entities the card needs; warn about what is missing (not while a preset is not detected, its field says so).
+    const has = (k) => { const id = r.entities[k]; return !!(id && this._hass.states[id]); };
+    const warn = [];
+    if (!(r.preset && !r.ready)) {
+      if (!['mode', 'compressor', 'status', 'power'].some(has)) warn.push(L.warn_running);
+      if (!has('power')) warn.push(L.warn_power);
+      if (!has('flow') || !has('return')) warn.push(L.warn_temps);
+      if (!has('heat') && !has('volume')) warn.push(L.warn_heat);
+    }
+    const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const html = warn.length ? `<ha-alert alert-type="info" title="${esc(L.warn_title)}"><ul style="margin:0;padding-left:18px">${warn.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></ha-alert>` : '';
+    if (this._warn._html !== html) { this._warn.innerHTML = html; this._warn._html = html; this._warn.style.marginBottom = html ? '12px' : '0'; }
     this._form.hass = this._hass;
     this._form.schema = schema;
     this._form.computeLabel = computeLabel;
