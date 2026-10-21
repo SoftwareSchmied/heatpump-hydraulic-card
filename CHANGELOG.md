@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 – 2026-10-21
+Your own stat tiles, with costs and actions.
 - Customizable stat tiles (`tiles`): pick tiles, order and period (`now`, `today`, `yesterday`, `week`, `month`, `year`, `total`) from a catalog of more than 40 tiles – COP per mode, SPF, electricity and heat per mode (including defrost and standby), starts, cycles, defrosts, hours, runtime per start, load classes, heater hours and starts, live values, PV and solar thermal yield, cost. Free entities can be mixed in. Without `tiles` nothing changes; `tiles: []` hides the row.
 - Presets map the tiles: Lambda (periods day/month/year/total, cycles, defrost and standby energy), ViCare (COP, SPF, consumption per period, hours, load classes, heater rod, PV, solar thermal), EMS-ESP (totals per mode), HeishaMon (heat and electricity as current power), Vaillant (daily energy per mode).
 - Periods an integration does not provide come from the long-term statistics of its total counters (`recorder/statistic_during_period`); a COP for a period is computed as heat ÷ electricity (marked ≈).
 - Card editor: "Own tile selection" with a sortable list of the tiles this installation can fill.
+- Cost tile with a card-wide `price` (number or entity, also in the editor) and `currency`. With a dynamic tariff the card bills every hour at that hour's mean price from the long-term statistics, the current hour at the current price; year and total use daily and monthly values (≈). ct/kWh and per-MWh prices are converted.
+- Tile actions: `tap_action`, `hold_action` and `double_tap_action` on every tile (also `stats`), handled by Home Assistant (navigate, url, toggle, perform-action, more-info, none, confirmation). The default stays more-info.
+- Self-test: 248 checks.
 
 ## 0.4.3 – 2026-10-21
 - Detection: Viessmann (ViCare) and EMS-ESP gas boilers are no longer taken for heat pumps; ViCare needs a compressor entity, EMS-ESP needs heat pump entities (`hpactivity` / `hptc1`). The Lambda preset only accepts entities of the lambda_heat_pumps integration.

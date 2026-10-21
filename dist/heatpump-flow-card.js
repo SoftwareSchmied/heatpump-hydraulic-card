@@ -7,7 +7,7 @@
  *
  * https://github.com/Sturmi77/heatpump-flow-card · MIT License
  */
-const HFC_VERSION = '0.4.3';
+const HFC_VERSION = '0.5.0';
 
 /* ------------------------------------------------------------------ */
 /* Presets                                                             */
@@ -445,7 +445,9 @@ const HFC_EDITOR = {
     sec_advanced: 'Advanced',
     tiles_custom: 'Own tile selection', tiles: 'Tiles (drag to sort)',
     tiles_custom_help: 'Off: default tiles. On: pick tiles and periods from what this installation provides; an empty list hides the row.',
-    tiles_yaml: 'Some tiles have their own name, entity or price: edit them in YAML.',
+    tiles_yaml: 'Some tiles have their own name, entity, price or action: edit them in YAML.',
+    price_fixed: 'Electricity price per kWh', price_entity: 'Electricity price entity (dynamic tariff)',
+    price_help: 'Enables the cost tile. With an entity that has long-term statistics, the cost is billed per hour.',
     untested: 'untested',
     untested_help: 'Not yet tested on a real installation. Please report whether it works: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
     warn_title: 'Missing in the card',
@@ -486,7 +488,9 @@ const HFC_EDITOR = {
     sec_advanced: 'Erweitert',
     tiles_custom: 'Eigene Kachelauswahl', tiles: 'Kacheln (zum Sortieren ziehen)',
     tiles_custom_help: 'Aus: Standardkacheln. An: Kacheln und Zeiträume aus dem wählen, was diese Anlage liefert; eine leere Liste blendet die Zeile aus.',
-    tiles_yaml: 'Einige Kacheln haben einen eigenen Namen, eine eigene Entität oder einen Preis: im YAML bearbeiten.',
+    tiles_yaml: 'Einige Kacheln haben einen eigenen Namen, eine eigene Entität, einen Preis oder eine Aktion: im YAML bearbeiten.',
+    price_fixed: 'Strompreis je kWh', price_entity: 'Strompreis-Entität (dynamischer Tarif)',
+    price_help: 'Schaltet die Kostenkachel frei. Mit einer Entität mit Langzeitstatistik werden die Kosten stundengenau abgerechnet.',
     untested: 'ungetestet',
     untested_help: 'Noch nicht mit einer echten Anlage getestet. Bitte melden, ob es funktioniert: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
     warn_title: 'Fehlt in der Karte',
@@ -538,6 +542,8 @@ const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'hc2_pump', 'hc3_pump
 const HFC_PERIODS = ['now', 'today', 'yesterday', 'week', 'month', 'year', 'total'];
 // Periods that can be taken from the long-term statistics of a total counter: [calendar period, offset].
 const HFC_STAT_PERIODS = { today: ['day', 0], yesterday: ['day', -1], week: ['week', 0], month: ['month', 0], year: ['year', 0] };
+// Home Assistant actions a tile can carry (more-info, navigate, url, toggle, perform-action …).
+const HFC_ACTIONS = ['tap_action', 'hold_action', 'double_tap_action'];
 const HFC_TILES = {
   cop_live: { live: true },
   cop_heating: { kind: 'cop', legacy: 'cop_heating_today', ratio: ['heat_heating', 'energy_heating'] },
@@ -559,7 +565,7 @@ const HFC_TILES = {
   compressor_speed: { live: true }, source_spread: { live: true }, outdoor: { live: true }, dhw_top: { live: true }, room: { live: true },
   pv_share: { live: true },
   pv_production: { kind: 'energy' }, solar_thermal: { kind: 'energy' },
-  cost: { kind: 'cost' },
+  cost: { kind: 'cost', periods: ['today', 'yesterday', 'week', 'month', 'year', 'total'] },
 };
 
 /* ------------------------------------------------------------------ */
@@ -637,6 +643,13 @@ class HeatpumpFlowCard extends HTMLElement {
         ...(tiles ? [{ name: 'tiles_custom', selector: { boolean: {} } }] : []),
         ...(tiles && tiles.editable && Array.isArray(config.tiles)
           ? [{ name: 'tiles', selector: { select: { multiple: true, reorder: true, mode: 'dropdown', options: tiles.options } } }] : []),
+        // Price for the cost tile: a fixed number or an entity (both write `price`).
+        ...(tiles && Array.isArray(config.tiles) ? [{
+          type: 'grid', name: '', schema: [
+            { name: 'price_fixed', selector: { number: { min: 0, max: 10, step: 0.001, mode: 'box' } } },
+            { name: 'price_entity', selector: { entity: { domain: ['sensor', 'input_number', 'number'] } } },
+          ],
+        }] : []),
         ...groups.map(([sec, keys]) => ({
           type: 'expandable', name: 'entities', title: L[sec], schema: keys.map(entitySchema),
         })),
@@ -680,6 +693,11 @@ class HeatpumpFlowCard extends HTMLElement {
         if (s && s.period !== undefined && !HFC_PERIODS.includes(s.period)) throw new Error(`Unknown tile period "${s.period}". Available: ${HFC_PERIODS.join(', ')}`);
       });
     }
+    [config, ...(config.tiles || []), ...(config.stats || [])].forEach((s) => {
+      if (!s || typeof s !== 'object') return;
+      if (s.price !== undefined && s.price !== null && !['number', 'string'].includes(typeof s.price)) throw new Error('price must be a number or an entity');
+      HFC_ACTIONS.forEach((a) => { if (s[a] !== undefined && (!s[a] || typeof s[a] !== 'object')) throw new Error(`${a} must be an action, e.g. {action: navigate, navigation_path: /energy}`); });
+    });
     this._config = config;
     const preset = HFC_PRESETS[config.preset];
     this._preset = preset;
@@ -1057,7 +1075,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const tap = (ev) => this._tap(ev);
     this._$('svg').addEventListener('click', tap);
     this.shadowRoot.querySelector('.head').addEventListener('click', tap);
-    this._$('stats').addEventListener('click', tap);
+    this._tileEvents(this._$('stats'));
     const drawer = this._$('drawer-body');
     if (drawer) {
       drawer.addEventListener('click', tap);
@@ -1160,7 +1178,9 @@ class HeatpumpFlowCard extends HTMLElement {
     const probe = Object.assign(Object.create(HeatpumpFlowCard.prototype), { _hass: hass, _e: r.entities, _tileMap: r.tiles, _config: config });
     const options = [];
     const periodsOf = {};
-    Object.keys(HFC_TILES).filter((k) => k !== 'cost').forEach((key) => {
+    // The cost tile needs a price (global `price`).
+    const hasPrice = config.price !== undefined && config.price !== null && config.price !== '';
+    Object.keys(HFC_TILES).filter((k) => k !== 'cost' || hasPrice).forEach((key) => {
       const periods = probe._tilePeriods(key);
       periodsOf[key] = periods;
       periods.forEach((p) => options.push({ value: periods.length === 1 ? key : `${key}:${p}`, label: probe._tileLabel(key, p, I) }));
@@ -1239,21 +1259,106 @@ class HeatpumpFlowCard extends HTMLElement {
     return Number.isFinite(v) ? this._toBase(v, st.attributes?.unit_of_measurement, kind, period) : NaN;
   }
 
-  // Change of a total counter over a calendar period from the recorder's long-term statistics, refreshed every 5 minutes.
-  _statChange(id, kind, period) {
+  // Result of a recorder query, cached per instance and refreshed every 5 minutes: undefined while loading, null on error.
+  _wsCached(key, msg, pick) {
     this._statCache = this._statCache || {};
-    const key = `${id}|${period}`;
     const c = this._statCache[key];
     if ((!c || (!c.req && Date.now() - c.t > 300000)) && typeof this._hass.callWS === 'function') {
-      const [calendar, offset] = HFC_STAT_PERIODS[period];
       this._statCache[key] = { ...(c || {}), req: true, t: Date.now() };
-      this._hass.callWS({ type: 'recorder/statistic_during_period', statistic_id: id, calendar: { period: calendar, offset }, types: ['change'] })
-        .then((res) => { this._statCache[key] = { v: res?.change, t: Date.now() }; })
+      this._hass.callWS(msg)
+        .then((res) => { this._statCache[key] = { v: pick(res), t: Date.now() }; })
         .catch(() => { this._statCache[key] = { v: null, t: Date.now() }; })
         .then(() => { if (this._rendered) { try { this._update(); } catch (err) { this._fail(err); } } });
     }
-    const v = this._statCache[key]?.v;
+    return this._statCache[key]?.v;
+  }
+
+  // Change of a total counter over a calendar period from the recorder's long-term statistics.
+  _statChange(id, kind, period) {
+    const [calendar, offset] = HFC_STAT_PERIODS[period];
+    const v = this._wsCached(`${id}|${period}`, { type: 'recorder/statistic_during_period', statistic_id: id, calendar: { period: calendar, offset }, types: ['change'] }, (res) => res?.change);
     return typeof v === 'number' ? this._toBase(v, this._hass.states[id]?.attributes?.unit_of_measurement, kind, period) : NaN;
+  }
+
+  // Price per kWh from the tile's or the card's `price`: a number or an entity; ct/kWh and per-MWh prices are converted.
+  _price(spec) {
+    const p = spec.price ?? this._config.price;
+    if (typeof p === 'number') return { v: p };
+    const st = typeof p === 'string' && this._hass.states[p];
+    if (!st) return typeof p === 'string' && p.trim() !== '' && Number.isFinite(+p) ? { v: +p } : null;
+    const u = String(st.attributes?.unit_of_measurement || '').toLowerCase();
+    const f = (/ct|cent/.test(u) ? 0.01 : 1) * (/\/\s*mwh/.test(u) ? 0.001 : /\/\s*wh/.test(u) ? 1000 : 1);
+    return { v: parseFloat(st.state) * f, f, id: p, stats: !!st.attributes?.state_class };
+  }
+
+  // Energy counter with long-term statistics for the cost of a period.
+  _costStatId(period) {
+    const counter = (id) => ['total', 'total_increasing'].includes(this._hass.states[id]?.attributes?.state_class);
+    const src = this._tileSource('energy', period);
+    if (src?.stat) return src.stat;
+    if (src?.id && counter(src.id)) return src.id;
+    const total = this._tileMap.energy?.total;
+    return total && counter(total) ? total : null;
+  }
+
+  // Start (and end) of a calendar period in the Home Assistant time zone, and the statistics granularity used for costs.
+  _periodRange(period) {
+    const opts = { hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', weekday: 'short' };
+    let fmt;
+    try { fmt = new Intl.DateTimeFormat('en-US', { ...opts, timeZone: this._hass.config?.time_zone }); } catch (err) { fmt = new Intl.DateTimeFormat('en-US', opts); }
+    const parts = (t) => Object.fromEntries(fmt.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+    // Wall-clock midnight in the time zone as UTC; two passes cover daylight saving changes.
+    const midnight = (y, m, d) => {
+      const wall = Date.UTC(y, m, d); let t = wall;
+      for (let n = 0; n < 2; n++) { const q = parts(t); t = wall - (Date.UTC(+q.year, +q.month - 1, +q.day, +q.hour, +q.minute, +q.second) - t); }
+      return new Date(t).toISOString();
+    };
+    const p = parts(Date.now()); const y = +p.year; const m = +p.month - 1; const d = +p.day;
+    const weekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(p.weekday);
+    return {
+      today: [midnight(y, m, d), null, 'hour'],
+      yesterday: [midnight(y, m, d - 1), midnight(y, m, d), 'hour'],
+      week: [midnight(y, m, d - weekday), null, 'hour'],
+      month: [midnight(y, m, 1), null, 'hour'],
+      year: [midnight(y, 0, 1), null, 'day'],
+      total: [new Date(0).toISOString(), null, 'month'],
+    }[period] || null;
+  }
+
+  // Electricity × mean price per hour (per day for the year, per month in total) from the long-term statistics.
+  _priceBuckets(energy, price, period) {
+    const range = this._periodRange(period);
+    if (!range) return null;
+    const [start, end, gran] = range;
+    const msg = {
+      type: 'recorder/statistics_during_period', start_time: start, ...(end ? { end_time: end } : {}),
+      statistic_ids: [energy, price], period: gran, types: ['change', 'mean'], units: { energy: 'kWh' },
+    };
+    return this._wsCached(`cost|${energy}|${price}|${period}`, msg, (res) => {
+      const means = new Map((res?.[price] || []).map((r) => [new Date(r.start).getTime(), r.mean]));
+      let cost = 0; let kwh = 0; let last = NaN;
+      (res?.[energy] || []).forEach((r) => {
+        const p = means.get(new Date(r.start).getTime());
+        if (Number.isFinite(p)) last = p;
+        if (Number.isFinite(r.change) && Number.isFinite(last)) { cost += r.change * last; kwh += r.change; }
+      });
+      return means.size ? { cost, kwh, coarse: gran !== 'hour' } : null;
+    });
+  }
+
+  // [cost, approximate]: a fixed price × electricity; a price entity with statistics is billed per hour, the hour
+  // not yet in the statistics at the current price. Without statistics: electricity × current price (≈).
+  _cost(period, spec) {
+    const kwh = this._srcValue(this._tileSource('energy', period), 'energy', period);
+    const price = this._price(spec);
+    if (!price || !Number.isFinite(kwh)) return [NaN];
+    if (!price.id) return [kwh * price.v];
+    const energy = price.stats && this._costStatId(period);
+    const b = energy ? this._priceBuckets(energy, price.id, period) : null;
+    if (b === undefined) return [NaN];
+    if (!b) return [kwh * price.v, true];
+    const rest = kwh - b.kwh;
+    return [b.cost * price.f + (rest > 0.0005 ? rest * price.v : 0), b.coarse];
   }
 
   _srcValue(src, kind, period) {
@@ -1283,15 +1388,13 @@ class HeatpumpFlowCard extends HTMLElement {
       return sum > 0 ? `${hrs.map((h) => this._fmt(Number.isFinite(h) ? (h / sum) * 100 : NaN, 0)).join(' · ')} %` : '–';
     }
     if (src.cost) {
-      // price: a number or an entity (e.g. a dynamic tariff); currency from the Home Assistant settings.
-      const kwh = this._srcValue(this._tileSource('energy', period), 'energy', period);
-      const price = typeof spec.price === 'number' ? spec.price : parseFloat(this._hass.states[spec.price]?.state);
-      const v = kwh * price;
+      // Currency from the tile, the card or the Home Assistant settings.
+      const [v, approx] = this._cost(period, spec);
       if (!Number.isFinite(v)) return '–';
-      const currency = spec.currency || this._hass.config?.currency || 'EUR';
+      const currency = spec.currency || this._config.currency || this._hass.config?.currency || 'EUR';
       try {
-        return v.toLocaleString(this._hass.locale?.language || this._lang, { style: 'currency', currency, minimumFractionDigits: dec(2), maximumFractionDigits: dec(2) });
-      } catch (err) { return out(v, 2, currency); }
+        return `${approx ? '≈' : ''}${v.toLocaleString(this._hass.locale?.language || this._lang, { style: 'currency', currency, minimumFractionDigits: dec(2), maximumFractionDigits: dec(2) })}`;
+      } catch (err) { return `${approx ? '≈' : ''}${out(v, 2, currency)}`; }
     }
     const v = this._srcValue(src, def.kind, period);
     const approx = src.ratio ? '≈' : '';
@@ -1342,13 +1445,13 @@ class HeatpumpFlowCard extends HTMLElement {
       const def = HFC_TILES[spec.key];
       if (!def) {
         const st = spec.entity && this._hass.states[spec.entity];
-        if (st) out.push([spec.name || st.attributes.friendly_name || spec.entity, this._fmtState(null, spec), spec.entity]);
+        if (st) out.push([spec.name || st.attributes.friendly_name || spec.entity, this._fmtState(null, spec), spec.entity, spec]);
         return;
       }
       if (def.live) {
         if (!this._liveAvail(spec.key)) return;
         const [text, entity] = this._liveTile(spec.key, L);
-        out.push([spec.name || this._tileLabel(spec.key, 'now'), text, entity]);
+        out.push([spec.name || this._tileLabel(spec.key, 'now'), text, entity, spec]);
         return;
       }
       // A catalog key with an own entity uses the key's label and formatting.
@@ -1358,7 +1461,7 @@ class HeatpumpFlowCard extends HTMLElement {
       let text = this._tileText(spec.key, period, src, spec);
       const share = this._n('pv_share_today');
       if (spec.key === 'energy' && period === 'today' && Number.isFinite(share)) text += ` · ${this._fmt(share, 0)} % ${i.pv_share}`;
-      out.push([spec.name || this._tileLabel(spec.key, spec.entity && !spec.period ? '' : period), text, this._tileEntity(src, period)]);
+      out.push([spec.name || this._tileLabel(spec.key, spec.entity && !spec.period ? '' : period), text, this._tileEntity(src, period), spec]);
     });
     return out;
   }
@@ -1499,9 +1602,46 @@ class HeatpumpFlowCard extends HTMLElement {
 
   _tap(ev) {
     const el = ev.composedPath().find((n) => n.dataset && n.dataset.entity);
-    if (!el) return;
+    if (el) this._moreInfo(el.dataset.entity);
+  }
+
+  _moreInfo(entityId) {
     const e = new Event('hass-more-info', { bubbles: true, composed: true });
-    e.detail = { entityId: el.dataset.entity };
+    e.detail = { entityId };
+    this.dispatchEvent(e);
+  }
+
+  // Tiles: tap, hold (500 ms) and double tap (within 250 ms, only waited for when configured).
+  _tileEvents(box) {
+    let timer = null; let held = false; let pending = null;
+    const actOf = (ev) => {
+      const el = ev.composedPath().find((n) => n.dataset && n.dataset.tile !== undefined);
+      return el ? this._tileActs?.[+el.dataset.tile] : null;
+    };
+    box.addEventListener('pointerdown', (ev) => {
+      const a = actOf(ev);
+      held = false; clearTimeout(timer);
+      if (a?.hold_action) timer = setTimeout(() => { held = true; this._tileAction(a, 'hold'); }, 500);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => box.addEventListener(t, () => clearTimeout(timer)));
+    box.addEventListener('contextmenu', (ev) => { if (actOf(ev)?.hold_action) ev.preventDefault(); });
+    box.addEventListener('click', (ev) => {
+      const a = actOf(ev);
+      if (!a) return;
+      if (held) { held = false; return; }
+      if (!a.double_tap_action) { this._tileAction(a, 'tap'); return; }
+      if (pending) { clearTimeout(pending); pending = null; this._tileAction(a, 'double_tap'); return; }
+      pending = setTimeout(() => { pending = null; this._tileAction(a, 'tap'); }, 250);
+    });
+  }
+
+  // Configured actions go to Home Assistant's action handler (hass-action), so all standard actions and confirmations work.
+  _tileAction(a, action) {
+    const cfg = a[`${action}_action`];
+    if (!cfg) { if (action === 'tap' && a.entity) this._moreInfo(a.entity); return; }
+    if (cfg.action === 'none') return;
+    const e = new Event('hass-action', { bubbles: true, composed: true });
+    e.detail = { config: a, action };
     this.dispatchEvent(e);
   }
 
@@ -1697,9 +1837,11 @@ class HeatpumpFlowCard extends HTMLElement {
       const st = this._hass.states[s.entity]; if (!st) return;
       const v = parseFloat(st.state);
       const unit = s.unit ?? st.attributes.unit_of_measurement ?? '';
-      tiles.push([s.name || st.attributes.friendly_name || s.entity, Number.isFinite(v) ? `${this._fmt(v, s.decimals ?? 1)} ${unit}`.trim() : st.state, s.entity]);
+      tiles.push([s.name || st.attributes.friendly_name || s.entity, Number.isFinite(v) ? `${this._fmt(v, s.decimals ?? 1)} ${unit}`.trim() : st.state, s.entity, s]);
     });
-    const html = tiles.map(([l, v, id]) => `<div class="stat" data-entity="${this._esc(id)}"><div class="sv">${this._esc(v)}</div><div class="sl">${this._esc(l)}</div></div>`).join('');
+    // Actions per tile (default: more-info of the tile's entity).
+    this._tileActs = tiles.map(([, , id, s]) => ({ entity: id, ...Object.fromEntries(HFC_ACTIONS.filter((a) => s && s[a]).map((a) => [a, s[a]])) }));
+    const html = tiles.map(([l, v, id], n) => `<div class="stat" data-tile="${n}" data-entity="${this._esc(id)}"><div class="sv">${this._esc(v)}</div><div class="sl">${this._esc(l)}</div></div>`).join('');
     const box = this._$('stats');
     if (box._html !== html) { box.innerHTML = html; box._html = html; box.style.display = tiles.length ? '' : 'none'; }
     this._updateControls();
@@ -1813,7 +1955,7 @@ HeatpumpFlowCard.styles = `
   .drow span { color: var(--hfc-muted); }
   .drow b { white-space: nowrap; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 6px; margin-top: 6px; }
-  .stat { cursor: pointer; background: var(--secondary-background-color, rgba(127,127,127,.1)); border-radius: 10px; padding: 6px 8px; text-align: center; }
+  .stat { cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; background: var(--secondary-background-color, rgba(127,127,127,.1)); border-radius: 10px; padding: 6px 8px; text-align: center; }
   .sv { font-weight: 700; font-size: 1.05em; color: var(--primary-text-color); }
   .sl { font-size: .78em; color: var(--hfc-muted); }
   @keyframes hfc-dash { to { stroke-dashoffset: -40; } }
@@ -1880,6 +2022,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
         return r.preset.tested ? status : `${status} ${L.untested_help}`;
       }
       if (s.name === 'tiles_custom') return tiles.editable ? L.tiles_custom_help : L.tiles_yaml;
+      if (s.name === 'price_entity') return L.price_help;
       if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
       if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;
       return '';
@@ -1887,6 +2030,12 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     const custom = Array.isArray(this._config.tiles);
     const data = { ...this._config, entities: shown, tiles_custom: custom };
     if (custom && tiles.editable) data.tiles = tiles.value;
+    this._priceShown = custom;
+    if (custom) {
+      const p = this._config.price;
+      data.price_fixed = typeof p === 'number' ? p : undefined;
+      data.price_entity = typeof p === 'string' ? p : undefined;
+    }
     this._form.data = data;
   }
 
@@ -1909,6 +2058,12 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     if (Object.keys(ents).length) config.entities = ents; else delete config.entities;
     // Tiles: off = default tiles; switched on = start from the default set; tiles with own options stay as in YAML.
     delete config.tiles_custom;
+    delete config.price_fixed; delete config.price_entity;
+    if (this._priceShown) {
+      if (value.price_entity) config.price = value.price_entity;
+      else if (Number.isFinite(value.price_fixed)) config.price = value.price_fixed;
+      else delete config.price;
+    }
     if (!value.tiles_custom) delete config.tiles;
     else if (!Array.isArray(this._config.tiles)) config.tiles = this._tiles.defaults;
     else if (!this._tiles.editable) config.tiles = this._config.tiles;

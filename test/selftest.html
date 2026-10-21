@@ -81,7 +81,8 @@
   for (const cfg of edge) { const card = mount(cfg, hassOf(toStates({ 'sensor.h': '7', 'sensor.d': 'weird' }))); check(ok(card), `edge config ${JSON.stringify(cfg)}`); card.remove(); }
 
   // 4. invalid configs give a readable error
-  for (const cfg of [{ preset: 'foo' }, { hc_type: 'x' }, { source_type: 'lava' }, null, { tiles: ['nope'] }, { tiles: ['cop_heating:fortnight'] }, { tiles: 'cop_heating' }]) {
+  for (const cfg of [{ preset: 'foo' }, { hc_type: 'x' }, { source_type: 'lava' }, null, { tiles: ['nope'] }, { tiles: ['cop_heating:fortnight'] }, { tiles: 'cop_heating' },
+    { price: { v: 1 } }, { tiles: [{ key: 'spread', tap_action: 'navigate' }] }, { stats: [{ entity: 'sensor.x', hold_action: true }] }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -208,6 +209,114 @@
     check(JSON.stringify(out.tiles) === '["spread","cop_heating:month"]', 'editor writes the selection in order');
     ed._changed({ ...out, tiles_custom: false });
     check(!('tiles' in out), 'editor switches back to the default tiles');
+  }
+
+  // 9. cost tile (fixed price, dynamic tariff billed per hour) and tile actions
+  {
+    const s = setups[4];
+    const ems = 'sensor.ems_esp_boiler_nrgconstotal';
+    const t0 = Date.UTC(2026, 9, 21, 0); const H = 3600000;
+    let sent = null;
+    const costHass = (price, extra = {}) => {
+      const states = toStates({ ...s.states('heat'), [ems]: { state: '5000', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } }, 'sensor.epex': price, ...extra });
+      const h = hassOf(states, s.registry || {}, null, s);
+      h.config = { time_zone: 'Europe/Vienna', currency: 'EUR' };
+      h.callWS = (m) => {
+        if (m.type === 'recorder/statistic_during_period') {
+          const v = m.statistic_id === ems ? { day: 10, year: 3000 }[m.calendar.period] : emsStatistics[m.statistic_id]?.[m.calendar.period === 'day' ? 'today' : m.calendar.period];
+          return v === undefined ? Promise.reject(new Error('none')) : Promise.resolve({ change: v });
+        }
+        if (m.type === 'recorder/statistics_during_period') {
+          sent = m;
+          // Two compiled hours: 4 kWh at 20 ct, 5 kWh at 30 ct; the remaining 1 kWh of today is billed at the current 25 ct.
+          return Promise.resolve({ [ems]: [{ start: t0, end: t0 + H, change: 4 }, { start: t0 + H, end: t0 + 2 * H, change: 5 }],
+            'sensor.epex': [{ start: t0, end: t0 + H, mean: 20 }, { start: t0 + H, end: t0 + 2 * H, mean: 30 }] });
+        }
+        return Promise.reject(new Error('n/a'));
+      };
+      return h;
+    };
+    const costOf = async (cfg, hass) => {
+      const card = mount({ ...s.config, ...cfg }, hass);
+      await wait(30);
+      const t = Object.fromEntries(tileRows(card)); card.remove();
+      return t;
+    };
+    const fixed = await costOf({ price: 0.3, tiles: ['cost'] }, costHass('25'));
+    check(fixed['Cost · today'] === '€3.00', `fixed global price (${fixed['Cost · today']})`);
+    const dyn = await costOf({ price: 'sensor.epex', tiles: ['cost', 'cost:year'] }, costHass({ state: '25', attributes: { unit_of_measurement: 'ct/kWh', state_class: 'measurement' } }));
+    check(dyn['Cost · today'] === '€2.55', `dynamic tariff billed per hour (${dyn['Cost · today']})`);
+    check(sent && sent.statistic_ids.includes(ems) && sent.statistic_ids.includes('sensor.epex') && sent.units.energy === 'kWh' && sent.types.includes('mean'), `hourly statistics query (${JSON.stringify(sent)})`);
+    check(/^≈€/.test(dyn['Cost · year'] || ''), `year cost from daily statistics is approximate (${dyn['Cost · year']})`);
+    const plain = await costOf({ price: 'sensor.epex', tiles: ['cost'] }, costHass(['0.25', 'EUR/kWh']));
+    check(plain['Cost · today'] === '≈€2.50', `price entity without statistics: current price (${plain['Cost · today']})`);
+    const mwh = await costOf({ tiles: [{ key: 'cost', price: 'sensor.epex' }] }, costHass(['250', 'EUR/MWh']));
+    check(mwh['Cost · today'] === '≈€2.50', `per-MWh price converted (${mwh['Cost · today']})`);
+    const noPrice = await costOf({ tiles: ['cost', 'spread'] }, costHass('25'));
+    check(!('Cost · today' in noPrice) || noPrice['Cost · today'] === '–', 'cost without a price shows no value');
+
+    // calendar periods in the Home Assistant time zone
+    const probe = Object.assign(Object.create(C.prototype), { _hass: { config: { time_zone: 'Europe/Vienna' } } });
+    const wall = (iso, tz) => new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', weekday: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric' }).format(new Date(iso));
+    const [today, , g] = probe._periodRange('today');
+    check(/, 00:00$/.test(wall(today, 'Europe/Vienna')) && g === 'hour', `today starts at local midnight (${today} = ${wall(today, 'Europe/Vienna')})`);
+    const [week] = probe._periodRange('week');
+    check(/Mon, 00:00$/.test(wall(week, 'Europe/Vienna')), `week starts on Monday (${wall(week, 'Europe/Vienna')})`);
+    const [ys, ye] = probe._periodRange('yesterday');
+    check(ye === today && (Date.parse(ye) - Date.parse(ys)) / H >= 23 && (Date.parse(ye) - Date.parse(ys)) / H <= 25, 'yesterday ends at the start of today');
+    probe._hass = { config: { time_zone: 'America/New_York' } };
+    const [ny] = probe._periodRange('month');
+    check(/^1, 00:00$/.test(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', day: 'numeric', hour: 'numeric', minute: 'numeric' }).format(new Date(ny))), `month start in another time zone (${ny})`);
+    probe._hass = { config: { time_zone: 'Not/AZone' } };
+    check(!!probe._periodRange('today'), 'unknown time zone falls back to the browser');
+
+    // editor: global price enables the cost tile
+    const hass = costHass('25');
+    const o = C._tileOptions({ ...s.config, price: 0.3 }, C._resolve(s.config, hass), hass).options.map((x) => x.value);
+    check(o.includes('cost:month') && o.includes('cost:today') && !o.includes('cost:now'), `editor offers cost with a price (${o.filter((v) => v.startsWith('cost')).join(',')})`);
+    const ed = document.createElement('heatpump-flow-card-editor');
+    let out;
+    ed.addEventListener('config-changed', (ev) => { out = ev.detail.config; });
+    ed.setConfig({ preset: 'emsesp', tiles: ['spread'] }); ed.hass = hass;
+    ed._changed({ preset: 'emsesp', tiles_custom: true, tiles: ['spread'], price_fixed: 0.31 });
+    check(out.price === 0.31 && !('price_fixed' in out) && !('price_entity' in out), `editor writes a fixed price (${JSON.stringify(out)})`);
+    ed._changed({ ...out, tiles_custom: true, price_fixed: 0.31, price_entity: 'sensor.epex' });
+    check(out.price === 'sensor.epex', 'editor prefers the price entity');
+    ed._changed({ ...out, tiles_custom: true, price_fixed: undefined, price_entity: undefined });
+    check(!('price' in out), 'editor clears the price');
+  }
+  {
+    const s = setups[0];
+    const card = mount({ ...s.config, tiles: [{ key: 'spread', tap_action: { action: 'navigate', navigation_path: '/energy' } }, 'outdoor',
+      { key: 'cop_heating', hold_action: { action: 'more-info' }, double_tap_action: { action: 'navigate', navigation_path: '/history' } }, { key: 'starts', tap_action: { action: 'none' } }] },
+    hassOf(toStates(s.states('heat'))));
+    await wait(20);
+    const ev = [];
+    card.addEventListener('hass-action', (e) => ev.push(['action', e.detail.action, e.detail.config]));
+    card.addEventListener('hass-more-info', (e) => ev.push(['more-info', e.detail.entityId]));
+    const tile = (n) => card.shadowRoot.querySelector(`#stats .stat[data-tile="${n}"]`);
+    tile(0).click();
+    check(ev.length === 1 && ev[0][1] === 'tap' && ev[0][2].tap_action.navigation_path === '/energy' && /flow/.test(ev[0][2].entity), `tap_action goes to hass-action (${JSON.stringify(ev)})`);
+    ev.length = 0; tile(1).click();
+    check(ev.length === 1 && ev[0][0] === 'more-info' && /outdoor|outside|ambient/.test(ev[0][1]), `default tap opens more-info (${JSON.stringify(ev)})`);
+    ev.length = 0; tile(3).click();
+    check(ev.length === 0, 'action none does nothing');
+    ev.length = 0;
+    tile(2).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+    await wait(600);
+    tile(2).dispatchEvent(new PointerEvent('pointerup', { bubbles: true, composed: true }));
+    tile(2).click();
+    await wait(300);
+    check(ev.length === 1 && ev[0][1] === 'hold', `hold_action after 500 ms, no tap afterwards (${JSON.stringify(ev)})`);
+    ev.length = 0; tile(2).click(); tile(2).click();
+    await wait(300);
+    check(ev.length === 1 && ev[0][1] === 'double_tap' && ev[0][2].double_tap_action.navigation_path === '/history', `double_tap_action (${JSON.stringify(ev)})`);
+    ev.length = 0; tile(2).click();
+    check(ev.length === 0, 'single tap waits for a possible double tap');
+    await wait(300);
+    check(ev.length === 1 && ev[0][0] === 'more-info', `then falls back to more-info (${JSON.stringify(ev)})`);
+    check(!C._tileOptions({ ...s.config, tiles: [{ key: 'spread', tap_action: { action: 'none' } }] }, C._resolve(s.config, card._hass), card._hass).editable, 'tiles with actions are YAML only');
+    card.remove();
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);
