@@ -44,6 +44,8 @@ const HFC_PRESETS = {
         volume: `${hp}_volume_flow_heat_sink`,
         source_volume: `${hp}_volume_flow_energy_source`,
         source_in: `${hp}_energy_source_inlet_temperature`,
+        source_out: `${hp}_energy_source_outlet_temperature`,
+        heater: `${hp}_relais_state_2nd_heating_stage`,
         outdoor: `sensor.${x}ambient_temperature_calculated`,
         dhw_top: `${boil}_actual_high_temperature`,
         dhw_bottom: `${boil}_actual_low_temperature`,
@@ -108,6 +110,7 @@ const HFC_PRESETS = {
         return: s('secondary_circuit_return_temperature', 'return_temperature'),
         volume: s('volumetric_flow'),
         source_in: s('primary_circuit_supply_temperature'),
+        source_out: s('primary_circuit_return_temperature'),
         outdoor: s('outside_temperature'),
         dhw_top: s('dhw_storage_top_temperature', 'dhw_storage_temperature'),
         dhw_bottom: s('dhw_storage_bottom_temperature'),
@@ -192,6 +195,8 @@ const HFC_PRESETS = {
         return: s('boiler_hptc0', 'boiler_rettemp'),
         volume: s('boiler_pc0flow'),
         source_in: s('boiler_hptl2', 'boiler_hpbrinein'),
+        source_out: s('boiler_hpbrineout'),
+        heater: b('auxheaterstatus').concat(s('boiler_auxheaterlevel')),
         outdoor: s('boiler_outdoortemp', 'thermostat_outdoortemp'),
         dhw_top: s('boiler_dhw_curtemp', 'boiler_wwcurtemp', 'boiler_dhw_storagetemp1'),
         dhw_bottom: s('boiler_dhw_storagetemp2'),
@@ -219,12 +224,14 @@ const HFC_PRESETS = {
       const id = ctx.match(/^sensor\.(.+)_main_main_outlet_temp$/, 'aquarea');
       return id === undefined ? undefined : id.replace(/^sensor\./, '').replace(/_main_main_outlet_temp$/, '');
     },
-    entities: (p) => {
+    entities: (p, i) => {
       const m = `${p}_main_`;
+      const z = `z${i.hc}`;
       return {
         compressor: `sensor.${m}compressor_freq`,
         valve: `sensor.${m}threeway_valve_state`,
         defrost: [`binary_sensor.${m}defrosting_state`, `switch.${m}defrosting_state`],
+        heater: [`binary_sensor.${m}internal_heater_state`, `sensor.${m}internal_heater_state`],
         power: `sensor.${m}heat_power_consumption`,
         heat: `sensor.${m}heat_power_production`,
         flow: `sensor.${m}main_outlet_temp`,
@@ -233,8 +240,8 @@ const HFC_PRESETS = {
         outdoor: `sensor.${m}outside_temp`,
         dhw_top: `sensor.${m}dhw_temp`,
         dhw_target: [`number.${m}dhw_target_temp`, `sensor.${m}dhw_target_temp`],
-        hc_flow: `sensor.${m}z1_water_temp`,
-        hc_setpoint: `sensor.${m}main_target_temp`,
+        hc_flow: `sensor.${m}${z}_water_temp`,
+        hc_setpoint: i.hc === 1 ? `sensor.${m}main_target_temp` : undefined,
         room: `sensor.${m}z1_temp`,
       };
     },
@@ -248,6 +255,7 @@ const HFC_I18N = {
   en: {
     title: 'Heat pump', heat_pump: 'Heat pump', dhw: 'Hot water', buffer: 'Buffer', heating_circuit: 'Heating circuit',
     house: 'Rooms', running: 'running', compressor_off: 'Compressor off', source_in: 'Air inlet', outdoor: 'Outdoor',
+    brine_in: 'Brine in', brine_out: 'Brine out', well_in: 'Well in', well_out: 'Well out',
     source_flow: 'Source', target: 'Target', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW',
     valve_heating: 'Heating', valve_cooling: 'Cooling', pv: 'PV', battery: 'Battery', grid: 'Grid',
     stat_cop_heating: 'COP heating today', stat_cop_dhw: 'COP DHW today', stat_energy: 'Energy today',
@@ -260,6 +268,7 @@ const HFC_I18N = {
   de: {
     title: 'Wärmepumpe', heat_pump: 'Wärmepumpe', dhw: 'Warmwasser', buffer: 'Puffer', heating_circuit: 'Heizkreis',
     house: 'Wohnräume', running: 'läuft', compressor_off: 'Verdichter aus', source_in: 'Luft-Eintritt', outdoor: 'Außen',
+    brine_in: 'Sole ein', brine_out: 'Sole aus', well_in: 'Brunnen ein', well_out: 'Brunnen aus',
     source_flow: 'Quelle', target: 'Soll', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW',
     valve_heating: 'Heizen', valve_cooling: 'Kühlen', pv: 'PV', battery: 'Akku', grid: 'Netz',
     stat_cop_heating: 'COP Heizen heute', stat_cop_dhw: 'COP WW heute', stat_energy: 'Strom heute',
@@ -276,6 +285,12 @@ const HFC_EDITOR = {
     preset: 'Preset', prefix: 'Prefix (empty = auto-detect)', device: 'Device (optional, restricts the preset)',
     title: 'Title', language: 'Language', power_threshold: 'Running above (W)', hc_type: 'Heat emitter',
     power_sources: 'PV / battery / grid', ps_auto: 'Energy dashboard, unless set below', ps_manual: 'Only the sensors below',
+    source_type: 'Heat source', src_air: 'Air', src_brine: 'Ground (brine)', src_water: 'Groundwater',
+    hc_count: 'Heating circuits', hc2_type: 'Circuit 2 emitter', hc3_type: 'Circuit 3 emitter',
+    hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
+    sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3',
+    source_out: 'Source outlet temperature', heater: 'Backup / inline heater active',
+    dhw_heater: 'DHW heater rod active', buffer_heater: 'Buffer heater rod active',
     hc_underfloor: 'Underfloor heating', hc_radiator: 'Radiators',
     sec_hp: 'Heat pump', sec_storage: 'Storage', sec_hc: 'Heating circuit & house', sec_power: 'Power sources', sec_stats: 'Statistics',
     mode: 'Operating mode', status: 'Status / sub-state', compressor: 'Compressor running (binary or frequency)', defrost: 'Defrost active (binary)', power: 'Electrical power',
@@ -295,6 +310,12 @@ const HFC_EDITOR = {
     preset: 'Voreinstellung', prefix: 'Präfix (leer = automatisch erkennen)', device: 'Gerät (optional, schränkt die Voreinstellung ein)',
     title: 'Titel', language: 'Sprache', power_threshold: 'Läuft ab (W)', hc_type: 'Wärmeabgabe',
     power_sources: 'PV / Akku / Netz', ps_auto: 'Energie-Dashboard, außer unten gesetzt', ps_manual: 'Nur die Sensoren unten',
+    source_type: 'Wärmequelle', src_air: 'Luft', src_brine: 'Erdreich (Sole)', src_water: 'Grundwasser',
+    hc_count: 'Heizkreise', hc2_type: 'Wärmeabgabe Heizkreis 2', hc3_type: 'Wärmeabgabe Heizkreis 3',
+    hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
+    sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3',
+    source_out: 'Quelle Austritt', heater: 'Heizstab / Zusatzheizer aktiv',
+    dhw_heater: 'Heizstab Warmwasser aktiv', buffer_heater: 'Heizstab Puffer aktiv',
     hc_underfloor: 'Flächenheizung', hc_radiator: 'Heizkörper',
     sec_hp: 'Wärmepumpe', sec_storage: 'Speicher', sec_hc: 'Heizkreis & Haus', sec_power: 'Stromquellen', sec_stats: 'Kennzahlen',
     mode: 'Betriebsart', status: 'Status / Unterzustand', compressor: 'Verdichter läuft (binär oder Frequenz)', defrost: 'Abtauen aktiv (binär)', power: 'Leistungsaufnahme',
@@ -313,13 +334,15 @@ const HFC_EDITOR = {
 };
 
 const HFC_ENTITY_GROUPS = {
-  sec_hp: ['mode', 'status', 'compressor', 'defrost', 'power', 'heat', 'flow', 'return', 'volume', 'source_volume', 'source_in', 'outdoor', 'valve'],
-  sec_storage: ['dhw_top', 'dhw_bottom', 'dhw_target', 'dhw_mode', 'circulation', 'buffer_top', 'buffer_bottom', 'buffer_mode'],
+  sec_hp: ['mode', 'status', 'compressor', 'defrost', 'power', 'heat', 'flow', 'return', 'volume', 'source_volume', 'source_in', 'source_out', 'outdoor', 'valve', 'heater'],
+  sec_storage: ['dhw_top', 'dhw_bottom', 'dhw_target', 'dhw_mode', 'circulation', 'dhw_heater', 'buffer_top', 'buffer_bottom', 'buffer_mode', 'buffer_heater'],
   sec_hc: ['hc_flow', 'hc_return', 'hc_setpoint', 'hc_mode', 'hc_pump', 'hc_volume', 'room', 'room_target'],
+  sec_hc2: ['hc2_flow', 'hc2_return', 'hc2_setpoint', 'hc2_mode', 'hc2_pump', 'hc2_volume'],
+  sec_hc3: ['hc3_flow', 'hc3_return', 'hc3_setpoint', 'hc3_mode', 'hc3_pump', 'hc3_volume'],
   sec_power: ['pv', 'battery', 'grid'],
   sec_stats: ['cop_heating_today', 'cop_dhw_today', 'energy_today', 'pv_share_today', 'starts_today'],
 };
-const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'circulation', 'defrost'];
+const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'hc2_pump', 'hc3_pump', 'circulation', 'defrost', 'heater', 'dhw_heater', 'buffer_heater'];
 
 /* ------------------------------------------------------------------ */
 /* Card                                                                */
@@ -370,13 +393,18 @@ class HeatpumpFlowCard extends HTMLElement {
             { name: 'hc_type', selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } },
             { name: 'power_threshold', selector: { number: { min: 0, max: 2000, step: 10, mode: 'box', unit_of_measurement: 'W' } } },
             { name: 'power_sources', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: L.ps_auto }, { value: 'manual', label: L.ps_manual }] } } },
+            { name: 'source_type', selector: { select: { mode: 'dropdown', options: ['air', 'brine', 'water'].map((v) => ({ value: v, label: L[`src_${v}`] })) } } },
+            { name: 'hc_count', selector: { number: { min: 1, max: 3, step: 1, mode: 'box' } } },
+            ...['hc2_type', 'hc3_type'].map((name) => ({ name, selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } })),
+            ...['hc_name', 'hc2_name', 'hc3_name'].map((name) => ({ name, selector: { text: {} } })),
           ],
         },
         ...Object.entries(HFC_ENTITY_GROUPS).map(([sec, keys]) => ({
           type: 'expandable', name: 'entities', title: L[sec], schema: keys.map(entitySchema),
         })),
       ],
-      computeLabel: (s) => L[s.name] || s.name,
+      // Keys of circuits 2 and 3 reuse the labels of circuit 1 (hc2_flow → hc_flow).
+      computeLabel: (s) => L[s.name] || L[String(s.name).replace(/^hc[23]_/, 'hc_')] || s.name,
     };
   }
 
@@ -385,8 +413,11 @@ class HeatpumpFlowCard extends HTMLElement {
     if (config.preset && config.preset !== 'none' && !HFC_PRESETS[config.preset]) {
       throw new Error(`Unknown preset "${config.preset}". Available: ${Object.keys(HFC_PRESETS).join(', ')}`);
     }
-    if (config.hc_type && !['underfloor', 'radiator'].includes(config.hc_type)) {
-      throw new Error('hc_type must be "underfloor" or "radiator"');
+    ['hc_type', 'hc2_type', 'hc3_type'].forEach((k) => {
+      if (config[k] && !['underfloor', 'radiator'].includes(config[k])) throw new Error(`${k} must be "underfloor" or "radiator"`);
+    });
+    if (config.source_type && !['air', 'brine', 'water'].includes(config.source_type)) {
+      throw new Error('source_type must be "air", "brine" or "water"');
     }
     this._config = config;
     const preset = HFC_PRESETS[config.preset];
@@ -403,6 +434,9 @@ class HeatpumpFlowCard extends HTMLElement {
     this._statLabels = preset?.stat_labels || {};
     this._badges = config.badges || [];
     this._hcType = config.hc_type || preset?.hc_type || 'underfloor';
+    this._hcCount = Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3);
+    this._hcTypes = [this._hcType, config.hc2_type || 'underfloor', config.hc3_type || 'underfloor'];
+    this._sourceType = config.source_type || 'air';
     this._threshold = Number.isFinite(+config.power_threshold) && config.power_threshold !== '' && config.power_threshold !== undefined ? +config.power_threshold : 100;
     this._needsBuild = true;
     this._lastTry = 0;
@@ -426,11 +460,16 @@ class HeatpumpFlowCard extends HTMLElement {
     prefix = String(prefix || '').trim().toLowerCase();
     const raw = preset ? preset.entities(prefix, this._idx, ctx) : {};
     const e = {};
-    Object.entries(raw).forEach(([k, v]) => {
+    const take = (k, v) => {
       const list = (Array.isArray(v) ? v : [v]).filter(Boolean);
       const hit = list.find((id) => this._hass.states[id]) || list[0];
       if (hit) e[k] = hit;
-    });
+    };
+    Object.entries(raw).forEach(([k, v]) => take(k, v));
+    for (let n = 2; preset && n <= this._hcCount; n++) {
+      const rawN = preset.entities(prefix, { ...this._idx, hc: this._idx.hc + n - 1 }, ctx);
+      Object.entries(rawN).filter(([k]) => k.startsWith('hc_')).forEach(([k, v]) => take(`hc${n}_${k.slice(3)}`, v));
+    }
     // User entities override the preset; null or "none" removes a preset entity, an empty editor field keeps it.
     Object.entries(config.entities || {}).forEach(([k, v]) => {
       if (v === null || v === 'none') delete e[k];
@@ -494,7 +533,7 @@ class HeatpumpFlowCard extends HTMLElement {
     return { pv: hp * pvHome / total, battery: hp * discharge / total, grid: hp * imp / total };
   }
 
-  getCardSize() { return 9; }
+  getCardSize() { return 9 + (this._hcCount || 1) * 3 - 3; }
   getGridOptions() { return { columns: 'full', min_columns: 6, rows: 'auto' }; }
 
   set hass(hass) {
@@ -531,6 +570,16 @@ class HeatpumpFlowCard extends HTMLElement {
     return v;
   }
   _on(key) { return ['on', 'true', 'open', '1'].includes(String(this._s(key)).toLowerCase()); }
+  // Heater level: 0 = off, 1 = on / stage 1, 2-3 = stage. Binary, on/off text, power (> 0) or a stage number.
+  _level(key) {
+    if (!this._has(key)) return 0;
+    const s = String(this._s(key)).toLowerCase();
+    if (['on', 'true', 'open'].includes(s)) return 1;
+    const v = parseFloat(s);
+    if (!Number.isFinite(v) || v <= 0) return 0;
+    return ['w', 'kw', '%'].includes(this._unit(key)) ? 1 : Math.min(Math.round(v), 3);
+  }
+  _hk(n, key) { return n === 1 ? `hc_${key}` : `hc${n}_${key}`; }
   _norm(map, raw) { if (raw === undefined) return ''; return map[raw] || map[String(raw).toUpperCase()] || map[String(raw).toLowerCase()] || String(raw).toLowerCase(); }
   _fmt(v, d = 1) {
     const loc = this._hass?.locale?.language || this._lang;
@@ -566,6 +615,9 @@ class HeatpumpFlowCard extends HTMLElement {
       house: this._has('room') || this._has('room_target'),
       circ: this._has('circulation'),
       hcType: this._hcType,
+      hcs: this._hcCount > 1 ? this._hcTypes.slice(0, this._hcCount).join() : '',
+      src: this._sourceType,
+      heaters: ['heater', 'dhw_heater', 'buffer_heater'].map((k) => (this._has(k) ? 1 : 0)).join(''),
       lang: this._lang,
     };
     this._parts = parts;
@@ -573,25 +625,24 @@ class HeatpumpFlowCard extends HTMLElement {
   }
 
   /* ---------- render ---------- */
-  _emitter() {
-    const i = this._i;
-    if (this._hcType === 'radiator') {
+  _emitter(type, title) {
+    if (type === 'radiator') {
       // Radiator: flow enters top left, return leaves bottom left, heat waves rise above.
-      const ribs = Array.from({ length: 8 }, (_, n) => `<rect class="rib" x="${838 + n * 14}" y="352" width="9" height="116" rx="4"/>`).join('');
+      const ribs = Array.from({ length: 8 }, (_, n) => `<rect class="rib" x="${838 + n * 14}" y="352" width="9" height="116" rx="4" style="fill:url(#g-rad__S__)"/>`).join('');
       return {
         vl: 'M640 360 H826',
         body: 'M826 365 H940 M940 455 H826',
         rl: 'M826 455 H805 Q785 455 785 475 Q785 495 765 495 H640',
-        title: `<text class="tank-title" x="888" y="296" text-anchor="middle">${i.heating_circuit}</text>`,
+        title: `<text class="tank-title" x="888" y="296" text-anchor="middle">${title}</text>`,
         art: `<rect class="radiator" x="826" y="345" width="126" height="130" rx="10"/>${ribs}
-          <g class="waves" id="waves">${[855, 888, 921].map((x) => `<path class="wave" d="M${x} 336 q7 -7 0 -14 q-7 -7 0 -14"/>`).join('')}</g>`,
+          <g class="waves" id="waves__S__">${[855, 888, 921].map((x) => `<path class="wave" d="M${x} 336 q7 -7 0 -14 q-7 -7 0 -14"/>`).join('')}</g>`,
       };
     }
     return {
       vl: 'M640 360 H800',
       body: 'M800 360 H935 Q955 360 955 380 Q955 400 935 400 H825 Q805 400 805 420 Q805 440 825 440 H935 Q955 440 955 460 Q955 480 935 480 H800',
       rl: 'M800 480 Q785 480 785 490 Q785 495 775 495 H640',
-      title: `<text class="tank-title" x="880" y="320" text-anchor="middle">${i.heating_circuit}</text>`,
+      title: `<text class="tank-title" x="880" y="320" text-anchor="middle">${title}</text>`,
       art: '<rect class="screed" x="795" y="490" width="170" height="10" rx="3"/>',
     };
   }
@@ -608,7 +659,8 @@ class HeatpumpFlowCard extends HTMLElement {
       ? `<path class="pipe" id="p-${id}" d="${d}"/><path class="flow" id="f-${id}" d="${d}"/>` : '');
     const P_SRC = 'M70 70 V118 Q70 140 92 140 H148 Q170 140 170 162 V190';
     const G_SRC = 'M270 70 V118 Q270 140 248 140 H192 Q170 140 170 162 V190';
-    const em = this._emitter();
+    const showHc = P.hc || this._hcCount > 1;
+    const H = 560 + (showHc ? (this._hcCount - 1) * 250 : 0);
 
     this.shadowRoot.innerHTML = `
       <style>${HeatpumpFlowCard.styles}</style>
@@ -621,7 +673,7 @@ class HeatpumpFlowCard extends HTMLElement {
             <span class="chip err" id="chip-err"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20.5h19z" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke-linecap="round"/></svg>${i.error}</span>
           </div>
         </div>
-        <svg viewBox="0 0 1000 560" id="svg" role="img" aria-label="${T}">
+        <svg viewBox="0 0 1000 ${H}" id="svg" role="img" aria-label="${T}">
           <defs>
             <linearGradient id="g-dhw" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-dhw-top"/><stop offset="100%" id="g-dhw-bottom"/></linearGradient>
             <linearGradient id="g-buf" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-buf-top"/><stop offset="100%" id="g-buf-bottom"/></linearGradient>
@@ -641,20 +693,20 @@ class HeatpumpFlowCard extends HTMLElement {
           ${pipePair('rl-buf', 'M520 495 H400 Q380 495 380 475 V380')}
           ${pipePair('rl', 'M380 380 H290')}
           ${P.buffer ? '' : `${pipePair('byp-vl', 'M520 360 H640')}${pipePair('byp-rl', 'M640 495 H520')}`}
-          ${P.hc ? `${em.art}${pipePair('hc-vl', em.vl)}${pipePair('hc-body', em.body)}${pipePair('hc-rl', em.rl)}` : ''}
+          ${showHc ? Array.from({ length: this._hcCount }, (_, n) => this._circuitSvg(n + 1)).join('') : ''}
+          ${this._sourceSvg()}
 
           <g class="tap" ${de('flow')}><text class="pipe-label" id="t-vl" x="346" y="236" text-anchor="middle"></text></g>
           <g class="tap" ${de('volume')}><text class="vol-label" id="t-vol" x="346" y="275" text-anchor="middle"></text></g>
           <g class="tap" ${de('return')}><text class="pipe-label" id="t-rl" x="335" y="406" text-anchor="middle"></text></g>
-          ${P.hc ? `<g class="tap" ${de('hc_flow')}><text class="pipe-label" id="t-hc" x="740" y="334" text-anchor="middle"></text></g>
-            <g class="tap" ${de('hc_volume')}><text class="vol-label" id="t-hc-vol" x="720" y="394" text-anchor="middle"></text></g>` : ''}
 
           <g class="tap" ${de('mode')}>
             <rect class="unit" id="hp-box" x="50" y="190" width="240" height="235" rx="20"/>
             <text class="unit-title" x="170" y="218" text-anchor="middle">${i.heat_pump}</text>
             <circle class="fan-ring" cx="170" cy="288" r="50"/>
             <g class="fan" id="fan">
-              ${[0, 120, 240].map((a) => `<path class="blade" d="M170 288 C160 262 168 246 182 244 C186 262 180 278 170 288Z" transform="rotate(${a} 170 288)"/>`).join('')}
+              ${this._sourceType === 'air' ? [0, 120, 240].map((a) => `<path class="blade" d="M170 288 C160 262 168 246 182 244 C186 262 180 278 170 288Z" transform="rotate(${a} 170 288)"/>`).join('')
+                : '<path class="blade" d="M170 254 L184 288 L156 288Z M170 322 L156 288 L184 288Z"/>'}
               <circle cx="170" cy="288" r="7" class="hub"/>
             </g>
             <g class="snow" id="snow" transform="translate(170 288)"><circle class="snow-bg" r="18"/><g class="snow-flake"><path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/><g transform="rotate(60)"><path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/></g><g transform="rotate(120)"><path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/></g></g></g>
@@ -662,7 +714,8 @@ class HeatpumpFlowCard extends HTMLElement {
             <text class="unit-val" id="t-hp-power" x="170" y="390" text-anchor="middle"></text>
             <text class="unit-val strong" id="t-hp-cop" x="170" y="412" text-anchor="middle"></text>
           </g>
-          <g class="tap" ${de(e.source_in ? 'source_in' : 'source_volume')}><text class="small" id="t-src-in" x="170" y="450" text-anchor="middle"></text></g>
+          ${this._sourceType === 'air' ? `<g class="tap" ${de(e.source_in ? 'source_in' : 'source_volume')}><text class="small" id="t-src-in" x="170" y="450" text-anchor="middle"></text></g>` : ''}
+          ${this._heaterSvg('heater', 'inline')}
 
           ${P.dhw ? `
             <g class="tap" ${de(e.valve ? 'valve' : 'dhw_mode')}>
@@ -678,6 +731,7 @@ class HeatpumpFlowCard extends HTMLElement {
               <text class="tank-sub" id="t-dhw-bottom" x="580" y="222" text-anchor="middle"></text>
               <text class="small" id="t-dhw-mode" x="580" y="262" text-anchor="middle"></text>
             </g>
+            ${this._heaterSvg('dhw_heater', 'dhw', 186)}
             ${P.circ ? `<g class="tap" ${de('circulation')}><text class="small circ" id="t-circ" x="650" y="60">↻ ${i.circulation}</text></g>` : ''}` : ''}
 
           ${P.buffer ? `
@@ -687,15 +741,9 @@ class HeatpumpFlowCard extends HTMLElement {
               <text class="tank-temp" id="t-buf-top" x="580" y="392" text-anchor="middle"></text>
               <text class="tank-sub" id="t-buf-bottom" x="580" y="502" text-anchor="middle"></text>
               <text class="small" id="t-buf-mode" x="580" y="542" text-anchor="middle"></text>
-            </g>` : ''}
+            </g>
+            ${this._heaterSvg('buffer_heater', 'buf', 455)}` : ''}
 
-          ${P.hc ? `
-            <g class="tap" ${de(e.hc_pump ? 'hc_pump' : 'hc_mode')}>
-              <circle class="pump" cx="720" cy="360" r="16"/>
-              <g class="impeller" id="impeller"><path d="M720 348 L726 360 L714 360Z M720 372 L714 360 L726 360Z" class="imp"/></g>
-              ${em.title}
-              <text class="small" id="t-hc-mode" x="880" y="524" text-anchor="middle"></text>
-            </g>` : ''}
 
           ${P.house ? `
             <g class="tap" ${de(e.room ? 'room' : 'room_target')}>
@@ -714,6 +762,64 @@ class HeatpumpFlowCard extends HTMLElement {
     this.shadowRoot.querySelector('.head').addEventListener('click', tap);
     this._$('stats').addEventListener('click', tap);
     this._rendered = true;
+  }
+
+  // Heating circuit n (1-3). Circuits 2 and 3 sit below circuit 1, fed by risers from its flow and return.
+  _circuitSvg(n) {
+    const i = this._i; const e = this._e;
+    const s = n === 1 ? '' : String(n);
+    const dy = (n - 1) * 250;
+    const k = (key) => this._hk(n, key);
+    const de = (key) => (e[key] ? `data-entity="${this._esc(e[key])}"` : '');
+    const name = this._config[n === 1 ? 'hc_name' : `hc${n}_name`];
+    const title = this._esc(name || (this._hcCount > 1 ? `${i.heating_circuit} ${n}` : i.heating_circuit));
+    const em = this._emitter(this._hcTypes[n - 1], title);
+    let { vl, rl } = em;
+    if (n > 1) { vl = vl.replace('M640 ', 'M660 '); rl = rl.replace(/H640$/, 'H676'); }
+    const pp = (id, d) => `<path class="pipe" id="p-${id}" d="${d}"/><path class="flow" id="f-${id}" d="${d}"/>`;
+    const risers = n > 1 ? pp(`hc-up${s}`, `M660 360 V${360 + dy}`) + pp(`hc-down${s}`, `M676 ${495 + dy} V495`) : '';
+    return `${risers}<g transform="translate(0 ${dy})">
+      <defs><linearGradient id="g-rad${s}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-rad${s}-top"/><stop offset="100%" id="g-rad${s}-bottom"/></linearGradient></defs>
+      ${em.art.split('__S__').join(s)}${pp(`hc-vl${s}`, vl)}${pp(`hc-body${s}`, em.body)}${pp(`hc-rl${s}`, rl)}
+      <g class="tap" ${de(k('flow'))}><text class="pipe-label" id="t-hc${s}" x="740" y="334" text-anchor="middle"></text></g>
+      <g class="tap" ${de(k('volume'))}><text class="vol-label" id="t-hc-vol${s}" x="720" y="394" text-anchor="middle"></text></g>
+      <g class="tap" ${de(e[k('pump')] ? k('pump') : k('mode'))}>
+        <circle class="pump" cx="720" cy="360" r="16"/>
+        <g class="impeller" id="impeller${s}"><path d="M720 348 L726 360 L714 360Z M720 372 L714 360 L726 360Z" class="imp"/></g>
+        ${em.title}
+        <text class="small" id="t-hc-mode${s}" x="880" y="524" text-anchor="middle"></text>
+      </g>
+    </g>`;
+  }
+
+  // Heater rod entering a tank from the right wall at height y; backup / inline heater as a box inside the heat pump.
+  _heaterSvg(key, id, y) {
+    if (!this._has(key)) return '';
+    const de = `data-entity="${this._esc(this._e[key])}"`;
+    if (id === 'inline') {
+      return `<g class="tap heater" id="heater-${id}" ${de}><rect class="heater-box" x="230" y="266" width="46" height="30" rx="6"/>
+        <path class="heater-el" d="M236 281 l4 -8 l6 16 l6 -16 l6 16 l6 -16 l6 16 l4 -8"/></g>`;
+    }
+    return `<g class="tap heater" id="heater-${id}" ${de}><rect class="heater-flange" x="638" y="${y - 9}" width="9" height="18" rx="2"/>
+      <path class="heater-el" d="M640 ${y - 4} H${id === 'dhw' ? 610 : 584} Q${id === 'dhw' ? 604 : 578} ${y - 4} ${id === 'dhw' ? 604 : 578} ${y} Q${id === 'dhw' ? 604 : 578} ${y + 4} ${id === 'dhw' ? 610 : 584} ${y + 4} H640"/></g>`;
+  }
+
+  // Ground loop (brine) or two wells (groundwater) below the heat pump; air keeps the fan.
+  _sourceSvg() {
+    if (this._sourceType === 'air') return '';
+    const pp = (id, d) => `<path class="pipe src" id="p-${id}" d="${d}"/><path class="flow" id="f-${id}" d="${d}"/>`;
+    const ground = '<path class="ground" d="M60 478 H280"/>';
+    const out = this._e.source_out ? `data-entity="${this._esc(this._e.source_out)}"` : '';
+    const inn = this._e.source_in ? `data-entity="${this._esc(this._e.source_in)}"` : '';
+    const labels = `<g class="tap" ${out}><text class="small" id="t-src-out" x="130" y="462" text-anchor="end"></text></g>
+      <g class="tap" ${inn}><text class="small" id="t-src-in" x="210" y="462"></text></g>
+      <g class="tap" ${this._e.source_volume ? `data-entity="${this._esc(this._e.source_volume)}"` : ''}><text class="vol-label" id="t-src-vol" x="212" y="512"></text></g>`;
+    if (this._sourceType === 'brine') {
+      return `${ground}${pp('src', 'M140 425 V528 Q140 548 170 548 Q200 548 200 528 V425')}${labels}`;
+    }
+    return `${ground}<rect class="well" x="126" y="486" width="28" height="66" rx="4"/><rect class="well" x="186" y="486" width="28" height="66" rx="4"/>
+      <path class="water" d="M128 512 q6 -4 12 0 t12 0 M188 512 q6 -4 12 0 t12 0"/>
+      ${pp('src-in', 'M200 540 V425')}${pp('src-out', 'M140 425 V540')}${labels}`;
   }
 
   // Entity behind a power source: the manual entity, or the Energy dashboard's power sensor.
@@ -755,7 +861,6 @@ class HeatpumpFlowCard extends HTMLElement {
     let hp = this._norm(this._maps.mode, rawMode);
     const dhwMode = this._norm(this._maps.dhw, this._s('dhw_mode'));
     const bufMode = this._norm(this._maps.buffer, this._s('buffer_mode'));
-    const hcMode = this._norm(this._maps.hc, this._s('hc_mode'));
     const power = this._w('power');
     const vol = this._lh('volume');
     const tFlow = this._n('flow'); const tRet = this._n('return');
@@ -799,33 +904,46 @@ class HeatpumpFlowCard extends HTMLElement {
     pipe('byp-vl', toHeat); pipe('byp-rl', toHeat);
     this._cls('coil', toDhw);
 
-    if (P.hc) {
-      // Circuit pump, else circuit mode, else assume the circuit runs whenever the heat pump heats or cools.
-      const hcOn = this._has('hc_pump') ? this._on('hc_pump') : (this._has('hc_mode') ? ['heating', 'cooling'].includes(hcMode) : toHeat);
-      // Without circuit sensors fall back to the buffer / main loop temperatures.
+    if (P.hc || this._hcCount > 1) {
       const pick = (...v) => v.find((x) => Number.isFinite(x)) ?? NaN;
-      const tHc = pick(this._n('hc_flow'), this._n('buffer_top'), toHeat ? tFlow : tRet);
-      const tHcR = pick(this._n('hc_return'), this._n('buffer_bottom'), tRet);
-      const cHc = hcMode === 'cooling' ? '#7dd3fc' : this._vlColor(tHc);
-      stroke('hc-vl', cHc); stroke('hc-body', cHc); stroke('hc-rl', this._rlColor(tHcR));
-      const rt = this._$('g-rad-top'); const rb = this._$('g-rad-bottom');
-      if (rt) { rt.setAttribute('stop-color', hcOn ? cHc : 'var(--disabled-text-color, #9e9e9e)'); rb.setAttribute('stop-color', hcOn ? this._rlColor(tHcR) : 'var(--disabled-text-color, #9e9e9e)'); }
-      ['hc-vl', 'hc-body', 'hc-rl'].forEach((id) => pipe(id, hcOn));
-      this._cls('impeller', hcOn);
-      this._cls('waves', hcOn && hcMode !== 'cooling');
-      const set = this._n('hc_setpoint');
-      this._txt('t-hc', this._has('hc_flow') ? `${this._t(tHc)}${Number.isFinite(set) ? ` · ${i.target} ${this._fmt(set)}` : ''}` : '');
-      const hcVol = this._lh('hc_volume');
-      this._txt('t-hc-vol', this._has('hc_volume') && Number.isFinite(hcVol) ? `${this._fmt(hcVol, 0)} l/h` : '');
-      this._txt('t-hc-mode', this._has('hc_mode') ? this._modeLabel(hcMode, this._s('hc_mode')) : (hcOn ? i.running : ''));
+      for (let n = 1; n <= this._hcCount; n++) {
+        const k = (key) => this._hk(n, key);
+        const s = n === 1 ? '' : String(n);
+        const cMode = this._norm(this._maps.hc, this._s(k('mode')));
+        // Circuit pump, else circuit mode, else assume the circuit runs whenever the heat pump heats or cools.
+        const hcOn = this._has(k('pump')) ? this._on(k('pump')) : (this._has(k('mode')) ? ['heating', 'cooling'].includes(cMode) : toHeat);
+        // Without circuit sensors fall back to the buffer / main loop temperatures.
+        const tHc = pick(this._n(k('flow')), this._n('buffer_top'), toHeat ? tFlow : tRet);
+        const tHcR = pick(this._n(k('return')), this._n('buffer_bottom'), tRet);
+        const cHc = cMode === 'cooling' ? '#7dd3fc' : this._vlColor(tHc);
+        stroke(`hc-vl${s}`, cHc); stroke(`hc-body${s}`, cHc); stroke(`hc-rl${s}`, this._rlColor(tHcR));
+        if (n > 1) { stroke(`hc-up${s}`, cHc); stroke(`hc-down${s}`, this._rlColor(tHcR)); pipe(`hc-up${s}`, hcOn); pipe(`hc-down${s}`, hcOn); }
+        const rt = this._$(`g-rad${s}-top`); const rb = this._$(`g-rad${s}-bottom`);
+        if (rt) { rt.setAttribute('stop-color', hcOn ? cHc : 'var(--disabled-text-color, #9e9e9e)'); rb.setAttribute('stop-color', hcOn ? this._rlColor(tHcR) : 'var(--disabled-text-color, #9e9e9e)'); }
+        [`hc-vl${s}`, `hc-body${s}`, `hc-rl${s}`].forEach((id) => pipe(id, hcOn));
+        this._cls(`impeller${s}`, hcOn);
+        this._cls(`waves${s}`, hcOn && cMode !== 'cooling');
+        const set = this._n(k('setpoint'));
+        this._txt(`t-hc${s}`, this._has(k('flow')) ? `${this._t(tHc)}${Number.isFinite(set) ? ` · ${i.target} ${this._fmt(set)}` : ''}` : '');
+        const hcVol = this._lh(k('volume'));
+        this._txt(`t-hc-vol${s}`, this._has(k('volume')) && Number.isFinite(hcVol) ? `${this._fmt(hcVol, 0)} l/h` : '');
+        this._txt(`t-hc-mode${s}`, this._has(k('mode')) ? this._modeLabel(cMode, this._s(k('mode'))) : (hcOn ? i.running : ''));
+      }
     }
+
+    // heaters
+    [['heater', 'inline'], ['dhw_heater', 'dhw'], ['buffer_heater', 'buf']].forEach(([key, id]) => {
+      const el = this._$(`heater-${id}`); if (!el) return;
+      const lv = this._level(key);
+      el.classList.toggle('on', lv > 0); el.classList.toggle('stage2', lv > 1);
+    });
 
     this._txt('t-vl', this._has('flow') ? `VL ${this._t(tFlow)}` : '');
     this._txt('t-rl', this._has('return') ? `RL ${this._t(tRet)}` : '');
     this._txt('t-vol', this._has('volume') && loop && Number.isFinite(vol) ? `${this._fmt(vol, 0)} l/h` : '');
 
     // heat pump
-    this._cls('fan', running); this._cls('snow', defrost); this._cls('hp-box', running);
+    this._cls('fan', running); this._cls('snow', defrost && this._sourceType === 'air'); this._cls('hp-box', running);
     // Some integrations report "heating" while charging DHW (e.g. ViCare compressor phase); the valve decides.
     const shownMode = toDhw && ['heating', 'idle', ''].includes(hp) ? 'dhw' : hp;
     const modeTxt = this._modeLabel(shownMode, rawMode);
@@ -841,7 +959,14 @@ class HeatpumpFlowCard extends HTMLElement {
     const srcParts = [];
     if (this._has('source_in')) srcParts.push(`${i.source_in} ${this._t(this._n('source_in'))}`);
     if (this._has('source_volume') && srcVol > 0) srcParts.push(`${i.source_flow} ${this._fmt(srcVol, 0)} l/h`);
-    this._txt('t-src-in', srcParts.join(' · '));
+    if (this._sourceType === 'air') this._txt('t-src-in', srcParts.join(' · '));
+    else {
+      const brine = this._sourceType === 'brine';
+      this._txt('t-src-in', this._has('source_in') ? `${brine ? i.brine_in : i.well_in} ${this._t(this._n('source_in'))}` : '');
+      this._txt('t-src-out', this._has('source_out') ? `${brine ? i.brine_out : i.well_out} ${this._t(this._n('source_out'))}` : '');
+      this._txt('t-src-vol', this._has('source_volume') && srcVol > 0 ? `${this._fmt(srcVol, 0)} l/h` : '');
+      ['src', 'src-in', 'src-out'].forEach((id) => pipe(id, running));
+    }
 
     // valve + tanks
     if (P.dhw) {
@@ -995,6 +1120,14 @@ HeatpumpFlowCard.styles = `
   .impeller.on .imp { fill: #f97316; }
   .house { fill: var(--secondary-background-color, rgba(127,127,127,.1)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; stroke-linejoin: round; }
   .screed { fill: var(--divider-color, rgba(127,127,127,.35)); }
+  .heater-el { fill: none; stroke: var(--disabled-text-color, #9e9e9e); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .heater-flange, .heater-box { fill: var(--secondary-background-color, rgba(127,127,127,.15)); stroke: var(--divider-color, rgba(127,127,127,.5)); stroke-width: 1.5; }
+  .heater.on .heater-el { stroke: #f97316; filter: url(#glow); }
+  .heater.on.stage2 .heater-el { stroke: #dc2626; }
+  .ground { fill: none; stroke: #a16207; stroke-width: 3; stroke-dasharray: 10 5; opacity: .7; }
+  .well { fill: none; stroke: var(--divider-color, rgba(127,127,127,.5)); stroke-width: 2; }
+  .water { fill: none; stroke: #38bdf8; stroke-width: 2; }
+  .pipe.src { stroke: #60a5fa; }
   .radiator { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.4)); stroke-width: 2; }
   .rib { fill: url(#g-rad); stroke: rgba(0,0,0,.08); stroke-width: 1; }
   #p-hc-body, #f-hc-body { display: var(--hfc-body, inline); }

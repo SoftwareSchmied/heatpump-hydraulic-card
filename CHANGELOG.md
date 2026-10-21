@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Up to three heating circuits (`hc_count`, `hc2_type`, `hc3_type`, `hc_name`…, entity keys `hc2_*` / `hc3_*`). Presets fill circuits 2 and 3 with the next circuit numbers (Lambda, EMS-ESP, Vaillant, HeishaMon zone 2).
+- Heat source `source_type: air | brine | water`: ground loop or groundwater wells below the heat pump, with source inlet and outlet (`source_out`).
+- Heater rods in the DHW tank and buffer (`dhw_heater`, `buffer_heater`) and a backup / inline heater (`heater`), glowing while on, red at stage 2+. Presets: Lambda 2nd heating stage, EMS-ESP auxiliary heater, HeishaMon internal heater.
 - PV / battery / grid from the Energy dashboard: without own `pv` / `battery` / `grid` sensors, the card reads the power sensors of the Energy dashboard and splits the heat pump's power by the current supply mix (marked ≈). New option `power_sources: auto | manual`.
 - Live demo on GitHub Pages (`demo/`, formerly `test/index.html`): all presets and scenarios, light/dark, English/German, with the matching card configuration.
 - README: "Where the numbers come from" section, link to the live demo and the community thread; emojis removed.
