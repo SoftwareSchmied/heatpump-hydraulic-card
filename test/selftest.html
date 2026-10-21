@@ -32,9 +32,10 @@
     }
     return out;
   };
-  const hassOf = (states, registry = {}, energy) => ({
+  const hassOf = (states, registry = {}, energy, setup = {}) => ({
     states, entities: registry, locale: { language: 'en' }, language: 'en',
-    callWS: (m) => (m.type === 'energy/get_prefs' && energy ? Promise.resolve(energy) : Promise.reject(new Error('n/a'))),
+    callWS: (m) => (m.type === 'recorder/statistic_during_period' ? statChange(setup, m)
+      : m.type === 'energy/get_prefs' && energy ? Promise.resolve(energy) : Promise.reject(new Error('n/a'))),
     callService: () => Promise.resolve(),
   });
   const mount = (config, hass) => {
@@ -50,7 +51,7 @@
   // 1. every installation and scenario renders, presets are detected
   for (const [i, s] of setups.entries()) {
     for (const [scen] of scenarios) {
-      const card = mount(s.config, hassOf(toStates(s.states(scen)), s.registry || {}, s.energy));
+      const card = mount(s.config, hassOf(toStates(s.states(scen)), s.registry || {}, s.energy, s));
       await wait(5);
       check(ok(card), `render ${i}/${scen}`);
       check(card.shadowRoot.getElementById('chip-mode')?.textContent.trim().length > 0, `mode chip ${i}/${scen}`);
@@ -75,11 +76,12 @@
   const edge = [{}, { preset: 'none' }, { entities: { flow: 'sensor.nope', power: 'sensor.nope2' } }, { hc_count: 3, hc2_type: 'radiator' },
     { hc_count: '7' }, { controls: ['switch.nope', { entity: 'select.nope' }, null, 5] }, { details: ['sensor.nope', null] },
     { badges: [{ entity: 'x' }] }, { stats: [{ entity: 'sensor.nope' }] }, { source_type: 'brine' },
-    { source_type: 'water', entities: { heater: 'sensor.h', dhw_heater: 'sensor.d' } }, { preset: 'lambda' }];
+    { source_type: 'water', entities: { heater: 'sensor.h', dhw_heater: 'sensor.d' } }, { preset: 'lambda' },
+    { tiles: [null, {}, 'spread', { entity: 'sensor.nope' }] }, { preset: 'lambda', tiles: ['cop_heating:year', 'load_classes', 'cost'] }];
   for (const cfg of edge) { const card = mount(cfg, hassOf(toStates({ 'sensor.h': '7', 'sensor.d': 'weird' }))); check(ok(card), `edge config ${JSON.stringify(cfg)}`); card.remove(); }
 
   // 4. invalid configs give a readable error
-  for (const cfg of [{ preset: 'foo' }, { hc_type: 'x' }, { source_type: 'lava' }, null]) {
+  for (const cfg of [{ preset: 'foo' }, { hc_type: 'x' }, { source_type: 'lava' }, null, { tiles: ['nope'] }, { tiles: ['cop_heating:fortnight'] }, { tiles: 'cop_heating' }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -129,6 +131,81 @@
     console.error = orig;
     check(card._failed && /boom/.test(card.shadowRoot.textContent), 'error boundary shows a message');
     card.remove();
+  }
+
+  // 8. stat tile catalog: order, periods, statistics fallback, computed values, free entities, editor options
+  const tileRows = (card) => [...card.shadowRoot.querySelectorAll('#stats .stat')].map((t) => [t.querySelector('.sl').textContent, t.querySelector('.sv').textContent]);
+  const tilesOf = async (s, tiles, scen = 'heat', withStats = true) => {
+    const card = mount({ ...s.config, tiles }, hassOf(toStates(s.states(scen)), s.registry || {}, null, withStats ? s : {}));
+    await wait(20);
+    const rows = tileRows(card); card.remove();
+    return { rows, t: Object.fromEntries(rows) };
+  };
+  {
+    const s = setups[0];
+    const { rows, t } = await tilesOf(s, s.config.tiles);
+    check(rows.length === 7 && rows[0][0] === 'COP heating · today' && rows[6][0] === 'Electricity heating · week', `Lambda tile order (${rows.map((r) => r[0]).join(' | ')})`);
+    check(t['COP heating · today'] === '5.05', `legacy entity as today (${t['COP heating · today']})`);
+    check(t['COP heating · month'] === '4.62', `preset period entity (${t['COP heating · month']})`);
+    check(t['Electricity · today'] === '5.1 kWh · 24 % PV', `energy with PV share (${t['Electricity · today']})`);
+    check(t['Defrosts · yesterday'] === '4', 'Lambda defrost tile');
+    check(t['Electricity heating · week'] === '61.3 kWh', `week from statistics (${t['Electricity heating · week']})`);
+    const more = (await tilesOf(s, ['heat_heating', 'cop_total', 'energy_aux', { key: 'cost', period: 'today', price: 0.3 }, { entity: 'sensor.heating_curve_flow', name: 'Curve' },
+      { key: 'energy', entity: 'sensor.heatpump_energy_today', name: 'Mine' }, 'spread', 'outdoor', { key: 'cop_heating', period: 'month', name: 'Monthly', decimals: 1 }])).t;
+    check(more['Heat heating · today'] === '20.4 kWh', 'Lambda heat tile');
+    check(more['COP total · total'] === '≈4.55', `cop_total computed from totals (${more['COP total · total']})`);
+    check(!Object.keys(more).some((k) => k.startsWith('Electricity heater')), 'unavailable tile hidden');
+    check(/1\.53/.test(more['Cost · today'] || ''), `cost tile (${more['Cost · today']})`);
+    check(more.Curve === '33.5 °C' && more.Mine === '5.1 kWh', `free entity tiles (${more.Curve} / ${more.Mine})`);
+    check(more.Spread === '4.5 K' && more.Outdoor === '10.4 °C', `live tiles (${more.Spread} / ${more.Outdoor})`);
+    check(more.Monthly === '4.6', `name and decimals override (${more.Monthly})`);
+  }
+  {
+    const s = setups[4];
+    const { t } = await tilesOf(s, s.config.tiles);
+    check(t['COP heating · today'] === '≈4.05', `EMS-ESP COP from statistics (${t['COP heating · today']})`);
+    check(t['Electricity heating · today'] === '9.6 kWh', 'EMS-ESP energy today');
+    check(t['COP heating · month'] === '≈3.86', `EMS-ESP COP month (${t['COP heating · month']})`);
+    check(t['Compressor starts · today'] === '4', `starts from statistics (${t['Compressor starts · today']})`);
+    check(t['Runtime per start · today'] === '≈2.5 h', `runtime per start, minutes to hours (${t['Runtime per start · today']})`);
+    check(t.Spread === '5.5 K' && t['Heat output'] === '≈6.9 kW', `EMS-ESP live tiles (${t.Spread} / ${t['Heat output']})`);
+    const cal = (await tilesOf(s, ['energy_heating:yesterday', 'starts:week', 'cop_heating:year', 'spf'])).t;
+    check(cal['Electricity heating · yesterday'] === '12.1 kWh' && cal['Compressor starts · week'] === '31', `statistics yesterday and week (${JSON.stringify(cal)})`);
+    check(cal['COP heating · year'] === '≈4.03' && !('SPF (year)' in cal), 'COP year; no SPF without total counters');
+    const none = (await tilesOf(s, ['energy_heating', 'energy_heating:total'], 'heat', false)).t;
+    check(none['Electricity heating · today'] === '–' && none['Electricity heating · total'] === '4,211 kWh', `missing statistics show a dash (${JSON.stringify(none)})`);
+  }
+  {
+    const hm = (await tilesOf(setups[5], ['cop_heating', 'energy_heating'])).t;
+    check(hm['COP heating · now'] === '≈4.32' && hm['Electricity heating · now'] === '1,250 W', `HeishaMon COP now (${JSON.stringify(hm)})`);
+    const vi = (await tilesOf(setups[2], ['cop_heating', 'starts', 'energy'])).t;
+    check(vi['COP heating · total'] === '3.90' && vi['Compressor starts · total'] === '4,123' && vi['Electricity · today'] === '8.4 kWh', `ViCare periods (${JSON.stringify(vi)})`);
+    const card = mount({ ...setups[0].config, tiles: [] }, hassOf(toStates(setups[0].states('heat'))));
+    check(card.shadowRoot.getElementById('stats').style.display === 'none', 'tiles: [] hides the row');
+    card.remove();
+    const def = tileRows(mount(setups[1].config, hassOf(toStates(setups[1].states('heat')))));
+    check(def[0] && def[0][0] === 'COP heating today', `default tiles unchanged without tiles (${def[0] && def[0][0]})`);
+    document.querySelectorAll('heatpump-flow-card').forEach((c) => c.remove());
+  }
+  {
+    const s = setups[0];
+    const hass = hassOf(toStates(s.states('heat')), {}, null, s);
+    const o = C._tileOptions(s.config, C._resolve(s.config, hass), hass);
+    const vals = o.options.map((x) => x.value);
+    check(o.editable && ['cop_heating:month', 'energy_heating:week', 'spread', 'cop_total'].every((v) => vals.includes(v)), `editor options (${vals.join(',')})`);
+    check(!vals.includes('energy_aux') && !vals.some((v) => v.startsWith('cost')), 'editor offers only fillable tiles');
+    check(o.value[0] === 'cop_heating:today' && o.defaults.includes('spread'), `editor value and defaults (${o.value[0]} / ${o.defaults.join(',')})`);
+    check(!C._tileOptions({ ...s.config, tiles: [{ key: 'spread', name: 'x' }] }, C._resolve(s.config, hass), hass).editable, 'own tile options are YAML only');
+    const ed = document.createElement('heatpump-flow-card-editor');
+    let out;
+    ed.addEventListener('config-changed', (ev) => { out = ev.detail.config; });
+    ed.setConfig({ preset: 'lambda' }); ed.hass = hass;
+    ed._changed({ preset: 'lambda', tiles_custom: true });
+    check(Array.isArray(out.tiles) && out.tiles.includes('cop_heating:today') && !('tiles_custom' in out), `editor switches tiles on (${JSON.stringify(out.tiles)})`);
+    ed._changed({ ...out, tiles_custom: true, tiles: ['spread', 'cop_heating:month'] });
+    check(JSON.stringify(out.tiles) === '["spread","cop_heating:month"]', 'editor writes the selection in order');
+    ed._changed({ ...out, tiles_custom: false });
+    check(!('tiles' in out), 'editor switches back to the default tiles');
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);

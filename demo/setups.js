@@ -14,6 +14,13 @@ const lambdaStates = (x, s) => {
     [`${x}hc1_room_device_temperature`]: 'unknown', [`${x}hc1_target_room_temperature`]: '23.0',
     [`${x}hp1_heating_cop_daily`]: '5.05', [`${x}hp1_hot_water_cop_daily`]: '4.15', [`${x}hp1_compressor_start_cycling_daily`]: '3',
     [`${x}hp1_relais_state_2nd_heating_stage`]: 'Off',
+    [`${x}hp1_heating_cop_monthly`]: '4.62', [`${x}hp1_heating_cop_yearly`]: '4.48', [`${x}hp1_heating_cop_total`]: '4.51',
+    [`${x}hp1_hot_water_cop_monthly`]: '3.95',
+    [`${x}hp1_heating_energy_daily`]: ['4.2', 'kWh'], [`${x}hp1_heating_thermal_energy_daily`]: ['20.4', 'kWh'],
+    [`${x}hp1_hot_water_energy_daily`]: ['0.9', 'kWh'], [`${x}hp1_hot_water_thermal_energy_daily`]: ['3.7', 'kWh'],
+    [`${x}hp1_heating_energy_total`]: { state: '2410.2', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+    [`${x}hp1_compressor_start_cycling_yesterday`]: '5', [`${x}hp1_defrost_cycling_daily`]: '2', [`${x}hp1_defrost_cycling_yesterday`]: '4',
+    [`${x}hp1_stby_energy_daily`]: ['0.12', 'kWh'],
     [`${x}hp1_compressor_start_cycling_total`]: ['1843', 'cycles'],
     [`${x}hp1_compressor_power_consumption_accumulated`]: ['3120.4', 'kWh'],
     [`${x}hp1_compressor_thermal_energy_output_accumulated`]: ['14210.8', 'kWh'],
@@ -101,7 +108,24 @@ const emsStates = (s) => ({
   'sensor.ems_esp_boiler_outdoortemp': ['2.8', '°C'], 'sensor.ems_esp_boiler_dhw_curtemp': ['47.5', '°C'], 'sensor.ems_esp_boiler_dhw_seltemp': ['52', '°C'],
   'sensor.ems_esp_thermostat_hc1_currtemp': ['21.4', '°C'], 'sensor.ems_esp_thermostat_hc1_seltemp': ['21.5', '°C'],
   'sensor.ems_esp_mixer_hc1_flowtemphc': ['34.0', '°C'],
+  // Totals only; today and month come from the simulated long-term statistics (emsStatistics).
+  'sensor.ems_esp_boiler_nrgconscompheating': { state: '4210.5', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.ems_esp_boiler_nrgsuppheating': { state: '17890.2', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.ems_esp_boiler_totalcompstarts': { state: '5123', attributes: { state_class: 'total_increasing' } },
+  'sensor.ems_esp_boiler_uptimetotal': { state: '312450', attributes: { unit_of_measurement: 'min', state_class: 'total_increasing' } },
 });
+const emsStatistics = {
+  'sensor.ems_esp_boiler_nrgconscompheating': { today: 9.6, yesterday: 12.1, week: 58.3, month: 210.4, year: 1890.7 },
+  'sensor.ems_esp_boiler_nrgsuppheating': { today: 38.9, yesterday: 47.2, week: 231.0, month: 812.0, year: 7610.3 },
+  'sensor.ems_esp_boiler_totalcompstarts': { today: 4, yesterday: 6, week: 31, month: 118, year: 1102 },
+  'sensor.ems_esp_boiler_uptimetotal': { today: 610, yesterday: 790, week: 3950, month: 14200, year: 131000 },
+};
+// Simulated long-term statistics: change of a total counter per calendar period (recorder/statistic_during_period).
+const statChange = (setup, msg) => {
+  const c = msg.calendar || {};
+  const v = setup.statistics?.[msg.statistic_id]?.[c.period === 'day' ? (c.offset ? 'yesterday' : 'today') : c.period];
+  return v === undefined ? Promise.reject(new Error('no statistics')) : Promise.resolve({ change: v });
+};
 // HeishaMon (Panasonic Aquarea): no operating-mode entity, valve as Room/Tank, flow in L/min, power in W.
 const hmStates = (s) => ({
   'sensor.panasonic_heat_pump_main_main_outlet_temp': [{ heat: '36.0', dhw: '50.5', defrost: '23', idle: '30' }[s], '°C'],
@@ -148,8 +172,9 @@ const houseStates = (s) => ({
 
 const setups = [
   {
-    name: 'Lambda', sub: 'legacy naming, PV/battery split, quick controls, details with refrigerant circuit',
+    name: 'Lambda', sub: 'legacy naming, PV/battery split, quick controls, own tile selection, details with refrigerant circuit',
     states: (s) => ({ ...lambdaStates('eu08l_', s), ...extras(s) }),
+    statistics: { 'sensor.eu08l_hp1_heating_energy_total': { yesterday: 12.9, week: 61.3 } },
     config: {
       preset: 'lambda', title: 'Lambda', hc_type: 'radiator',
       entities: {
@@ -160,6 +185,7 @@ const setups = [
       controls: ['input_boolean.heatpump_boost', 'button.heatpump_dhw_boost', 'select.heatpump_operating_mode', 'number.heatpump_dhw_target'],
       details: [{ entity: 'sensor.heating_curve_flow', name: 'Heating curve flow' }],
       details_open: true,
+      tiles: ['cop_heating', 'cop_heating:month', 'cop_dhw', 'energy', 'starts', 'defrosts:yesterday', 'energy_heating:week'],
     },
   },
   {
@@ -181,9 +207,12 @@ const setups = [
     config: { preset: 'vaillant', title: 'aroTHERM plus' },
   },
   {
-    name: 'Buderus / Bosch', sub: 'EMS-ESP, German enum texts',
-    states: emsStates, registry: regOf(emsStates, 'mqtt'),
-    config: { preset: 'emsesp', title: 'Buderus WLW' },
+    name: 'Buderus / Bosch', sub: 'EMS-ESP, German enum texts, tiles for today and month from long-term statistics',
+    states: emsStates, registry: regOf(emsStates, 'mqtt'), statistics: emsStatistics,
+    config: {
+      preset: 'emsesp', title: 'Buderus WLW',
+      tiles: ['cop_heating', 'energy_heating', 'cop_heating:month', 'starts', 'hours_per_start', 'spread', 'heat_estimated'],
+    },
   },
   {
     name: 'Panasonic Aquarea', sub: 'HeishaMon, radiators',

@@ -123,7 +123,10 @@ function refresh(card = document.querySelector('heatpump-flow-card')) {
     const [state, unit] = Array.isArray(v) ? v : [v];
     states[k] = { entity_id: k, state, attributes: unit ? { unit_of_measurement: unit } : {} };
   }
-  const callWS = (msg) => (msg.type === 'energy/get_prefs' && setup.energy ? Promise.resolve(setup.energy) : Promise.reject(new Error('not simulated')));
+  const callWS = (msg) => {
+    if (msg.type === 'recorder/statistic_during_period') return statChange(setup, msg);
+    return msg.type === 'energy/get_prefs' && setup.energy ? Promise.resolve(setup.energy) : Promise.reject(new Error('not simulated'));
+  };
   // Simulated services for the quick controls.
   const callService = (domain, service, data) => {
     const id = data.entity_id; const st = states[id];

@@ -16,6 +16,8 @@ const HFC_VERSION = '0.4.3';
 //   detect(ctx)                → prefix (string, may be '') or undefined when the integration is not present
 //   entities(prefix, idx, ctx) → { key: entity_id | [candidates…] }  (first existing candidate wins)
 //   errors(prefix, idx, ctx)   → error sensors (numeric ≠ 0 or binary "on" shows the error chip)
+//   tiles(prefix, idx, ctx)    → { tile: { period: entity_id | [candidates…] } } for the stat tile catalog (HFC_TILES);
+//                                a "total" counter with long-term statistics also gives today, yesterday, week, month and year
 //   *_mode_map                 → raw state → normalized mode
 // ctx.key(platform, domain, translation_key) finds entities via the entity registry (language-independent),
 // ctx.match(regex, platform) finds the first entity id matching a pattern.
@@ -75,6 +77,23 @@ const HFC_PRESETS = {
         hot_gas: `${hp}_hot_gas_temperature`,
         subcooling: `${hp}_subcooling_temperature`,
         eev: `${hp}_expansion_valve_opening_angle`,
+      };
+    },
+    tiles: (p, i) => {
+      const hp = `sensor.${p ? `${p}_` : ''}hp${i.hp}`;
+      const per = (base, periods = { today: 'daily', month: 'monthly', year: 'yearly', total: 'total' }) =>
+        Object.fromEntries(Object.entries(periods).map(([k, v]) => [k, `${hp}_${base}_${v}`]));
+      const cyc = { today: 'daily', yesterday: 'yesterday', total: 'total' };
+      return {
+        cop_heating: per('heating_cop'), cop_dhw: per('hot_water_cop'), cop_cooling: per('cooling_cop'),
+        energy: { total: `${hp}_compressor_power_consumption_accumulated` }, heat: { total: `${hp}_compressor_thermal_energy_output_accumulated` },
+        energy_heating: per('heating_energy'), energy_dhw: per('hot_water_energy'), energy_cooling: per('cooling_energy'),
+        energy_defrost: per('defrost_energy'), energy_standby: per('stby_energy'),
+        heat_heating: per('heating_thermal_energy'), heat_dhw: per('hot_water_thermal_energy'),
+        heat_cooling: per('cooling_thermal_energy'), heat_defrost: per('defrost_thermal_energy'),
+        starts: per('compressor_start_cycling', { today: 'daily', yesterday: 'yesterday', month: 'monthly', total: 'total' }),
+        cycles_heating: per('heating_cycling', cyc), cycles_dhw: per('hot_water_cycling', cyc),
+        cycles_cooling: per('cooling_cycling', cyc), defrosts: per('defrost_cycling', cyc),
       };
     },
     errors: (p, i) => {
@@ -147,6 +166,24 @@ const HFC_PRESETS = {
         superheat: s('evaporator_overheat_temperature'),
       };
     },
+    tiles: (p, i, ctx) => {
+      const s = (tk) => ctx.key('vicare', 'sensor', tk);
+      const per = (base, periods) => Object.fromEntries(Object.entries(periods).map(([k, v]) => [k, s(`${base}${v}`)]));
+      const summary = { today: 'currentday', week: 'lastsevendays', month: 'currentmonth', year: 'currentyear' };
+      return {
+        cop_heating: { total: s('cop_heating') }, cop_dhw: { total: s('cop_dhw') }, cop_cooling: { total: s('cop_cooling') },
+        cop_total: { total: s('cop_total') }, spf: { year: s('spf_total') },
+        energy: { today: s('power_consumption_today'), week: s('power_consumption_this_week'), year: s('power_consumption_this_year') },
+        energy_heating: { ...per('energy_summary_consumption_heating_', summary), year: [s('energy_summary_consumption_heating_currentyear'), s('energy_consumption_heating_this_year')] },
+        energy_dhw: { ...per('energy_dhw_summary_consumption_heating_', summary), year: [s('energy_dhw_summary_consumption_heating_currentyear'), s('energy_consumption_dhw_this_year')] },
+        energy_cooling: per('energy_consumption_cooling_', { today: 'today', month: 'this_month', year: 'this_year' }),
+        starts: { total: s('compressor_starts') }, hours: { total: s('compressor_hours') },
+        ...Object.fromEntries([1, 2, 3, 4, 5].map((n) => [`load_class${n}`, { total: s(`compressor_hours_loadclass${n}`) }])),
+        aux_hours: { total: s('heating_rod_hours') }, aux_starts: { total: s('heating_rod_starts') },
+        pv_production: per('photovoltaic_energy_production_', { today: 'today', week: 'this_week', month: 'this_month', year: 'this_year', total: 'total' }),
+        solar_thermal: per('solar_power_production_', { today: 'today', week: 'this_week', month: 'this_month', year: 'this_year' }),
+      };
+    },
     mode_map: {
       heating: 'heating', cooling: 'cooling', defrost: 'defrost', passive_defrost: 'defrost',
       pause: 'idle', ready: 'idle', preparing: 'idle', off: 'off',
@@ -187,6 +224,14 @@ const HFC_PRESETS = {
         room: m(new RegExp(`^sensor\\.${p}_zone_.+_current_temperature$`)),
         room_target: m(new RegExp(`^sensor\\.${p}_zone_.+_desired_temperature$`)),
         cop_heating_today: m(new RegExp(`^sensor\\.${p}.*_heating_energy_efficiency$`)),
+      };
+    },
+    // Daily energy per device and mode ("Consumed Electrical Energy Heating", "Heat Generated Domestic Hot Water" …).
+    tiles: (p, i, ctx) => {
+      const d = (suffix) => ctx.match(new RegExp(`^sensor\\.${p}_device_\\d+.*_${suffix}$`), 'mypyllant');
+      return {
+        energy_heating: { today: d('consumed_electrical_energy_heating') }, energy_dhw: { today: d('consumed_electrical_energy_domestic_hot_water') },
+        heat_heating: { today: d('heat_generated_heating') }, heat_dhw: { today: d('heat_generated_domestic_hot_water') },
       };
     },
     errors: (p, i, ctx) => [ctx.match(new RegExp(`^binary_sensor\\.${p}.*_trouble_codes$`), 'mypyllant')].filter(Boolean),
@@ -243,6 +288,17 @@ const HFC_PRESETS = {
         liquid_temp: s('boiler_hptr3'),
       };
     },
+    // EMS-ESP only reports totals; today, month … come from their long-term statistics.
+    tiles: (p) => {
+      const t = (...ks) => ({ total: ks.map((k) => `sensor.${p ? `${p}_` : ''}boiler_${k}`) });
+      return {
+        energy: t('nrgconstotal', 'metertotal'), energy_heating: t('nrgconscompheating', 'meterheat'), energy_dhw: t('dhw_nrgconscomp', 'dhw_meter'),
+        energy_cooling: t('nrgconscompcooling', 'metercool'), energy_aux: t('auxelecheatnrgconstotal', 'metereheat'),
+        heat: t('nrgsupptotal'), heat_heating: t('nrgsuppheating'), heat_dhw: t('dhw_nrgsupp'), heat_cooling: t('nrgsuppcooling'),
+        starts: t('totalcompstarts'), cycles_heating: t('heatingstarts'), cycles_dhw: t('dhw_startshp'), cycles_cooling: t('coolingstarts'),
+        hours: t('uptimetotal', 'uptimecompheating'),
+      };
+    },
     mode_map: {
       off: 'idle', heating: 'heating', cooling: 'cooling', 'hot water': 'dhw', pool: 'heating', 'pool heating': 'heating',
       defrost: 'defrost', 'compressor alarm': 'off',
@@ -289,6 +345,17 @@ const HFC_PRESETS = {
         eev: `sensor.${m}expansion_valve`,
       };
     },
+    // No energy counters: heat and electricity per mode as current power, so the COP tiles work for "now".
+    tiles: (p) => {
+      const m = `sensor.${p}_main_`;
+      return {
+        energy_heating: { now: `${m}heat_power_consumption` }, heat_heating: { now: `${m}heat_power_production` },
+        energy_dhw: { now: `${m}dhw_power_consumption` }, heat_dhw: { now: `${m}dhw_power_production` },
+        energy_cooling: { now: `${m}cool_power_consumption` }, heat_cooling: { now: `${m}cool_power_production` },
+        starts: { total: `${m}operations_counter` }, hours: { total: `${m}operations_hours` },
+        aux_hours: { total: `${m}room_heater_operations_hours` },
+      };
+    },
   },
 };
 
@@ -312,6 +379,18 @@ const HFC_I18N = {
     valve_heating: 'Heating', valve_cooling: 'Cooling', pv: 'PV', battery: 'Battery', grid: 'Grid',
     stat_cop_heating: 'COP heating today', stat_cop_dhw: 'COP DHW today', stat_energy: 'Energy today',
     stat_starts: 'Starts today', stat_spread: 'Spread', stat_volume: 'Flow rate', stat_heat: 'Heat output', pv_share: 'PV',
+    tiles: {
+      cop_live: 'COP live', cop_heating: 'COP heating', cop_dhw: 'COP DHW', cop_cooling: 'EER cooling', cop_total: 'COP total', spf: 'SPF (year)',
+      energy: 'Electricity', energy_heating: 'Electricity heating', energy_dhw: 'Electricity DHW', energy_cooling: 'Electricity cooling',
+      energy_defrost: 'Electricity defrost', energy_standby: 'Standby', energy_aux: 'Electricity heater',
+      heat: 'Heat', heat_heating: 'Heat heating', heat_dhw: 'Heat DHW', heat_cooling: 'Cooling output', heat_defrost: 'Heat defrost',
+      starts: 'Compressor starts', cycles_heating: 'Heating cycles', cycles_dhw: 'DHW cycles', cycles_cooling: 'Cooling cycles', defrosts: 'Defrosts',
+      hours: 'Compressor hours', hours_per_start: 'Runtime per start', load_classes: 'Load classes 1-5', aux_hours: 'Heater hours', aux_starts: 'Heater starts',
+      spread: 'Spread', volume: 'Flow rate', heat_estimated: 'Heat output', power: 'Power', heat_live: 'Heat output', compressor_speed: 'Compressor',
+      source_spread: 'Source spread', outdoor: 'Outdoor', dhw_top: 'DHW tank', room: 'Room', pv_share: 'PV share today',
+      pv_production: 'PV yield', solar_thermal: 'Solar thermal', cost: 'Cost',
+    },
+    periods: { now: 'now', today: 'today', yesterday: 'yesterday', week: 'week', month: 'month', year: 'year', total: 'total' },
     modes: {
       idle: 'Standby', heating: 'Heating', dhw: 'Hot water', cooling: 'Cooling', defrost: 'Defrost', blocked: 'Blocked',
       frost: 'Frost protection', circulate: 'Circulating', off: 'Off', legionella: 'Legionella', trailing: 'Run-on',
@@ -333,6 +412,18 @@ const HFC_I18N = {
     valve_heating: 'Heizen', valve_cooling: 'Kühlen', pv: 'PV', battery: 'Akku', grid: 'Netz',
     stat_cop_heating: 'COP Heizen heute', stat_cop_dhw: 'COP WW heute', stat_energy: 'Strom heute',
     stat_starts: 'Starts heute', stat_spread: 'Spreizung', stat_volume: 'Volumenstrom', stat_heat: 'Wärmeleistung', pv_share: 'PV',
+    tiles: {
+      cop_live: 'COP live', cop_heating: 'COP Heizen', cop_dhw: 'COP WW', cop_cooling: 'EER Kühlen', cop_total: 'COP gesamt', spf: 'JAZ',
+      energy: 'Strom', energy_heating: 'Strom Heizen', energy_dhw: 'Strom WW', energy_cooling: 'Strom Kühlen',
+      energy_defrost: 'Strom Abtauen', energy_standby: 'Standby', energy_aux: 'Strom Heizstab',
+      heat: 'Wärme', heat_heating: 'Wärme Heizen', heat_dhw: 'Wärme WW', heat_cooling: 'Kälte', heat_defrost: 'Wärme Abtauen',
+      starts: 'Verdichterstarts', cycles_heating: 'Heizzyklen', cycles_dhw: 'WW-Zyklen', cycles_cooling: 'Kühlzyklen', defrosts: 'Abtauungen',
+      hours: 'Verdichterstunden', hours_per_start: 'Laufzeit pro Start', load_classes: 'Lastklassen 1-5', aux_hours: 'Heizstab-Stunden', aux_starts: 'Heizstab-Starts',
+      spread: 'Spreizung', volume: 'Volumenstrom', heat_estimated: 'Wärmeleistung', power: 'Leistung', heat_live: 'Wärmeleistung', compressor_speed: 'Verdichter',
+      source_spread: 'Spreizung Quelle', outdoor: 'Außen', dhw_top: 'WW-Speicher', room: 'Raum', pv_share: 'PV-Anteil heute',
+      pv_production: 'PV-Ertrag', solar_thermal: 'Solarthermie', cost: 'Kosten',
+    },
+    periods: { now: 'aktuell', today: 'heute', yesterday: 'gestern', week: 'Woche', month: 'Monat', year: 'Jahr', total: 'gesamt' },
     modes: {
       idle: 'Bereit', heating: 'Heizen', dhw: 'Warmwasser', cooling: 'Kühlen', defrost: 'Abtauen', blocked: 'Sperrzeit',
       frost: 'Frostschutz', circulate: 'Umwälzen', off: 'Aus', legionella: 'Legionellenschutz', trailing: 'Nachlauf',
@@ -352,6 +443,9 @@ const HFC_EDITOR = {
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
     from_preset: 'Found by the preset',
     sec_advanced: 'Advanced',
+    tiles_custom: 'Own tile selection', tiles: 'Tiles (drag to sort)',
+    tiles_custom_help: 'Off: default tiles. On: pick tiles and periods from what this installation provides; an empty list hides the row.',
+    tiles_yaml: 'Some tiles have their own name, entity or price: edit them in YAML.',
     untested: 'untested',
     untested_help: 'Not yet tested on a real installation. Please report whether it works: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
     warn_title: 'Missing in the card',
@@ -390,6 +484,9 @@ const HFC_EDITOR = {
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
     from_preset: 'Von der Voreinstellung gefunden',
     sec_advanced: 'Erweitert',
+    tiles_custom: 'Eigene Kachelauswahl', tiles: 'Kacheln (zum Sortieren ziehen)',
+    tiles_custom_help: 'Aus: Standardkacheln. An: Kacheln und Zeiträume aus dem wählen, was diese Anlage liefert; eine leere Liste blendet die Zeile aus.',
+    tiles_yaml: 'Einige Kacheln haben einen eigenen Namen, eine eigene Entität oder einen Preis: im YAML bearbeiten.',
     untested: 'ungetestet',
     untested_help: 'Noch nicht mit einer echten Anlage getestet. Bitte melden, ob es funktioniert: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
     warn_title: 'Fehlt in der Karte',
@@ -435,6 +532,36 @@ const HFC_CONTROL_DOMAINS = ['switch', 'input_boolean', 'light', 'fan', 'automat
   'select', 'input_select', 'water_heater', 'climate', 'number', 'input_number'];
 const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'hc2_pump', 'hc3_pump', 'circulation', 'defrost', 'heater', 'dhw_heater', 'buffer_heater'];
 
+// Stat tile catalog for the `tiles` option. kind: cop | energy (kWh, or W for period "now") | count | hours | classes | cost.
+// legacy: entity key of the default tiles that serves as "today"; ratio: computed from two other tiles when the integration
+// has no own entity (COP = heat ÷ electricity); live: current value from the schematic entities; periods: allowed periods.
+const HFC_PERIODS = ['now', 'today', 'yesterday', 'week', 'month', 'year', 'total'];
+// Periods that can be taken from the long-term statistics of a total counter: [calendar period, offset].
+const HFC_STAT_PERIODS = { today: ['day', 0], yesterday: ['day', -1], week: ['week', 0], month: ['month', 0], year: ['year', 0] };
+const HFC_TILES = {
+  cop_live: { live: true },
+  cop_heating: { kind: 'cop', legacy: 'cop_heating_today', ratio: ['heat_heating', 'energy_heating'] },
+  cop_dhw: { kind: 'cop', legacy: 'cop_dhw_today', ratio: ['heat_dhw', 'energy_dhw'] },
+  cop_cooling: { kind: 'cop', ratio: ['heat_cooling', 'energy_cooling'] },
+  cop_total: { kind: 'cop', ratio: ['heat', 'energy'] },
+  spf: { kind: 'cop', ratio: ['heat', 'energy'], periods: ['year'], noSuffix: true },
+  energy: { kind: 'energy', legacy: 'energy_today' },
+  energy_heating: { kind: 'energy' }, energy_dhw: { kind: 'energy' }, energy_cooling: { kind: 'energy' },
+  energy_defrost: { kind: 'energy' }, energy_standby: { kind: 'energy' }, energy_aux: { kind: 'energy' },
+  heat: { kind: 'energy' }, heat_heating: { kind: 'energy' }, heat_dhw: { kind: 'energy' }, heat_cooling: { kind: 'energy' }, heat_defrost: { kind: 'energy' },
+  starts: { kind: 'count', legacy: 'starts_today' },
+  cycles_heating: { kind: 'count' }, cycles_dhw: { kind: 'count' }, cycles_cooling: { kind: 'count' }, defrosts: { kind: 'count' },
+  hours: { kind: 'hours' },
+  hours_per_start: { kind: 'hours', ratio: ['hours', 'starts'], perStart: true },
+  load_classes: { kind: 'classes' },
+  aux_hours: { kind: 'hours' }, aux_starts: { kind: 'count' },
+  spread: { live: true }, volume: { live: true }, heat_estimated: { live: true }, power: { live: true }, heat_live: { live: true },
+  compressor_speed: { live: true }, source_spread: { live: true }, outdoor: { live: true }, dhw_top: { live: true }, room: { live: true },
+  pv_share: { live: true },
+  pv_production: { kind: 'energy' }, solar_thermal: { kind: 'energy' },
+  cost: { kind: 'cost' },
+};
+
 /* ------------------------------------------------------------------ */
 /* Card                                                                */
 /* ------------------------------------------------------------------ */
@@ -477,7 +604,7 @@ class HeatpumpFlowCard extends HTMLElement {
   static getConfigForm() { return HeatpumpFlowCard._formSchema(); }
 
   // Form schema. With a config, circuit fields and groups are limited to hc_count.
-  static _formSchema(config) {
+  static _formSchema(config, tiles) {
     const lang = (document.querySelector('home-assistant')?.hass?.locale?.language || navigator.language || 'en').slice(0, 2);
     const L = HFC_EDITOR[lang] || HFC_EDITOR.en;
     const hcCount = config ? Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3) : 3;
@@ -506,6 +633,10 @@ class HeatpumpFlowCard extends HTMLElement {
           name: 'controls',
           selector: { entity: { multiple: true, domain: HFC_CONTROL_DOMAINS } },
         },
+        // Tile selection (editor only): a sortable list of the tiles this installation can fill.
+        ...(tiles ? [{ name: 'tiles_custom', selector: { boolean: {} } }] : []),
+        ...(tiles && tiles.editable && Array.isArray(config.tiles)
+          ? [{ name: 'tiles', selector: { select: { multiple: true, reorder: true, mode: 'dropdown', options: tiles.options } } }] : []),
         ...groups.map(([sec, keys]) => ({
           type: 'expandable', name: 'entities', title: L[sec], schema: keys.map(entitySchema),
         })),
@@ -541,6 +672,14 @@ class HeatpumpFlowCard extends HTMLElement {
     if (config.source_type && !['air', 'brine', 'water'].includes(config.source_type)) {
       throw new Error('source_type must be "air", "brine" or "water"');
     }
+    if (config.tiles !== undefined && config.tiles !== null) {
+      if (!Array.isArray(config.tiles)) throw new Error('tiles must be a list');
+      config.tiles.forEach((t) => {
+        const s = HeatpumpFlowCard._tileSpec(t);
+        if (s && s.key !== undefined && !HFC_TILES[s.key]) throw new Error(`Unknown tile "${s.key}". Available: ${Object.keys(HFC_TILES).join(', ')}`);
+        if (s && s.period !== undefined && !HFC_PERIODS.includes(s.period)) throw new Error(`Unknown tile period "${s.period}". Available: ${HFC_PERIODS.join(', ')}`);
+      });
+    }
     this._config = config;
     const preset = HFC_PRESETS[config.preset];
     this._preset = preset;
@@ -564,6 +703,7 @@ class HeatpumpFlowCard extends HTMLElement {
     this._lastTry = 0;
     this._rendered = false;
     this._e = this._e || {};
+    this._tileMap = this._tileMap || {};
     this._errors = this._errors || [];
     if (this.shadowRoot && this._hass) { try { this._build(); this._render(); this._update(); } catch (err) { this._fail(err); } }
   }
@@ -600,13 +740,22 @@ class HeatpumpFlowCard extends HTMLElement {
       else if (v) e[k] = v;
     });
     const errors = config.errors || (preset && preset.errors ? preset.errors(prefix, idx, ctx) : []);
-    return { preset, prefix, ready, idx, fromPreset, entities: e, errors };
+    // Stat tile entities: { tile: { period: entity } }, only entities that exist.
+    const tiles = {};
+    if (preset && preset.tiles) {
+      Object.entries(preset.tiles(prefix, idx, ctx)).forEach(([k, periods]) => Object.entries(periods || {}).forEach(([period, v]) => {
+        const hit = (Array.isArray(v) ? v : [v]).filter(Boolean).find((id) => hass.states[id]);
+        if (hit) (tiles[k] = tiles[k] || {})[period] = hit;
+      }));
+    }
+    return { preset, prefix, ready, idx, fromPreset, entities: e, errors, tiles };
   }
 
   _build() {
     const r = HeatpumpFlowCard._resolve(this._config, this._hass);
     this._e = r.entities;
     this._errors = r.errors;
+    this._tileMap = r.tiles;
     this._needsBuild = !r.ready;
     this._lastTry = Date.now();
   }
@@ -998,6 +1147,221 @@ class HeatpumpFlowCard extends HTMLElement {
     });
   }
 
+  /* ---------- stat tiles ---------- */
+  // Config entry → { key, period, … } or { entity, … }. Strings may carry the period: "cop_heating:month".
+  static _tileSpec(t) {
+    if (typeof t === 'string') { const [key, period] = t.split(':').map((x) => x.trim()); return { key, ...(period ? { period } : {}) }; }
+    return t && typeof t === 'object' ? t : null;
+  }
+
+  // Editor: the tiles this installation can fill as select options, the current selection as option values and the default set.
+  static _tileOptions(config, r, hass) {
+    const I = HFC_I18N[(hass?.locale?.language || navigator.language || 'en').slice(0, 2)] || HFC_I18N.en;
+    const probe = Object.assign(Object.create(HeatpumpFlowCard.prototype), { _hass: hass, _e: r.entities, _tileMap: r.tiles, _config: config });
+    const options = [];
+    const periodsOf = {};
+    Object.keys(HFC_TILES).filter((k) => k !== 'cost').forEach((key) => {
+      const periods = probe._tilePeriods(key);
+      periodsOf[key] = periods;
+      periods.forEach((p) => options.push({ value: periods.length === 1 ? key : `${key}:${p}`, label: probe._tileLabel(key, p, I) }));
+    });
+    // Tiles with a single period are stored without it; others with the period, so the select can show them.
+    const valueOf = (key, period) => {
+      const periods = periodsOf[key] || [];
+      if (periods.length === 1) return key;
+      const p = period || probe._tileDefault(key);
+      return p ? `${key}:${p}` : key;
+    };
+    let editable = true;
+    const value = (Array.isArray(config.tiles) ? config.tiles : []).map((t) => {
+      const s = HeatpumpFlowCard._tileSpec(t);
+      if (!s) return null;
+      if (!s.key || Object.keys(s).some((k) => !['key', 'period'].includes(k))) { editable = false; return null; }
+      return valueOf(s.key, s.period);
+    }).filter(Boolean);
+    value.forEach((v) => { if (!options.some((o) => o.value === v)) options.push({ value: v, label: v }); });
+    const defaults = ['cop_heating', 'cop_dhw', 'energy', 'starts', 'spread', 'volume', 'heat_estimated']
+      .filter((k) => periodsOf[k].length).map((k) => valueOf(k));
+    return { options, value, editable, defaults };
+  }
+
+  _tileLabel(key, period, I = this._i) {
+    const def = HFC_TILES[key];
+    return `${I.tiles[key]}${def.live || def.noSuffix || !period ? '' : ` · ${I.periods[period]}`}`;
+  }
+
+  // Where a tile's value comes from for a period: an entity, the long-term statistics of a total counter,
+  // a ratio of two other tiles (COP = heat ÷ electricity), or null when this installation cannot fill it.
+  _tileSource(key, period) {
+    const def = HFC_TILES[key];
+    if (!def || (def.periods && !def.periods.includes(period))) return null;
+    if (def.live) return period === 'now' && this._liveAvail(key) ? { live: true } : null;
+    if (def.kind === 'classes') return period === 'total' && this._tileMap.load_class1 ? { classes: true } : null;
+    if (def.kind === 'cost') return this._tileSource('energy', period) ? { cost: true } : null;
+    const map = this._tileMap[key] || {};
+    // The entities of the default tiles (cop_heating_today …) count as "today", unless the preset maps them to another period.
+    const legacy = def.legacy && this._has(def.legacy) ? this._e[def.legacy] : null;
+    if (period === 'today' && legacy && !Object.entries(map).some(([p, id]) => p !== 'today' && id === legacy)) return { id: legacy };
+    if (map[period]) return { id: map[period] };
+    const total = map.total;
+    if (total && HFC_STAT_PERIODS[period] && ['total', 'total_increasing'].includes(this._hass.states[total]?.attributes?.state_class)) return { stat: total };
+    if (def.ratio) {
+      const parts = def.ratio.map((k) => [this._tileSource(k, period), HFC_TILES[k].kind]);
+      if (parts.every(([s]) => s)) return { ratio: parts };
+    }
+    return null;
+  }
+
+  _tilePeriods(key) {
+    const def = HFC_TILES[key];
+    if (!def) return [];
+    if (def.live) return this._liveAvail(key) ? ['now'] : [];
+    return HFC_PERIODS.filter((p) => this._tileSource(key, p));
+  }
+
+  // Without a period: today if possible, else the current value, the total, then the longest period.
+  _tileDefault(key) {
+    const periods = this._tilePeriods(key);
+    return ['today', 'now', 'total', 'year', 'month', 'week', 'yesterday'].find((p) => periods.includes(p));
+  }
+
+  // Base units: kWh for energy (W for period "now"), h for hours.
+  _toBase(v, unit, kind, period) {
+    const u = String(unit || '').toLowerCase();
+    if (kind === 'energy' && period === 'now') return u === 'kw' ? v * 1000 : v;
+    if (kind === 'energy') return u === 'wh' ? v / 1000 : u === 'mwh' ? v * 1000 : v;
+    if (kind === 'hours') return { min: v / 60, s: v / 3600, d: v * 24 }[u] ?? v;
+    return v;
+  }
+
+  _tileRead(id, kind, period) {
+    const st = id && this._hass.states[id]; const v = parseFloat(st?.state);
+    return Number.isFinite(v) ? this._toBase(v, st.attributes?.unit_of_measurement, kind, period) : NaN;
+  }
+
+  // Change of a total counter over a calendar period from the recorder's long-term statistics, refreshed every 5 minutes.
+  _statChange(id, kind, period) {
+    this._statCache = this._statCache || {};
+    const key = `${id}|${period}`;
+    const c = this._statCache[key];
+    if ((!c || (!c.req && Date.now() - c.t > 300000)) && typeof this._hass.callWS === 'function') {
+      const [calendar, offset] = HFC_STAT_PERIODS[period];
+      this._statCache[key] = { ...(c || {}), req: true, t: Date.now() };
+      this._hass.callWS({ type: 'recorder/statistic_during_period', statistic_id: id, calendar: { period: calendar, offset }, types: ['change'] })
+        .then((res) => { this._statCache[key] = { v: res?.change, t: Date.now() }; })
+        .catch(() => { this._statCache[key] = { v: null, t: Date.now() }; })
+        .then(() => { if (this._rendered) { try { this._update(); } catch (err) { this._fail(err); } } });
+    }
+    const v = this._statCache[key]?.v;
+    return typeof v === 'number' ? this._toBase(v, this._hass.states[id]?.attributes?.unit_of_measurement, kind, period) : NaN;
+  }
+
+  _srcValue(src, kind, period) {
+    if (!src) return NaN;
+    if (src.id) return this._tileRead(src.id, kind, period);
+    if (src.stat) return this._statChange(src.stat, kind, period);
+    if (src.ratio) { const [a, b] = src.ratio.map(([s, k]) => this._srcValue(s, k, period)); return b > 0 && a >= 0 ? a / b : NaN; }
+    return NaN;
+  }
+
+  _tileEntity(src, period) {
+    if (!src) return '';
+    if (src.id || src.stat) return src.id || src.stat;
+    if (src.ratio) return this._tileEntity(src.ratio[0][0], period);
+    if (src.classes) return this._tileMap.load_class1;
+    if (src.cost) return this._tileEntity(this._tileSource('energy', period), period);
+    return '';
+  }
+
+  _tileText(key, period, src, spec) {
+    const def = HFC_TILES[key];
+    const dec = (d) => spec.decimals ?? d;
+    const out = (v, d, unit) => (Number.isFinite(v) ? `${this._fmt(v, dec(d))} ${spec.unit ?? unit}`.trim() : '–');
+    if (src.classes) {
+      const hrs = [1, 2, 3, 4, 5].map((n) => this._tileRead(this._tileMap[`load_class${n}`], 'hours'));
+      const sum = hrs.reduce((a, h) => a + (Number.isFinite(h) ? h : 0), 0);
+      return sum > 0 ? `${hrs.map((h) => this._fmt(Number.isFinite(h) ? (h / sum) * 100 : NaN, 0)).join(' · ')} %` : '–';
+    }
+    if (src.cost) {
+      // price: a number or an entity (e.g. a dynamic tariff); currency from the Home Assistant settings.
+      const kwh = this._srcValue(this._tileSource('energy', period), 'energy', period);
+      const price = typeof spec.price === 'number' ? spec.price : parseFloat(this._hass.states[spec.price]?.state);
+      const v = kwh * price;
+      if (!Number.isFinite(v)) return '–';
+      const currency = spec.currency || this._hass.config?.currency || 'EUR';
+      try {
+        return v.toLocaleString(this._hass.locale?.language || this._lang, { style: 'currency', currency, minimumFractionDigits: dec(2), maximumFractionDigits: dec(2) });
+      } catch (err) { return out(v, 2, currency); }
+    }
+    const v = this._srcValue(src, def.kind, period);
+    const approx = src.ratio ? '≈' : '';
+    if (def.kind === 'cop') return Number.isFinite(v) ? `${approx}${this._fmt(v, dec(2))}` : '–';
+    if (def.kind === 'energy') return period === 'now' ? out(v, 0, 'W') : out(v, Math.abs(v) >= 100 ? 0 : 1, 'kWh');
+    if (def.kind === 'count') return out(v, 0, '');
+    if (def.perStart) return !Number.isFinite(v) ? '–' : `${approx}${v < 1 ? out(v * 60, 0, 'min') : out(v, 1, 'h')}`;
+    if (def.kind === 'hours') return out(v, Math.abs(v) >= 100 ? 0 : 1, 'h');
+    return out(v, 1, '');
+  }
+
+  // Live tiles: current values from the schematic entities.
+  _liveAvail(key) {
+    const h = (k) => this._has(k);
+    return !!{
+      cop_live: h('power') && (h('heat') || (h('volume') && h('flow') && h('return'))),
+      spread: h('flow') && h('return'), volume: h('volume'),
+      heat_estimated: !h('heat') && h('volume') && h('flow') && h('return'),
+      power: h('power'), heat_live: h('heat'), compressor_speed: h('compressor_speed'),
+      source_spread: h('source_in') && h('source_out'), outdoor: h('outdoor'), dhw_top: h('dhw_top'), room: h('room'),
+      pv_share: h('pv_share_today'),
+    }[key];
+  }
+
+  _liveTile(key, L) {
+    const f = (v, d, u) => (Number.isFinite(v) ? `${this._fmt(v, d)} ${u}`.trim() : '–');
+    switch (key) {
+      case 'cop_live': return [Number.isFinite(L.cop) ? `${L.heatEstimated ? '≈' : ''}${this._fmt(L.cop, 1)}` : '–', this._e.heat || this._e.power];
+      case 'spread': return [L.loop ? f(L.spread, 1, 'K') : '–', this._e.flow];
+      case 'volume': return [L.loop ? f(L.vol, 0, 'l/h') : '–', this._e.volume];
+      case 'heat_estimated': return [L.heatEstimated ? `≈${f(L.heat, 1, 'kW')}` : '–', this._e.volume];
+      case 'power': return [f(L.power, 0, 'W'), this._e.power];
+      case 'heat_live': return [f(this._kw('heat'), 1, 'kW'), this._e.heat];
+      case 'compressor_speed': return [this._fmtState('compressor_speed'), this._e.compressor_speed];
+      case 'source_spread': return [f(this._n('source_in') - this._n('source_out'), 1, 'K'), this._e.source_in];
+      case 'pv_share': return [f(this._n('pv_share_today'), 0, '%'), this._e.pv_share_today];
+      default: return [this._t(this._n(key)), this._e[key]];
+    }
+  }
+
+  // Tiles from the `tiles` option, in the configured order: catalog keys (with period) and free entities.
+  _catalogTiles(L) {
+    const i = this._i; const out = [];
+    this._config.tiles.forEach((raw) => {
+      const spec = HeatpumpFlowCard._tileSpec(raw);
+      if (!spec) return;
+      const def = HFC_TILES[spec.key];
+      if (!def) {
+        const st = spec.entity && this._hass.states[spec.entity];
+        if (st) out.push([spec.name || st.attributes.friendly_name || spec.entity, this._fmtState(null, spec), spec.entity]);
+        return;
+      }
+      if (def.live) {
+        if (!this._liveAvail(spec.key)) return;
+        const [text, entity] = this._liveTile(spec.key, L);
+        out.push([spec.name || this._tileLabel(spec.key, 'now'), text, entity]);
+        return;
+      }
+      // A catalog key with an own entity uses the key's label and formatting.
+      const period = spec.period || (spec.entity ? 'total' : this._tileDefault(spec.key));
+      const src = spec.entity ? (this._hass.states[spec.entity] ? { id: spec.entity } : null) : (period && this._tileSource(spec.key, period));
+      if (!src) return;
+      let text = this._tileText(spec.key, period, src, spec);
+      const share = this._n('pv_share_today');
+      if (spec.key === 'energy' && period === 'today' && Number.isFinite(share)) text += ` · ${this._fmt(share, 0)} % ${i.pv_share}`;
+      out.push([spec.name || this._tileLabel(spec.key, spec.entity && !spec.period ? '' : period), text, this._tileEntity(src, period)]);
+    });
+    return out;
+  }
+
   /* ---------- details drawer ---------- */
   // Rows of the drawer: [section, [[id, label, entity, value()]]]. Only existing entities (or computable values) are shown.
   _drawerRows() {
@@ -1316,17 +1680,18 @@ class HeatpumpFlowCard extends HTMLElement {
     err.classList.toggle('on', errs.length > 0);
     if (errs.length) err.dataset.entity = errs[0];
 
-    // statistics
+    // statistics: the tile catalog when `tiles` is set, otherwise the default tiles
     const share = this._n('pv_share_today');
-    const tiles = [];
-    const add = (key, label, value) => { if (this._has(key)) tiles.push([this._statLabel(key, label), value, this._e[key]]); };
+    const custom = Array.isArray(this._config.tiles);
+    const tiles = custom ? this._catalogTiles({ loop, spread, vol, heat, heatEstimated, power, cop }) : [];
+    const add = (key, label, value) => { if (!custom && this._has(key)) tiles.push([this._statLabel(key, label), value, this._e[key]]); };
     add('cop_heating_today', i.stat_cop_heating, this._fmt(this._n('cop_heating_today'), 2));
     add('cop_dhw_today', i.stat_cop_dhw, this._fmt(this._n('cop_dhw_today'), 2));
     add('energy_today', i.stat_energy, `${this._fmt(this._n('energy_today'), 1)} kWh${Number.isFinite(share) ? ` · ${this._fmt(share, 0)} % ${i.pv_share}` : ''}`);
     add('starts_today', i.stat_starts, this._fmt(this._n('starts_today'), 0));
-    if (this._has('flow') && this._has('return')) tiles.push([i.stat_spread, loop && Number.isFinite(spread) ? `${this._fmt(spread, 1)} K` : '–', this._e.flow]);
+    if (!custom && this._has('flow') && this._has('return')) tiles.push([i.stat_spread, loop && Number.isFinite(spread) ? `${this._fmt(spread, 1)} K` : '–', this._e.flow]);
     add('volume', i.stat_volume, loop && Number.isFinite(vol) ? `${this._fmt(vol, 0)} l/h` : '–');
-    if (heatEstimated) tiles.push([i.stat_heat, `≈${this._fmt(heat, 1)} kW`, this._e.volume]);
+    if (!custom && heatEstimated) tiles.push([i.stat_heat, `≈${this._fmt(heat, 1)} kW`, this._e.volume]);
     (this._config.stats || []).forEach((s) => {
       const st = this._hass.states[s.entity]; if (!st) return;
       const v = parseFloat(st.state);
@@ -1485,7 +1850,9 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     const r = HeatpumpFlowCard._resolve(this._config, this._hass);
     // Only entities that exist are shown as found by the preset.
     this._fromPreset = Object.fromEntries(Object.entries(r.fromPreset).filter(([, id]) => this._hass.states[id]));
-    const { schema, computeLabel, L } = HeatpumpFlowCard._formSchema(this._config);
+    const tiles = HeatpumpFlowCard._tileOptions(this._config, r, this._hass);
+    this._tiles = tiles;
+    const { schema, computeLabel, L } = HeatpumpFlowCard._formSchema(this._config, tiles);
     const own = this._config.entities || {};
     const shown = { ...this._fromPreset };
     Object.entries(own).forEach(([k, v]) => { if (v === null || v === 'none') delete shown[k]; else if (v) shown[k] = v; });
@@ -1511,11 +1878,15 @@ class HeatpumpFlowCardEditor extends HTMLElement {
         const status = r.ready ? `${L.detected}${r.prefix ? ` · ${r.prefix}` : ''} · ${found} ${L.entities_found}. ${L.preset_help}` : L.not_detected;
         return r.preset.tested ? status : `${status} ${L.untested_help}`;
       }
+      if (s.name === 'tiles_custom') return tiles.editable ? L.tiles_custom_help : L.tiles_yaml;
       if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
       if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;
       return '';
     };
-    this._form.data = { ...this._config, entities: shown };
+    const custom = Array.isArray(this._config.tiles);
+    const data = { ...this._config, entities: shown, tiles_custom: custom };
+    if (custom && tiles.editable) data.tiles = tiles.value;
+    this._form.data = data;
   }
 
   // Writes back only what differs from the preset: other entities as overrides, cleared preset entities as null.
@@ -1535,6 +1906,11 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     });
     const config = { ...value };
     if (Object.keys(ents).length) config.entities = ents; else delete config.entities;
+    // Tiles: off = default tiles; switched on = start from the default set; tiles with own options stay as in YAML.
+    delete config.tiles_custom;
+    if (!value.tiles_custom) delete config.tiles;
+    else if (!Array.isArray(this._config.tiles)) config.tiles = this._tiles.defaults;
+    else if (!this._tiles.editable) config.tiles = this._config.tiles;
     this._config = config;
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
     this._render();
