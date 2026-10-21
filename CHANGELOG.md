@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.1 – 2026-10-21
+- Details drawer: energy counters reported in Wh (e.g. Lambda) are shown in kWh.
+
 ## 0.4.0 – 2026-10-21
 
 **What may change on existing cards after the update** (no configuration breaks):

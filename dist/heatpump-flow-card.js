@@ -7,7 +7,7 @@
  *
  * https://github.com/Sturmi77/heatpump-flow-card · MIT License
  */
-const HFC_VERSION = '0.4.0';
+const HFC_VERSION = '0.4.1';
 
 /* ------------------------------------------------------------------ */
 /* Presets                                                             */
@@ -947,9 +947,11 @@ class HeatpumpFlowCard extends HTMLElement {
   _fmtState(key, spec) {
     const id = spec ? spec.entity : this._e[key];
     const st = this._hass.states[id]; if (!st) return '–';
-    const v = parseFloat(st.state);
+    let v = parseFloat(st.state);
     if (!Number.isFinite(v)) return ['unknown', 'unavailable'].includes(st.state) ? '–' : this._stateText(st, st.state);
-    const unit = spec?.unit ?? st.attributes.unit_of_measurement ?? '';
+    let unit = spec?.unit ?? st.attributes.unit_of_measurement ?? '';
+    // Energy counters in Wh (e.g. Lambda) read better in kWh.
+    if (!spec?.unit && unit === 'Wh' && Math.abs(v) >= 1000) { v /= 1000; unit = 'kWh'; }
     const d = spec?.decimals ?? (Number.isInteger(v) || Math.abs(v) >= 100 ? 0 : 1);
     return `${this._fmt(v, d)} ${unit}`.trim();
   }
