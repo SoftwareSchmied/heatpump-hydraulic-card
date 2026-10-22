@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8 (unreleased)
+## 0.8.0 – 2026-10-22
 Wall display.
 - `layout: wall` for wall tablets: the wide layout with about 30 % larger type. The quick controls and the details toggle are hidden and not clickable until a touch or mouse move wakes the card, and fade out again after `wall_timeout` seconds (default 10, `0` = always visible); an open details drawer closes with them. Also in the editor.
 - Self-test: 314 checks.
