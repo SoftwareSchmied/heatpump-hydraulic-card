@@ -447,7 +447,8 @@ const HFC_EDITOR = {
     power_sources: 'PV / battery / grid', ps_auto: 'Energy dashboard, unless set below', ps_manual: 'Only the sensors below',
     source_type: 'Heat source', src_air: 'Air', src_brine: 'Ground (brine)', src_water: 'Groundwater',
     hc_count: 'Heating circuits', hc2_type: 'Circuit 2 emitter', hc3_type: 'Circuit 3 emitter',
-    layout: 'Layout', layout_default: 'Default', layout_compact: 'Compact (narrow columns)', layout_wide: 'Wide (tiles beside the schematic)',
+    layout: 'Layout', layout_default: 'Default', layout_compact: 'Compact (narrow columns)', layout_wide: 'Wide (tiles beside the schematic)', layout_wall: 'Wall display (large, controls fade out)',
+    wall_timeout: 'Hide controls after (seconds, 0 = never)',
     hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
@@ -492,7 +493,8 @@ const HFC_EDITOR = {
     power_sources: 'PV / Akku / Netz', ps_auto: 'Energie-Dashboard, außer unten gesetzt', ps_manual: 'Nur die Sensoren unten',
     source_type: 'Wärmequelle', src_air: 'Luft', src_brine: 'Erdreich (Sole)', src_water: 'Grundwasser',
     hc_count: 'Heizkreise', hc2_type: 'Wärmeabgabe Heizkreis 2', hc3_type: 'Wärmeabgabe Heizkreis 3',
-    layout: 'Layout', layout_default: 'Standard', layout_compact: 'Kompakt (schmale Spalten)', layout_wide: 'Breit (Kacheln neben dem Schema)',
+    layout: 'Layout', layout_default: 'Standard', layout_compact: 'Kompakt (schmale Spalten)', layout_wide: 'Breit (Kacheln neben dem Schema)', layout_wall: 'Wanddisplay (groß, Bedienelemente blenden aus)',
+    wall_timeout: 'Bedienelemente ausblenden nach (Sekunden, 0 = nie)',
     hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
@@ -557,7 +559,9 @@ const HFC_PERIODS = ['now', 'today', 'yesterday', 'week', 'month', 'year', 'tota
 const HFC_STAT_PERIODS = { today: ['day', 0], yesterday: ['day', -1], week: ['week', 0], month: ['month', 0], year: ['year', 0] };
 // Home Assistant actions a tile can carry (more-info, navigate, url, toggle, perform-action …).
 const HFC_ACTIONS = ['tap_action', 'hold_action', 'double_tap_action'];
-const HFC_LAYOUTS = ['default', 'compact', 'wide'];
+const HFC_LAYOUTS = ['default', 'compact', 'wide', 'wall'];
+// Wall display: seconds the quick controls and the details toggle stay visible after the last touch or mouse move.
+const HFC_WALL_TIMEOUT = 10;
 // Heating program shown as a chip: the first pattern that matches the raw state of the `program` entity (or the circuit mode) wins.
 // A `program_map` (raw state → eco | night | party | holiday | none) takes precedence.
 const HFC_PROGRAMS = ['eco', 'night', 'party', 'holiday'];
@@ -705,6 +709,7 @@ class HeatpumpFlowCard extends HTMLElement {
               { name: 'language', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' }] } } },
               ...['hc_name', 'hc2_name', 'hc3_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
               { name: 'details_open', selector: { boolean: {} } },
+              ...(config && config.layout === 'wall' ? [{ name: 'wall_timeout', selector: { number: { min: 0, max: 600, step: 1, mode: 'box', unit_of_measurement: 's' } } }] : []),
             ],
           }],
         },
@@ -736,6 +741,9 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     if (config.layout !== undefined && config.layout !== null && !HFC_LAYOUTS.includes(config.layout)) {
       throw new Error(`layout must be one of: ${HFC_LAYOUTS.join(', ')}`);
+    }
+    if (config.wall_timeout !== undefined && config.wall_timeout !== null && !(+config.wall_timeout >= 0)) {
+      throw new Error('wall_timeout must be a number of seconds, 0 or more');
     }
     if (config.program_map !== undefined && config.program_map !== null && (typeof config.program_map !== 'object' || Array.isArray(config.program_map))) {
       throw new Error(`program_map must map raw states to ${HFC_PROGRAMS.join(', ')} or none`);
@@ -1164,6 +1172,11 @@ class HeatpumpFlowCard extends HTMLElement {
         </div>
       </ha-card>`;
 
+    if (this._layout === 'wall') {
+      const card = this.shadowRoot.querySelector('ha-card');
+      ['pointerdown', 'pointermove', 'keydown', 'focusin'].forEach((t) => card.addEventListener(t, () => this._wake(), { passive: true }));
+      card.classList.toggle('awake', !!this._awake || this._wallSeconds() === 0);
+    }
     this._actEvents(this._$('svg'));
     this._actEvents(this.shadowRoot.querySelector('.head'));
     this._tileEvents(this._$('stats'));
@@ -1728,6 +1741,30 @@ class HeatpumpFlowCard extends HTMLElement {
 
   _actEvents(box) { this._pointerActions(box, (ev) => this._elementActs(ev)); }
 
+  // Wall display: the quick controls and the details toggle appear on a touch or mouse move and fade out again.
+  _wallSeconds() {
+    const t = this._config.wall_timeout;
+    return t === undefined || t === null || t === '' ? HFC_WALL_TIMEOUT : +t;
+  }
+  _wake() {
+    const card = this.shadowRoot && this.shadowRoot.querySelector('ha-card');
+    if (!card) return;
+    this._awake = true; card.classList.add('awake');
+    clearTimeout(this._sleepTimer);
+    const sec = this._wallSeconds();
+    if (sec > 0) this._sleepTimer = setTimeout(() => this._sleep(), sec * 1000);
+  }
+  _sleep() {
+    const card = this.shadowRoot && this.shadowRoot.querySelector('ha-card');
+    if (!card) return;
+    // Keep the controls while one of them is being used (an open dropdown, a number field).
+    if (this.shadowRoot.activeElement && card.querySelector('.controls')?.contains(this.shadowRoot.activeElement)) { this._sleepTimer = setTimeout(() => this._sleep(), 2000); return; }
+    this._awake = false; card.classList.remove('awake');
+    const drawer = this._$('drawer-body');
+    if (drawer && !drawer.hidden) { this._drawerOpen = false; drawer.hidden = true; this._$('drawer-toggle')?.setAttribute('aria-expanded', 'false'); }
+  }
+  disconnectedCallback() { clearTimeout(this._sleepTimer); }
+
   // Tiles: the actions of the tile under the pointer.
   _tileEvents(box) {
     this._pointerActions(box, (ev) => {
@@ -2124,11 +2161,21 @@ HeatpumpFlowCard.styles = `
   .layout-compact .ctl { font-size: .8em; padding: 3px 9px; }
   .layout-compact .drawer { margin: 4px 2px 0; }
   /* layout: wide – schematic left, controls, tiles and details right (wall tablets, wide dashboards) */
-  ha-card.layout-wide { display: block; container-type: inline-size; }
+  ha-card.layout-wide, ha-card.layout-wall { display: block; container-type: inline-size; }
   @container (min-width: 760px) {
-    .layout-wide .body { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr); gap: 14px; align-items: center; }
-    .layout-wide .side > :first-child { margin-top: 0; }
+    .layout-wide .body, .layout-wall .body { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr); gap: 14px; align-items: center; }
+    .layout-wide .side > :first-child, .layout-wall .side > :first-child { margin-top: 0; }
   }
+  /* layout: wall – large type for wall tablets; controls and the details toggle only show after a touch */
+  ha-card.layout-wall { font-size: 1.3em; padding: 16px 16px 12px; }
+  @container (min-width: 760px) { .layout-wall .body { align-items: start; } }
+  .layout-wall .title { font-size: 1.25em; }
+  .layout-wall .chip { font-size: .9em; padding: 4px 12px; }
+  .layout-wall .stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+  .layout-wall .stat { padding: 10px 12px; border-radius: 14px; }
+  .layout-wall .sv { font-size: 1.4em; } .layout-wall .sl { font-size: .85em; }
+  .layout-wall .controls, .layout-wall .drawer-toggle { opacity: 0; pointer-events: none; transition: opacity .5s; }
+  .layout-wall.awake .controls, .layout-wall.awake .drawer-toggle { opacity: 1; pointer-events: auto; }
   @keyframes hfc-dash { to { stroke-dashoffset: -40; } }
   @keyframes hfc-spin { to { transform: rotate(360deg); } }
   @keyframes hfc-pulse { 50% { opacity: .35; } }

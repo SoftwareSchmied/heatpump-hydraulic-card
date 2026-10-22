@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8 (unreleased)
+Wall display.
+- `layout: wall` for wall tablets: the wide layout with about 30 % larger type. The quick controls and the details toggle are hidden and not clickable until a touch or mouse move wakes the card, and fade out again after `wall_timeout` seconds (default 10, `0` = always visible); an open details drawer closes with them. Also in the editor.
+- Self-test: 314 checks.
+
 ## 0.7.0 – 2026-10-22
 Layouts, colours you can change, actions on every element, heating program, solar thermal.
 - Colours: all colours are CSS variables (`--hfc-heat`, `--hfc-pv`, `--hfc-tank-cold` …) with the previous colours as defaults. A theme or card-mod can restyle the card; the temperature scales of pipes and tanks follow the variables too. Without a theme nothing changes, apart from slightly different tints of chip text and the grid line.

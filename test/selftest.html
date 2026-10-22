@@ -85,7 +85,8 @@
     { price: { v: 1 } }, { tiles: [{ key: 'spread', tap_action: 'navigate' }] }, { stats: [{ entity: 'sensor.x', hold_action: true }] },
     { layout: 'huge' }, { actions: [] }, { actions: { mode: 'navigate' } }, { actions: { mode: { tap_action: 'navigate' } } },
     { badges: [{ entity: 'sensor.x', hold_action: 'toggle' }] },
-    { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' }]) {
+    { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' },
+    { wall_timeout: -1 }, { wall_timeout: 'soon' }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -460,6 +461,44 @@
     const keys = (n) => (n.schema ? n.schema.flatMap(keys) : [n.name]);
     const formKeys = C._formSchema().schema.flatMap(keys);
     check(['program', 'solar_collector', 'solar_pump'].every((k) => formKeys.includes(k)), 'editor offers program and solar entities');
+  }
+
+  // 12. wall display: large type, controls appear on touch and fade out
+  {
+    const s = setups[0];
+    const hass = hassOf(toStates(s.states('heat')), s.registry || {}, null, s);
+    const wall = async (cfg = {}) => { const c = mount({ ...s.config, layout: 'wall', ...cfg }, hass); await wait(20); return c; };
+    const state = (c) => {
+      const el = c.shadowRoot.querySelector('.controls'); el.style.transition = 'none';
+      const cs = getComputedStyle(el);
+      return [c.shadowRoot.querySelector('ha-card').classList.contains('awake'), cs.opacity, cs.pointerEvents];
+    };
+    let c = await wall();
+    check(c.shadowRoot.querySelector('ha-card').classList.contains('layout-wall') && ok(c), 'wall layout renders');
+    let st = state(c);
+    check(!st[0] && st[1] === '0' && st[2] === 'none', `controls hidden and not clickable while idle (${st})`);
+    c.shadowRoot.querySelector('ha-card').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+    st = state(c);
+    check(st[0] && st[1] === '1' && st[2] === 'auto', `a touch shows the controls (${st})`);
+    check(parseFloat(getComputedStyle(c.shadowRoot.querySelector('ha-card')).fontSize) > parseFloat(getComputedStyle(document.body).fontSize), 'wall type is larger');
+    c.remove();
+    // timeout: controls fade out again and the details drawer closes
+    c = await wall({ wall_timeout: 0.2, details_open: true });
+    check(!c.shadowRoot.getElementById('drawer-body').hidden, 'details drawer starts open');
+    c.shadowRoot.querySelector('ha-card').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, composed: true }));
+    check(c.shadowRoot.querySelector('ha-card').classList.contains('awake'), 'mouse move wakes the card');
+    await wait(450);
+    check(!c.shadowRoot.querySelector('ha-card').classList.contains('awake') && c.shadowRoot.getElementById('drawer-body').hidden, 'controls hide again and the drawer closes after the timeout');
+    c.remove();
+    c = await wall({ wall_timeout: 0 });
+    st = state(c);
+    check(st[0] && st[1] === '1', `wall_timeout 0 keeps the controls visible (${st})`);
+    c.remove();
+    c = await mount({ ...s.config, layout: 'wide' }, hass); await wait(10);
+    check(getComputedStyle(c.shadowRoot.querySelector('.controls')).opacity === '1', 'other layouts keep the controls visible');
+    c.remove();
+    const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
+    check(!C._formSchema({ layout: 'default' }).schema.flatMap(keysOf).includes('wall_timeout') && C._formSchema({ layout: 'wall' }).schema.flatMap(keysOf).includes('wall_timeout'), 'editor offers wall_timeout only for the wall layout');
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);
