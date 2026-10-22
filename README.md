@@ -40,8 +40,9 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 - **Status chips:** mode, freely defined badges (e.g. "Boost"), error chip when any error code is ≠ 0.
 - **Quick controls** (`controls`): switches and booleans as toggle buttons, buttons and scripts as push buttons, selects, water heater and climate modes as dropdowns, numbers as input fields, directly on the card.
 - **Details drawer:** a collapsible section below the statistics with operating hours, total starts, total electricity and heat (and the total COP from them), the **refrigerant circuit** (compressor speed, evaporation, condensation, suction gas, hot gas, liquid line, pressures, expansion valve, superheat, subcooling) and your own values (`details`). Presets fill it where the integration provides the data.
+- **Layouts and colours:** `layout: compact` for narrow columns, `layout: wide` puts controls, tiles and details beside the schematic (wall tablets). Every colour is a CSS variable (`--hfc-*`) that a theme or card-mod can change.
 - **Optional blocks:** whatever you don't have (buffer, DHW tank, power sources, house) is simply not drawn.
-- **UI editor** with grouped entity pickers. **English and German**, following the HA language. Light/dark via your theme. Every element opens the more-info dialog. `prefers-reduced-motion` is respected.
+- **UI editor** with grouped entity pickers. **English and German**, following the HA language. Light/dark via your theme. Every element opens the more-info dialog, or runs your own tap, hold or double-tap action (`actions`). `prefers-reduced-motion` is respected.
 
 | Viessmann preset, radiators | Vaillant preset, DHW run | Lambda zero-config, DHW run |
 |---|---|---|
@@ -215,7 +216,9 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | `mode_map`, `dhw_mode_map`, `buffer_mode_map`, `hc_mode_map` | Raw state → normalized mode, merged over the preset. |
 | `running_states` | Raw `status` values that count as compressor running. |
 | `errors` | List of error-code sensors. A value ≠ 0 shows the error chip. |
-| `badges` | `[{entity, label}]` chips shown while the entity is on. |
+| `badges` | `[{entity, label}]` chips shown while the entity is on; each can carry `tap_action`, `hold_action` and `double_tap_action`. |
+| `layout` | `default`, `compact` (tighter spacing for narrow columns) or `wide` (controls, tiles and details beside the schematic when the card is at least 760 px wide). |
+| `actions` | Tap, hold and double-tap actions per element, keyed by entity key: `{dhw_top: {tap_action: {…}}}`. See [Layout, actions and colours](#layout-actions-and-colours). |
 | `controls` | Quick controls: list of entity ids or `{entity, name}`. Supported: `switch`, `input_boolean`, `light`, `fan`, `automation` (toggle), `button`, `input_button`, `script`, `scene` (press), `select`, `input_select`, `water_heater`, `climate` (dropdown), `number`, `input_number` (input). |
 | `details` | Extra rows in the details drawer: list of entity ids or `{entity, name, unit, decimals}`. |
 | `details_open` | Open the details drawer by default (default `false`). |
@@ -284,6 +287,61 @@ What the presets provide:
 - **HeishaMon:** heat and electricity per mode as current power, so the COP tiles work for "now"; operating hours and starts.
 - **Vaillant:** daily electricity and heat for heating and DHW.
 
+### Layout, actions and colours
+**Layout.** `layout: compact` reduces padding and type sizes for narrow dashboard columns. `layout: wide` shows the schematic on the left and controls, tiles and the details drawer on the right once the card is at least 760 px wide (below that it falls back to the normal stacked layout), which suits wall tablets. Both are also in the editor.
+
+**Actions on elements.** Every element of the schematic shows an entity, and a tap opens its more-info dialog. To change that, give the entity key of the element (see "Entity keys") its own actions. They accept every Home Assistant action, the same as the tiles: `more-info`, `navigate`, `url`, `toggle`, `perform-action`, `assist`, `none`, with `confirmation`. A hold takes 500 ms.
+
+```yaml
+actions:
+  dhw_top:                      # the hot water tank
+    tap_action:
+      action: navigate
+      navigation_path: /lovelace/hot-water
+    hold_action:
+      action: more-info
+  mode:                         # the heat pump block and the mode chip
+    double_tap_action:
+      action: perform-action
+      perform_action: script.heat_pump_boost
+badges:
+  - entity: input_boolean.boost
+    label: Boost
+    tap_action:
+      action: toggle
+```
+
+An action for a key the card has no entity for does nothing; the browser console says so. Actions are edited in YAML.
+
+**Colours.** The card draws with these CSS variables. Set them in a theme or per card with card-mod; without a value the default applies.
+
+| Variable | Default | Used for |
+|---|---|---|
+| `--hfc-heat` | `#f97316` | running heat pump, heating chip, heater rod, impeller, heat waves |
+| `--hfc-hot` | `#dc2626` | hot water chip, error chip, second heater stage |
+| `--hfc-cool` | `#38bdf8` | fan blades while running, groundwater |
+| `--hfc-cool-strong` | `#0ea5e9` | snowflake, circulation pump |
+| `--hfc-defrost` | `#7dd3fc` | flow pipe while defrosting or cooling |
+| `--hfc-flow-cold`, `--hfc-flow-hot` | `#fb923c`, `#dc2626` | flow pipes, 25 to 55 °C |
+| `--hfc-return-cold`, `--hfc-return-hot` | `#7dd3fc`, `#2563eb` | return pipes, 20 to 45 °C |
+| `--hfc-tank-cold`, `--hfc-tank-hot` | `#3b82f6`, `#ef4444` | tank gradient, 20 to 58 °C |
+| `--hfc-pv`, `--hfc-battery`, `--hfc-grid` | `#f59e0b`, `#10b981`, `#94a3b8` | power sources and their flow lines |
+| `--hfc-good` | `#16a34a` | live COP |
+| `--hfc-badge` | `#a855f7` | badge chips |
+| `--hfc-brine`, `--hfc-ground` | `#60a5fa`, `#a16207` | brine pipes, ground loop |
+| `--hfc-flow-dash` | `rgba(255,255,255,.9)` | the moving dashes in the pipes |
+
+```yaml
+type: custom:heatpump-flow-card
+preset: lambda
+card_mod:
+  style: |
+    :host {
+      --hfc-heat: #14b8a6;
+      --hfc-tank-hot: #f43f5e;
+    }
+```
+
 ## Where the numbers come from
 The card shows what your integration provides and does not invent values. Where it has to derive something, this is how:
 
@@ -341,7 +399,7 @@ google-chrome --headless=new --allow-file-access-from-files --virtual-time-budge
 ```
 
 ## Deutsch (Kurzfassung)
-Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Nur Lambda ist bisher mit einer echten Anlage getestet, alle anderen Voreinstellungen noch nicht – Rückmeldungen gern als Issue. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Die Kacheln unter dem Schema lassen sich aus einem Katalog mit über 40 Kennzahlen zusammenstellen (COP, Strom und Wärme je Betriebsart, Abtauungen, Laufzeit pro Start …), jeweils für heute, gestern, Woche, Monat, Jahr oder gesamt; fehlende Zeiträume kommen aus der Langzeitstatistik von Home Assistant. Eine Kostenkachel rechnet mit festem Preis oder bei dynamischem Tarif stundengenau ab; jede Kachel kann eine eigene Tipp-, Halte- oder Doppeltipp-Aktion haben. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-flow-card/demo/).
+Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Nur Lambda ist bisher mit einer echten Anlage getestet, alle anderen Voreinstellungen noch nicht – Rückmeldungen gern als Issue. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Die Kacheln unter dem Schema lassen sich aus einem Katalog mit über 40 Kennzahlen zusammenstellen (COP, Strom und Wärme je Betriebsart, Abtauungen, Laufzeit pro Start …), jeweils für heute, gestern, Woche, Monat, Jahr oder gesamt; fehlende Zeiträume kommen aus der Langzeitstatistik von Home Assistant. Eine Kostenkachel rechnet mit festem Preis oder bei dynamischem Tarif stundengenau ab; jede Kachel und jedes Element des Schemas kann eine eigene Tipp-, Halte- oder Doppeltipp-Aktion haben. Das Layout gibt es kompakt (schmale Spalten) und breit (Kacheln neben dem Schema, für Wandtablets); alle Farben lassen sich über CSS-Variablen (`--hfc-*`) in einem Theme oder mit card-mod ändern. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-flow-card/demo/).
 
 ## License
 MIT © 2026 Sturmi77

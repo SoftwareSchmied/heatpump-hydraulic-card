@@ -438,6 +438,7 @@ const HFC_EDITOR = {
     power_sources: 'PV / battery / grid', ps_auto: 'Energy dashboard, unless set below', ps_manual: 'Only the sensors below',
     source_type: 'Heat source', src_air: 'Air', src_brine: 'Ground (brine)', src_water: 'Groundwater',
     hc_count: 'Heating circuits', hc2_type: 'Circuit 2 emitter', hc3_type: 'Circuit 3 emitter',
+    layout: 'Layout', layout_default: 'Default', layout_compact: 'Compact (narrow columns)', layout_wide: 'Wide (tiles beside the schematic)',
     hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
@@ -481,6 +482,7 @@ const HFC_EDITOR = {
     power_sources: 'PV / Akku / Netz', ps_auto: 'Energie-Dashboard, außer unten gesetzt', ps_manual: 'Nur die Sensoren unten',
     source_type: 'Wärmequelle', src_air: 'Luft', src_brine: 'Erdreich (Sole)', src_water: 'Grundwasser',
     hc_count: 'Heizkreise', hc2_type: 'Wärmeabgabe Heizkreis 2', hc3_type: 'Wärmeabgabe Heizkreis 3',
+    layout: 'Layout', layout_default: 'Standard', layout_compact: 'Kompakt (schmale Spalten)', layout_wide: 'Breit (Kacheln neben dem Schema)',
     hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
@@ -544,6 +546,18 @@ const HFC_PERIODS = ['now', 'today', 'yesterday', 'week', 'month', 'year', 'tota
 const HFC_STAT_PERIODS = { today: ['day', 0], yesterday: ['day', -1], week: ['week', 0], month: ['month', 0], year: ['year', 0] };
 // Home Assistant actions a tile can carry (more-info, navigate, url, toggle, perform-action …).
 const HFC_ACTIONS = ['tap_action', 'hold_action', 'double_tap_action'];
+const HFC_LAYOUTS = ['default', 'compact', 'wide'];
+// Colours the card draws with. Every role can be restyled from a theme or card-mod with --hfc-<role>; the values here are the defaults.
+const HFC_COLORS = {
+  heat: '#f97316', hot: '#dc2626', cool: '#38bdf8', 'cool-strong': '#0ea5e9', defrost: '#7dd3fc',
+  pv: '#f59e0b', battery: '#10b981', grid: '#94a3b8', good: '#16a34a', badge: '#a855f7', brine: '#60a5fa', ground: '#a16207',
+  'flow-cold': '#fb923c', 'flow-hot': '#dc2626', 'return-cold': '#7dd3fc', 'return-hot': '#2563eb', 'tank-cold': '#3b82f6', 'tank-hot': '#ef4444',
+  'flow-dash': 'rgba(255,255,255,.9)',
+};
+const hfcVar = (name) => `var(--hfc-${name}, ${HFC_COLORS[name]})`;
+// Translucent fill and a darker text colour of the same role, for chips and highlighted controls.
+const hfcTint = (name, pct) => `color-mix(in srgb, ${hfcVar(name)} ${pct}%, transparent)`;
+const hfcInk = (name) => `color-mix(in srgb, ${hfcVar(name)} 78%, #000)`;
 const HFC_TILES = {
   cop_live: { live: true },
   cop_heating: { kind: 'cop', legacy: 'cop_heating_today', ratio: ['heat_heating', 'energy_heating'] },
@@ -632,6 +646,7 @@ class HeatpumpFlowCard extends HTMLElement {
             { name: 'title', selector: { text: {} } },
             hcTypeSel('hc_type'),
             { name: 'hc_count', selector: { number: { min: 1, max: 3, step: 1, mode: 'box' } } },
+            { name: 'layout', selector: { select: { mode: 'dropdown', options: HFC_LAYOUTS.map((v) => ({ value: v, label: L[`layout_${v}`] })) } } },
             ...['hc2_type', 'hc3_type'].filter(keep).map(hcTypeSel),
           ],
         },
@@ -693,7 +708,14 @@ class HeatpumpFlowCard extends HTMLElement {
         if (s && s.period !== undefined && !HFC_PERIODS.includes(s.period)) throw new Error(`Unknown tile period "${s.period}". Available: ${HFC_PERIODS.join(', ')}`);
       });
     }
-    [config, ...(config.tiles || []), ...(config.stats || [])].forEach((s) => {
+    if (config.layout !== undefined && config.layout !== null && !HFC_LAYOUTS.includes(config.layout)) {
+      throw new Error(`layout must be one of: ${HFC_LAYOUTS.join(', ')}`);
+    }
+    if (config.actions !== undefined && config.actions !== null) {
+      if (typeof config.actions !== 'object' || Array.isArray(config.actions)) throw new Error('actions must map entity keys to actions, e.g. {dhw_top: {tap_action: {action: navigate, navigation_path: /dhw}}}');
+      if (Object.values(config.actions).some((a) => !a || typeof a !== 'object')) throw new Error('every entry of actions needs tap_action, hold_action or double_tap_action');
+    }
+    [config, ...(config.tiles || []), ...(config.stats || []), ...(config.badges || []), ...Object.values(config.actions || {})].forEach((s) => {
       if (!s || typeof s !== 'object') return;
       if (s.price !== undefined && s.price !== null && !['number', 'string'].includes(typeof s.price)) throw new Error('price must be a number or an entity');
       HFC_ACTIONS.forEach((a) => { if (s[a] !== undefined && (!s[a] || typeof s[a] !== 'object')) throw new Error(`${a} must be an action, e.g. {action: navigate, navigation_path: /energy}`); });
@@ -712,6 +734,7 @@ class HeatpumpFlowCard extends HTMLElement {
     this._statusLabels = preset?.status_labels || {};
     this._statLabels = preset?.stat_labels || {};
     this._badges = config.badges || [];
+    this._layout = HFC_LAYOUTS.includes(config.layout) ? config.layout : 'default';
     this._hcType = config.hc_type || preset?.hc_type || 'underfloor';
     this._hcCount = Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3);
     this._hcTypes = [this._hcType, config.hc2_type || 'underfloor', config.hc3_type || 'underfloor'];
@@ -774,6 +797,11 @@ class HeatpumpFlowCard extends HTMLElement {
     this._e = r.entities;
     this._errors = r.errors;
     this._tileMap = r.tiles;
+    // An action for a key without an entity does nothing; say so once instead of failing silently.
+    if (r.ready && this._config.actions) {
+      const lost = Object.keys(this._config.actions).filter((k) => !this._e[k] && !(this._warned || (this._warned = {}))[k]);
+      lost.forEach((k) => { this._warned[k] = true; console.warn(`heatpump-flow-card: actions.${k} has no entity (check the key or the preset)`); });
+    }
     this._needsBuild = !r.ready;
     this._lastTry = Date.now();
   }
@@ -899,15 +927,16 @@ class HeatpumpFlowCard extends HTMLElement {
   _modeLabel(m, raw) { return this._i.modes[m] || raw || '–'; }
   _statLabel(key, fallback) { return this._statLabels[key]?.[this._lang] || fallback; }
   // Colour scales follow hydraulic convention: flow red/orange, return blue, tanks blue (cold) → red (hot).
-  _mix(a, b, t, lo, hi) {
+  // The end colours are the --hfc-*-cold / --hfc-*-hot variables, mixed in the browser.
+  _mix(cold, hot, t, lo, hi) {
     if (!Number.isFinite(t)) return 'var(--disabled-text-color, #9e9e9e)';
     const f = Math.min(Math.max((t - lo) / (hi - lo), 0), 1);
-    return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * f)).join(',')})`;
+    return `color-mix(in srgb, ${hfcVar(hot)} ${Math.round(f * 100)}%, ${hfcVar(cold)})`;
   }
-  _tankColor(t) { return this._mix([59, 130, 246], [239, 68, 68], t, 20, 58); }
+  _tankColor(t) { return this._mix('tank-cold', 'tank-hot', t, 20, 58); }
   // Pipes without a temperature sensor keep their conventional base colour instead of turning grey.
-  _vlColor(t) { return Number.isFinite(t) ? this._mix([251, 146, 60], [220, 38, 38], t, 25, 55) : '#fdba74'; }
-  _rlColor(t) { return Number.isFinite(t) ? this._mix([125, 211, 252], [37, 99, 235], t, 20, 45) : '#93c5fd'; }
+  _vlColor(t) { return Number.isFinite(t) ? this._mix('flow-cold', 'flow-hot', t, 25, 55) : `color-mix(in srgb, ${hfcVar('flow-cold')} 60%, #fff)`; }
+  _rlColor(t) { return Number.isFinite(t) ? this._mix('return-cold', 'return-hot', t, 20, 45) : `color-mix(in srgb, ${hfcVar('return-cold')} 75%, #fff)`; }
   _$(id) { return this.shadowRoot.getElementById(id); }
   _txt(id, text) { const el = this._$(id); if (el && el.textContent !== text) el.textContent = text; }
   _cls(id, on) { const el = this._$(id); if (el) el.classList.toggle('on', !!on); }
@@ -976,16 +1005,17 @@ class HeatpumpFlowCard extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>${HeatpumpFlowCard.styles}</style>
-      <ha-card>
+      <ha-card class="layout-${this._layout}">
         <div class="head">
           ${T ? `<div class="title">${T}</div>` : '<div></div>'}
           <div class="chips">
             <span class="chip" id="chip-mode" ${de('mode')}></span>
-            ${this._badges.map((b, n) => `<span class="chip badge" id="chip-b${n}" data-entity="${this._esc(b.entity)}">${this._esc(b.label || b.entity)}</span>`).join('')}
+            ${this._badges.map((b, n) => `<span class="chip badge" id="chip-b${n}" data-badge="${n}" data-entity="${this._esc(b.entity)}">${this._esc(b.label || b.entity)}</span>`).join('')}
             <span class="chip err" id="chip-err"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20.5h19z" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke-linecap="round"/></svg>${i.error}</span>
           </div>
         </div>
         ${this._needsBuild && this._preset ? `<div class="hint">${this._esc(i.not_found)}</div>` : ''}
+        <div class="body">
         <svg viewBox="0 0 1000 ${H}" id="svg" role="img" aria-label="${T}">
           <defs>
             <linearGradient id="g-dhw" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-dhw-top"/><stop offset="100%" id="g-dhw-bottom"/></linearGradient>
@@ -1067,18 +1097,20 @@ class HeatpumpFlowCard extends HTMLElement {
               <text class="small" id="t-outdoor" x="830" y="226" text-anchor="middle"></text>
             </g>` : (this._has('outdoor') ? `<g class="tap" ${de('outdoor')}><text class="small" id="t-outdoor" x="880" y="120" text-anchor="middle"></text></g>` : '')}
         </svg>
-        ${this._controlsHtml()}
-        <div class="stats" id="stats"></div>
-        ${this._drawerHtml()}
+        <div class="side">
+          ${this._controlsHtml()}
+          <div class="stats" id="stats"></div>
+          ${this._drawerHtml()}
+        </div>
+        </div>
       </ha-card>`;
 
-    const tap = (ev) => this._tap(ev);
-    this._$('svg').addEventListener('click', tap);
-    this.shadowRoot.querySelector('.head').addEventListener('click', tap);
+    this._actEvents(this._$('svg'));
+    this._actEvents(this.shadowRoot.querySelector('.head'));
     this._tileEvents(this._$('stats'));
     const drawer = this._$('drawer-body');
     if (drawer) {
-      drawer.addEventListener('click', tap);
+      this._actEvents(drawer);
       this._$('drawer-toggle').addEventListener('click', () => {
         this._drawerOpen = !this._drawerOpen;
         drawer.hidden = !this._drawerOpen;
@@ -1600,24 +1632,39 @@ class HeatpumpFlowCard extends HTMLElement {
     </g>`;
   }
 
-  _tap(ev) {
-    const el = ev.composedPath().find((n) => n.dataset && n.dataset.entity);
-    if (el) this._moreInfo(el.dataset.entity);
-  }
-
   _moreInfo(entityId) {
     const e = new Event('hass-more-info', { bubbles: true, composed: true });
     e.detail = { entityId };
     this.dispatchEvent(e);
   }
 
-  // Tiles: tap, hold (500 ms) and double tap (within 250 ms, only waited for when configured).
+  // The actions configured for an element of the schematic, the header or the drawer. A badge has its own, every other element
+  // carries the actions of the entity key it shows (`actions: { dhw_top: … }`); without any, a tap opens more-info.
+  _elementActs(ev) {
+    const path = ev.composedPath();
+    const pick = (cfg) => Object.fromEntries(HFC_ACTIONS.filter((a) => cfg && cfg[a]).map((a) => [a, cfg[a]]));
+    const badge = path.find((n) => n.dataset && n.dataset.badge !== undefined);
+    if (badge) { const b = this._badges[+badge.dataset.badge]; return b ? { entity: b.entity, ...pick(b) } : null; }
+    const el = path.find((n) => n.dataset && n.dataset.entity);
+    if (!el) return null;
+    const id = el.dataset.entity;
+    const own = Object.entries(this._config.actions || {}).find(([k]) => this._e[k] === id);
+    return { entity: id, ...pick(own && own[1]) };
+  }
+
+  _actEvents(box) { this._pointerActions(box, (ev) => this._elementActs(ev)); }
+
+  // Tiles: the actions of the tile under the pointer.
   _tileEvents(box) {
-    let timer = null; let held = false; let pending = null;
-    const actOf = (ev) => {
+    this._pointerActions(box, (ev) => {
       const el = ev.composedPath().find((n) => n.dataset && n.dataset.tile !== undefined);
       return el ? this._tileActs?.[+el.dataset.tile] : null;
-    };
+    });
+  }
+
+  // Tap, hold (500 ms) and double tap (within 250 ms, only waited for when configured).
+  _pointerActions(box, actOf) {
+    let timer = null; let held = false; let pending = null;
     box.addEventListener('pointerdown', (ev) => {
       const a = actOf(ev);
       held = false; clearTimeout(timer);
@@ -1686,7 +1733,7 @@ class HeatpumpFlowCard extends HTMLElement {
     this.style.setProperty('--hfc-fan', `${fanDur.toFixed(2)}s`);
 
     // pipes
-    const cFlow = defrost || cooling ? '#7dd3fc' : this._vlColor(tFlow);
+    const cFlow = defrost || cooling ? hfcVar('defrost') : this._vlColor(tFlow);
     const cRet = this._rlColor(tRet);
     const stroke = (id, c) => { const el = this._$(`p-${id}`); if (el) el.style.stroke = c; };
     ['vl', 'vl-dhw', 'vl-buf', 'byp-vl'].forEach((id) => stroke(id, cFlow));
@@ -1709,7 +1756,7 @@ class HeatpumpFlowCard extends HTMLElement {
         // Without circuit sensors fall back to the buffer / main loop temperatures.
         const tHc = pick(this._n(k('flow')), this._n('buffer_top'), toHeat ? tFlow : tRet);
         const tHcR = pick(this._n(k('return')), this._n('buffer_bottom'), tRet);
-        const cHc = cMode === 'cooling' ? '#7dd3fc' : this._vlColor(tHc);
+        const cHc = cMode === 'cooling' ? hfcVar('defrost') : this._vlColor(tHc);
         stroke(`hc-vl${s}`, cHc); stroke(`hc-body${s}`, cHc); stroke(`hc-rl${s}`, this._rlColor(tHcR));
         if (n > 1) { stroke(`hc-up${s}`, cHc); stroke(`hc-down${s}`, this._rlColor(tHcR)); pipe(`hc-up${s}`, hcOn); pipe(`hc-down${s}`, hcOn); }
         const rt = this._$(`g-rad${s}-top`); const rb = this._$(`g-rad${s}-bottom`);
@@ -1856,12 +1903,12 @@ HeatpumpFlowCard.styles = `
   .title { font-size: 1.15em; font-weight: 600; color: var(--primary-text-color); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chip { cursor: pointer; font-size: .82em; padding: 3px 10px; border-radius: 999px; background: var(--secondary-background-color, rgba(127,127,127,.15)); color: var(--primary-text-color); white-space: nowrap; }
-  .chip.mode-heat { background: rgba(249,115,22,.18); color: #ea580c; }
-  .chip.mode-dhw { background: rgba(239,68,68,.16); color: #dc2626; }
-  .chip.mode-defrost, .chip.mode-cool { background: rgba(56,189,248,.2); color: #0284c7; }
+  .chip.mode-heat { background: ${hfcTint('heat', 18)}; color: ${hfcInk('heat')}; }
+  .chip.mode-dhw { background: ${hfcTint('hot', 16)}; color: ${hfcInk('hot')}; }
+  .chip.mode-defrost, .chip.mode-cool { background: ${hfcTint('cool', 20)}; color: ${hfcInk('cool')}; }
   .chip.badge, .chip.err { display: none; }
-  .chip.badge.on { display: inline-block; background: rgba(168,85,247,.18); color: #9333ea; }
-  .chip.err.on { display: inline-block; background: rgba(239,68,68,.2); color: #dc2626; }
+  .chip.badge.on { display: inline-block; background: ${hfcTint('badge', 18)}; color: ${hfcInk('badge')}; }
+  .chip.err.on { display: inline-block; background: ${hfcTint('hot', 20)}; color: ${hfcInk('hot')}; }
   .chip .ico { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -.2em; margin-right: 4px; fill: none; stroke: currentColor; stroke-width: 2.2; }
   svg { width: 100%; height: auto; display: block; }
   text { fill: var(--primary-text-color); font-family: var(--ha-font-family-body, inherit); }
@@ -1870,38 +1917,38 @@ HeatpumpFlowCard.styles = `
   .pipe-label { font-size: 15px; font-weight: 600; }
   .vol-label { font-size: 13px; fill: var(--hfc-muted); }
   .unit { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; transition: stroke .4s; }
-  .unit.on { stroke: #f97316; filter: url(#glow); }
+  .unit.on { stroke: ${hfcVar('heat')}; filter: url(#glow); }
   .unit-title, .tank-title { font-size: 17px; font-weight: 600; }
   .unit-status { font-size: 16px; font-weight: 600; }
   .unit-val { font-size: 15px; fill: var(--hfc-muted); }
-  .unit-val.strong { font-size: 17px; font-weight: 700; fill: #16a34a; }
+  .unit-val.strong { font-size: 17px; font-weight: 700; fill: ${hfcVar('good')}; }
   .fan-ring { fill: none; stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 3; }
   .blade { fill: var(--hfc-muted); opacity: .55; }
   .hub { fill: var(--hfc-muted); }
   .fan { transform-box: view-box; transform-origin: 170px 288px; }
   .fan.on { animation: hfc-spin var(--hfc-fan, 1s) linear infinite; }
-  .fan.on .blade { fill: #38bdf8; opacity: .9; }
+  .fan.on .blade { fill: ${hfcVar('cool')}; opacity: .9; }
   .snow { opacity: 0; }
   .snow-bg { fill: var(--card-background-color, #fff); opacity: .85; }
-  .snow-flake { fill: none; stroke: #0ea5e9; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+  .snow-flake { fill: none; stroke: ${hfcVar('cool-strong')}; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
   .snow.on { opacity: 1; animation: hfc-pulse 1.6s ease-in-out infinite; }
   .pipe { fill: none; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; opacity: .22; stroke: var(--hfc-muted); transition: opacity .5s, stroke .5s; }
   .pipe.on { opacity: 1; }
-  .flow { fill: none; stroke: rgba(255,255,255,.9); stroke-width: 3.5; stroke-linecap: round; stroke-dasharray: 3 17; opacity: 0; pointer-events: none; }
+  .flow { fill: none; stroke: ${hfcVar('flow-dash')}; stroke-width: 3.5; stroke-linecap: round; stroke-dasharray: 3 17; opacity: 0; pointer-events: none; }
   .flow.on { opacity: 1; animation: hfc-dash var(--hfc-dur, 1.5s) linear infinite; }
   .eline { fill: none; stroke-width: 4; stroke-linecap: round; opacity: .18; }
-  .eline.pv { stroke: #f59e0b; } .eline.bat { stroke: #10b981; } .eline.grid { stroke: #64748b; }
+  .eline.pv { stroke: ${hfcVar('pv')}; } .eline.bat { stroke: ${hfcVar('battery')}; } .eline.grid { stroke: ${hfcVar('grid')}; }
   .eflow { fill: none; stroke-width: 7; stroke-linecap: round; stroke-dasharray: 0.1 18; opacity: 0; pointer-events: none; }
-  .eflow.pv { stroke: #f59e0b; } .eflow.bat { stroke: #10b981; } .eflow.grid { stroke: #94a3b8; }
+  .eflow.pv { stroke: ${hfcVar('pv')}; } .eflow.bat { stroke: ${hfcVar('battery')}; } .eflow.grid { stroke: ${hfcVar('grid')}; }
   .eflow.on { opacity: 1; animation: hfc-dash 1.1s linear infinite; }
   .src.absent { opacity: .35; }
   .src-ring { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; transition: stroke .4s; }
-  .src.pv.on .src-ring { stroke: #f59e0b; } .src.bat.on .src-ring { stroke: #10b981; } .src.grid.on .src-ring { stroke: #94a3b8; }
+  .src.pv.on .src-ring { stroke: ${hfcVar('pv')}; } .src.bat.on .src-ring { stroke: ${hfcVar('battery')}; } .src.grid.on .src-ring { stroke: ${hfcVar('grid')}; }
   .ico { fill: var(--hfc-muted); } .ico-o { fill: none; stroke: var(--hfc-muted); stroke-width: 2.5; }
   .ico-l { stroke: var(--hfc-muted); stroke-width: 2.5; fill: none; stroke-linecap: round; }
-  .src.pv.on .ico { fill: #f59e0b; } .src.pv.on .ico-l { stroke: #f59e0b; }
-  .src.bat.on .ico { fill: #10b981; } .src.bat.on .ico-o { stroke: #10b981; }
-  .src.grid.on .ico-l { stroke: #94a3b8; }
+  .src.pv.on .ico { fill: ${hfcVar('pv')}; } .src.pv.on .ico-l { stroke: ${hfcVar('pv')}; }
+  .src.bat.on .ico { fill: ${hfcVar('battery')}; } .src.bat.on .ico-o { stroke: ${hfcVar('battery')}; }
+  .src.grid.on .ico-l { stroke: ${hfcVar('grid')}; }
   .valve { fill: var(--card-background-color, #fff); stroke: var(--hfc-muted); stroke-width: 3; }
   .valve-arrow { fill: none; stroke: var(--primary-text-color); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
   .tank { stroke: var(--divider-color, rgba(127,127,127,.4)); stroke-width: 2; }
@@ -1911,35 +1958,35 @@ HeatpumpFlowCard.styles = `
   .house-sub { font-size: 14px; }
   .coil { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 3; stroke-linejoin: round; opacity: .35; }
   .coil.on { opacity: 1; stroke-dasharray: 6 8; animation: hfc-dash 1.4s linear infinite; }
-  .circ { opacity: .35; } .circ.on { opacity: 1; fill: #0ea5e9; }
+  .circ { opacity: .35; } .circ.on { opacity: 1; fill: ${hfcVar('cool-strong')}; }
   .pump { fill: var(--card-background-color, #fff); stroke: var(--hfc-muted); stroke-width: 3; }
   .imp { fill: var(--hfc-muted); }
   .impeller { transform-box: view-box; transform-origin: 720px 360px; }
   .impeller.on { animation: hfc-spin 1.2s linear infinite; }
-  .impeller.on .imp { fill: #f97316; }
+  .impeller.on .imp { fill: ${hfcVar('heat')}; }
   .house { fill: var(--secondary-background-color, rgba(127,127,127,.1)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; stroke-linejoin: round; }
   .screed { fill: var(--divider-color, rgba(127,127,127,.35)); }
   .heater-el { fill: none; stroke: var(--disabled-text-color, #9e9e9e); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
   .heater-flange, .heater-box { fill: var(--secondary-background-color, rgba(127,127,127,.15)); stroke: var(--divider-color, rgba(127,127,127,.5)); stroke-width: 1.5; }
-  .heater.on .heater-el { stroke: #f97316; filter: url(#glow); }
-  .heater.on.stage2 .heater-el { stroke: #dc2626; }
-  .ground { fill: none; stroke: #a16207; stroke-width: 3; stroke-dasharray: 10 5; opacity: .7; }
+  .heater.on .heater-el { stroke: ${hfcVar('heat')}; filter: url(#glow); }
+  .heater.on.stage2 .heater-el { stroke: ${hfcVar('hot')}; }
+  .ground { fill: none; stroke: ${hfcVar('ground')}; stroke-width: 3; stroke-dasharray: 10 5; opacity: .7; }
   .well { fill: none; stroke: var(--divider-color, rgba(127,127,127,.5)); stroke-width: 2; }
-  .water { fill: none; stroke: #38bdf8; stroke-width: 2; }
-  .pipe.src { stroke: #60a5fa; }
+  .water { fill: none; stroke: ${hfcVar('cool')}; stroke-width: 2; }
+  .pipe.src { stroke: ${hfcVar('brine')}; }
   .radiator { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.4)); stroke-width: 2; }
   .rib { fill: url(#g-rad); stroke: rgba(0,0,0,.08); stroke-width: 1; }
   #p-hc-body, #f-hc-body { display: var(--hfc-body, inline); }
-  .wave { fill: none; stroke: #f97316; stroke-width: 3; stroke-linecap: round; opacity: 0; }
+  .wave { fill: none; stroke: ${hfcVar('heat')}; stroke-width: 3; stroke-linecap: round; opacity: 0; }
   .waves.on .wave { animation: hfc-rise 2.4s ease-in-out infinite; }
   .waves.on .wave:nth-child(2) { animation-delay: .8s; } .waves.on .wave:nth-child(3) { animation-delay: 1.6s; }
-  .hint { margin: 4px 4px 8px; padding: 8px 12px; border-radius: 8px; background: rgba(249,115,22,.14); color: var(--primary-text-color); font-size: .9em; }
+  .hint { margin: 4px 4px 8px; padding: 8px 12px; border-radius: 8px; background: ${hfcTint('heat', 14)}; color: var(--primary-text-color); font-size: .9em; }
   .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 4px 0; }
   .ctl { font: inherit; font-size: .88em; color: var(--primary-text-color); background: var(--secondary-background-color, rgba(127,127,127,.12));
     border: 1px solid var(--divider-color, rgba(127,127,127,.3)); border-radius: 999px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 6px; }
   button.ctl { cursor: pointer; }
-  button.ctl.toggle.on { background: rgba(249,115,22,.18); border-color: #f97316; color: #ea580c; }
-  button.ctl.press:active { background: rgba(249,115,22,.25); }
+  button.ctl.toggle.on { background: ${hfcTint('heat', 18)}; border-color: ${hfcVar('heat')}; color: ${hfcInk('heat')}; }
+  button.ctl.press:active { background: ${hfcTint('heat', 25)}; }
   .ctl select, .ctl input { font: inherit; color: inherit; background: transparent; border: none; outline: none; max-width: 11em; }
   .ctl input { width: 3.5em; }
   .ctl em { font-style: normal; color: var(--hfc-muted); }
@@ -1958,6 +2005,24 @@ HeatpumpFlowCard.styles = `
   .stat { cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; background: var(--secondary-background-color, rgba(127,127,127,.1)); border-radius: 10px; padding: 6px 8px; text-align: center; }
   .sv { font-weight: 700; font-size: 1.05em; color: var(--primary-text-color); }
   .sl { font-size: .78em; color: var(--hfc-muted); }
+  .tap, .chip, .drow { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  /* layout: compact – tighter spacing for narrow dashboard columns */
+  ha-card.layout-compact { padding: 6px 6px 4px; }
+  .layout-compact .head { margin: 0 2px 2px; }
+  .layout-compact .title { font-size: 1em; }
+  .layout-compact .chip { font-size: .75em; padding: 2px 8px; }
+  .layout-compact .stats { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 4px; margin-top: 4px; }
+  .layout-compact .stat { padding: 4px 6px; border-radius: 8px; }
+  .layout-compact .sv { font-size: .95em; } .layout-compact .sl { font-size: .7em; }
+  .layout-compact .controls { gap: 4px; margin: 4px 2px 0; }
+  .layout-compact .ctl { font-size: .8em; padding: 3px 9px; }
+  .layout-compact .drawer { margin: 4px 2px 0; }
+  /* layout: wide – schematic left, controls, tiles and details right (wall tablets, wide dashboards) */
+  ha-card.layout-wide { display: block; container-type: inline-size; }
+  @container (min-width: 760px) {
+    .layout-wide .body { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr); gap: 14px; align-items: center; }
+    .layout-wide .side > :first-child { margin-top: 0; }
+  }
   @keyframes hfc-dash { to { stroke-dashoffset: -40; } }
   @keyframes hfc-spin { to { transform: rotate(360deg); } }
   @keyframes hfc-pulse { 50% { opacity: .35; } }

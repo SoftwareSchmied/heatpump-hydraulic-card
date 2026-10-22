@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+Layouts, actions on every element and colours you can change.
+- Colours: all colours are CSS variables (`--hfc-heat`, `--hfc-pv`, `--hfc-tank-cold` …) with the previous colours as defaults. A theme or card-mod can restyle the card; the temperature scales of pipes and tanks follow the variables too. Without a theme nothing changes, apart from slightly different tints of chip text and the grid line.
+- Layout: `layout: compact` (tighter spacing for narrow columns) and `layout: wide` (schematic left, controls, tiles and details right, from 760 px card width; for wall tablets). Also in the editor.
+- Actions: `actions` gives every element of the schematic its own `tap_action`, `hold_action` and `double_tap_action`, keyed by entity key; badges can carry them directly. A tap without a configured action still opens more-info.
+- Self-test: 273 checks.
+
 ## 0.5.0 – 2026-10-21
 Your own stat tiles, with costs and actions.
 - Customizable stat tiles (`tiles`): pick tiles, order and period (`now`, `today`, `yesterday`, `week`, `month`, `year`, `total`) from a catalog of more than 40 tiles – COP per mode, SPF, electricity and heat per mode (including defrost and standby), starts, cycles, defrosts, hours, runtime per start, load classes, heater hours and starts, live values, PV and solar thermal yield, cost. Free entities can be mixed in. Without `tiles` nothing changes; `tiles: []` hides the row.

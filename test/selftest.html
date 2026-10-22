@@ -82,7 +82,9 @@
 
   // 4. invalid configs give a readable error
   for (const cfg of [{ preset: 'foo' }, { hc_type: 'x' }, { source_type: 'lava' }, null, { tiles: ['nope'] }, { tiles: ['cop_heating:fortnight'] }, { tiles: 'cop_heating' },
-    { price: { v: 1 } }, { tiles: [{ key: 'spread', tap_action: 'navigate' }] }, { stats: [{ entity: 'sensor.x', hold_action: true }] }]) {
+    { price: { v: 1 } }, { tiles: [{ key: 'spread', tap_action: 'navigate' }] }, { stats: [{ entity: 'sensor.x', hold_action: true }] },
+    { layout: 'huge' }, { actions: [] }, { actions: { mode: 'navigate' } }, { actions: { mode: { tap_action: 'navigate' } } },
+    { badges: [{ entity: 'sensor.x', hold_action: 'toggle' }] }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -317,6 +319,71 @@
     check(ev.length === 1 && ev[0][0] === 'more-info', `then falls back to more-info (${JSON.stringify(ev)})`);
     check(!C._tileOptions({ ...s.config, tiles: [{ key: 'spread', tap_action: { action: 'none' } }] }, C._resolve(s.config, card._hass), card._hass).editable, 'tiles with actions are YAML only');
     card.remove();
+  }
+
+  // 10. theming through --hfc-* variables, layouts, actions on every element of the schematic
+  {
+    const s = setups[0];
+    const hass = hassOf(toStates(s.states('heat')), s.registry || {}, null, s);
+    const card = mount(s.config, hass);
+    await wait(20);
+    const css = card.shadowRoot.querySelector('style').textContent;
+    check(/var\(--hfc-heat, #f97316\)/.test(css) && /var\(--hfc-pv, #f59e0b\)/.test(css), 'styles use --hfc-* variables with the old colours as defaults');
+    check(!/#(f97316|10b981|dc2626|38bdf8|f59e0b|16a34a)/i.test(css.replace(/var\(--hfc-[a-z-]+, #[0-9a-f]{6}\)/gi, '')), 'no hard-coded role colour left in the styles');
+    const stop = card.shadowRoot.getElementById('g-dhw-top')?.getAttribute('stop-color') || '';
+    check(/color-mix/.test(stop) && /--hfc-tank-hot/.test(stop) && /--hfc-tank-cold/.test(stop), `tank gradient follows the theme variables (${stop})`);
+    const pipe = card.shadowRoot.getElementById('p-vl')?.style.stroke || '';
+    check(/--hfc-flow-cold/.test(pipe) || /--hfc-defrost/.test(pipe), `pipe colour follows the theme variables (${pipe})`);
+    card.style.setProperty('--hfc-heat', 'rgb(1, 2, 3)');
+    const box = card.shadowRoot.getElementById('hp-box'); box.classList.add('on');
+    check(getComputedStyle(box).stroke === 'rgb(1, 2, 3)', `--hfc-heat overrides the running colour (${getComputedStyle(box).stroke})`);
+    card.remove();
+
+    // layouts
+    for (const l of ['default', 'compact', 'wide']) {
+      const c = mount({ ...s.config, layout: l }, hass); await wait(10);
+      check(ok(c) && c.shadowRoot.querySelector('ha-card').classList.contains(`layout-${l}`), `layout ${l} renders`);
+      check(!!c.shadowRoot.querySelector('.body > #svg') && !!c.shadowRoot.querySelector('.body > .side > #stats'), `layout ${l}: schematic and side column`);
+      c.remove();
+    }
+    const ed = document.createElement('heatpump-flow-card-editor');
+    let out; ed.addEventListener('config-changed', (ev) => { out = ev.detail.config; });
+    ed.setConfig({ preset: 'lambda', actions: { mode: { tap_action: { action: 'none' } } } }); ed.hass = hass;
+    ed._changed({ preset: 'lambda', layout: 'compact', actions: { mode: { tap_action: { action: 'none' } } } });
+    check(out.layout === 'compact' && out.actions.mode.tap_action.action === 'none', 'editor keeps layout and actions');
+    check(C._formSchema().schema.flatMap((x) => (x.schema ? x.schema.map((y) => y.name) : [x.name])).includes('layout'), 'editor offers the layout');
+
+    // actions per element: configured ones go to hass-action, the rest opens more-info
+    const cfg = { ...s.config,
+      actions: { dhw_top: { tap_action: { action: 'navigate', navigation_path: '/dhw' }, hold_action: { action: 'more-info' } }, flow: { double_tap_action: { action: 'url', url_path: 'https://example.org' } } },
+      badges: [{ entity: 'input_boolean.demo', label: 'Demo', tap_action: { action: 'toggle' } }] };
+    const c = mount(cfg, hass);
+    await wait(20);
+    const ev = [];
+    c.addEventListener('hass-action', (e) => ev.push(['action', e.detail.action, e.detail.config]));
+    c.addEventListener('hass-more-info', (e) => ev.push(['more-info', e.detail.entityId]));
+    const el = (key) => c.shadowRoot.querySelector(`#svg [data-entity="${c._e[key]}"]`);
+    const click = (n) => n.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    check(!!el('dhw_top') && !!el('flow') && !!el('return'), 'schematic elements carry their entity');
+    click(el('dhw_top'));
+    check(ev.length === 1 && ev[0][1] === 'tap' && ev[0][2].tap_action.navigation_path === '/dhw' && ev[0][2].entity === c._e.dhw_top, `tap_action on an element (${JSON.stringify(ev)})`);
+    ev.length = 0; click(el('return'));
+    check(ev.length === 1 && ev[0][0] === 'more-info' && ev[0][1] === c._e.return, `element without actions opens more-info (${JSON.stringify(ev)})`);
+    ev.length = 0; click(c.shadowRoot.getElementById('chip-mode'));
+    check(ev.length === 1 && ev[0][0] === 'more-info', 'header chip opens more-info');
+    ev.length = 0;
+    el('dhw_top').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+    await wait(600);
+    el('dhw_top').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, composed: true }));
+    click(el('dhw_top'));
+    await wait(300);
+    check(ev.length === 1 && ev[0][1] === 'hold', `hold_action on an element, no tap afterwards (${JSON.stringify(ev)})`);
+    ev.length = 0; click(el('flow')); click(el('flow'));
+    await wait(300);
+    check(ev.length === 1 && ev[0][1] === 'double_tap' && ev[0][2].double_tap_action.url_path === 'https://example.org', `double_tap_action on an element (${JSON.stringify(ev)})`);
+    ev.length = 0; click(c.shadowRoot.getElementById('chip-b0'));
+    check(ev.length === 1 && ev[0][1] === 'tap' && ev[0][2].tap_action.action === 'toggle' && ev[0][2].entity === 'input_boolean.demo', `badge action (${JSON.stringify(ev)})`);
+    c.remove();
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);

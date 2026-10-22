@@ -78,6 +78,10 @@
         <p class="note">Only the Lambda preset is tested on a real installation. The others are built from the integrations' source code – feedback welcome.</p></div>
       <div class="panel"><h2>Operating state</h2><div class="opts row" id="states"></div></div>
       <div class="panel"><h2>Display</h2><div class="opts row" id="display"></div></div>
+      <div class="panel"><h2>Layout</h2><div class="opts row" id="layouts"></div>
+        <p class="note">Wide puts the tiles beside the schematic when the card is wide enough; compact saves space in narrow columns.</p></div>
+      <div class="panel"><h2>Colours</h2><div class="opts row" id="palettes"></div>
+        <p class="note">Every colour is a CSS variable (<code>--hfc-*</code>) you can set in a theme or with card-mod.</p></div>
       <div class="panel"><div class="yhead"><h2>Card configuration</h2><button id="copy">Copy</button></div><pre id="yaml"></pre>
         <p class="note" id="ynote">Entities not listed are found by the preset.</p></div>
     </aside>
@@ -93,6 +97,9 @@ let cur = Math.min(Math.max(+q.get('setup') || 0, 0), setups.length - 1);
 let scen = scenarios.some(([k]) => k === q.get('s')) ? q.get('s') : 'heat';
 let lang = q.get('lang') === 'de' ? 'de' : 'en';
 if (q.get('embed') === '1') document.body.classList.add('embed');
+let layout = ['default', 'compact', 'wide'].includes(q.get('layout')) ? q.get('layout') : 'default';
+let palette = q.get('palette') === 'teal' ? 'teal' : 'default';
+const palettes = { teal: { '--hfc-heat': '#14b8a6', '--hfc-hot': '#e11d48', '--hfc-flow-cold': '#5eead4', '--hfc-flow-hot': '#e11d48', '--hfc-tank-cold': '#6366f1', '--hfc-tank-hot': '#f43f5e', '--hfc-pv': '#eab308' } };
 let dark = q.has('dark') ? q.get('dark') === '1' : matchMedia('(prefers-color-scheme: dark)').matches;
 
 // Minimal YAML writer for the card config (strings, numbers, nested objects, lists of objects).
@@ -147,13 +154,17 @@ function draw() {
   document.documentElement.classList.toggle('dark', dark);
   wrap.innerHTML = '';
   const card = document.createElement('heatpump-flow-card');
-  card.setConfig(setup.config);
+  const cfg = { ...setup.config, ...(layout !== 'default' ? { layout } : {}) };
+  card.setConfig(cfg);
+  Object.entries(palettes[palette] || {}).forEach(([k, v]) => card.style.setProperty(k, v));
   wrap.appendChild(card);
   overrides = {};
   customElements.get('heatpump-flow-card')._energyPrefs = null; // the card caches the Energy dashboard per page
   refresh(card);
   card.addEventListener('hass-more-info', (e) => say(`In Home Assistant this opens the more-info dialog of ${e.detail.entityId}`));
-  document.getElementById('yaml').textContent = yaml({ type: 'custom:heatpump-flow-card', ...setup.config });
+  const vars = Object.entries(palettes[palette] || {}).map(([k, v]) => '      ' + k + ': ' + v + ';');
+  const modYaml = vars.length ? ['card_mod:', '  style: |', '    :host {', ...vars, '    }'].join('\n') : '';
+  document.getElementById('yaml').textContent = yaml({ type: 'custom:heatpump-flow-card', ...cfg }) + (modYaml ? '\n' + modYaml : '');
   document.getElementById('ynote').textContent = setup.energy
     ? 'Entities not listed are found by the preset. PV, battery and grid come from the Energy dashboard: the heat pump power is split by the current supply mix of the house.'
     : 'Entities not listed are found by the preset.';
@@ -163,7 +174,9 @@ function draw() {
     b.textContent = setup.scenarioLabels?.[b.dataset.k] || Object.fromEntries(scenarios)[b.dataset.k];
   });
   document.querySelectorAll('#display button').forEach((b) => b.classList.toggle('sel', b.dataset.k === lang || b.dataset.k === (dark ? 'dark' : 'light')));
-  const p = new URLSearchParams({ setup: cur, s: scen, lang, dark: dark ? 1 : 0, ...(q.get('embed') === '1' ? { embed: 1 } : {}) });
+  document.querySelectorAll('#layouts button').forEach((b) => b.classList.toggle('sel', b.dataset.k === layout));
+  document.querySelectorAll('#palettes button').forEach((b) => b.classList.toggle('sel', b.dataset.k === palette));
+  const p = new URLSearchParams({ setup: cur, s: scen, lang, dark: dark ? 1 : 0, layout, palette, ...(q.get('embed') === '1' ? { embed: 1 } : {}) });
   history.replaceState(null, '', `?${p}`);
 }
 const mk = (bar, html, key, fn) => {
@@ -173,6 +186,8 @@ const mk = (bar, html, key, fn) => {
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 setups.forEach((s, i) => mk('setups', `${esc(s.name)}<small>${esc(s.sub)}</small>`, String(i), () => { cur = i; }));
 scenarios.forEach(([k, l]) => mk('states', l, k, () => { scen = k; }));
+[['default', 'Default'], ['compact', 'Compact'], ['wide', 'Wide']].forEach(([k, l]) => mk('layouts', l, k, () => { layout = k; }));
+[['default', 'Default'], ['teal', 'Teal']].forEach(([k, l]) => mk('palettes', l, k, () => { palette = k; }));
 mk('display', 'English', 'en', () => { lang = 'en'; });
 mk('display', 'Deutsch', 'de', () => { lang = 'de'; });
 mk('display', 'Light', 'light', () => { dark = false; });
