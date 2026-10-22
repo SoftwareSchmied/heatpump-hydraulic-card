@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.7 (unreleased)
+Heating program, solar thermal and animation speed.
+- Heating program chip (eco, night, party, holiday) from the new `program` entity or, without one, from the heating circuit mode (Lambda `ECO`). `program_map` maps raw states; common words in English and German are recognised. Presets: EMS-ESP `modetype`, HeishaMon holiday mode, myPyllant special function (the last two and the solar preset below not yet tested on a real installation).
+- Solar thermal: `solar_collector` and `solar_pump` draw a collector on the roof edge of the house with a loop into the DHW tank, animated while the pump runs. ViCare preset. Needs the DHW tank.
+- Animation speed: fan, pumps and flow lines follow the compressor modulation (`compressor_speed`; Hz and rpm against `compressor_speed_max`). Without a modulation value the fan keeps following the power.
+- Self-test: 302 checks.
+
+## 0.6 (unreleased)
 Layouts, actions on every element and colours you can change.
 - Colours: all colours are CSS variables (`--hfc-heat`, `--hfc-pv`, `--hfc-tank-cold` …) with the previous colours as defaults. A theme or card-mod can restyle the card; the temperature scales of pipes and tanks follow the variables too. Without a theme nothing changes, apart from slightly different tints of chip text and the grid line.
 - Layout: `layout: compact` (tighter spacing for narrow columns) and `layout: wide` (schematic left, controls, tiles and details right, from 760 px card width; for wall tablets). Also in the editor.

@@ -157,6 +157,8 @@ const HFC_PRESETS = {
         hours: s('compressor_hours'),
         aux_hours: s('heating_rod_hours'),
         compressor_speed: s('compressor_modulation'),
+        solar_collector: s('collector_temperature'),
+        solar_pump: b('solar_pump'),
         suction_temp: s('compressor_inlet_temperature'),
         hot_gas: s('compressor_outlet_temperature'),
         low_pressure: s('compressor_inlet_pressure', 'suction_gas_pressure'),
@@ -223,6 +225,7 @@ const HFC_PRESETS = {
         hc_mode: `${s}_circuit_${i.hc}_state`,
         room: m(new RegExp(`^sensor\\.${p}_zone_.+_current_temperature$`)),
         room_target: m(new RegExp(`^sensor\\.${p}_zone_.+_desired_temperature$`)),
+        program: m(new RegExp(`^sensor\\.${p}_zone_.+_current_special_function$`)),
         cop_heating_today: m(new RegExp(`^sensor\\.${p}.*_heating_energy_efficiency$`)),
       };
     },
@@ -276,6 +279,7 @@ const HFC_PRESETS = {
         hc_flow: s(`mixer_${hc}_flowtemphc`, `thermostat_${hc}_targetflowtemp`),
         room: s(`thermostat_${hc}_currtemp`),
         room_target: s(`thermostat_${hc}_seltemp`),
+        program: s(`thermostat_${hc}_modetype`),
         hours: s('boiler_uptimecomp', 'boiler_uptimetotal'),
         starts_total: s('boiler_totalcompstarts'),
         energy_total: s('boiler_nrgconstotal'),
@@ -335,6 +339,7 @@ const HFC_PRESETS = {
         hc_flow: `sensor.${m}${z}_water_temp`,
         hc_setpoint: i.hc === 1 ? `sensor.${m}main_target_temp` : undefined,
         room: `sensor.${m}z1_temp`,
+        program: `sensor.${m}holiday_mode_state`,
         hours: `sensor.${m}operations_hours`,
         starts_total: `sensor.${m}operations_counter`,
         aux_hours: `sensor.${m}room_heater_operations_hours`,
@@ -345,6 +350,8 @@ const HFC_PRESETS = {
         eev: `sensor.${m}expansion_valve`,
       };
     },
+    // Holiday mode reports Off / Scheduled / Active.
+    program_map: { Active: 'holiday', Scheduled: 'none', Off: 'none' },
     // No energy counters: heat and electricity per mode as current power, so the COP tiles work for "now".
     tiles: (p) => {
       const m = `sensor.${p}_main_`;
@@ -375,7 +382,8 @@ const HFC_I18N = {
       suction_temp: 'Suction gas', hot_gas: 'Hot gas', liquid_temp: 'Liquid line', low_pressure: 'Low pressure', high_pressure: 'High pressure',
       eev: 'Expansion valve', superheat: 'Superheat', subcooling: 'Subcooling',
     },
-    source_flow: 'Source', target: 'Target', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW',
+    source_flow: 'Source', target: 'Target', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW', solar: 'Solar',
+    programs: { eco: 'Eco', night: 'Night', party: 'Party', holiday: 'Holiday' },
     valve_heating: 'Heating', valve_cooling: 'Cooling', pv: 'PV', battery: 'Battery', grid: 'Grid',
     stat_cop_heating: 'COP heating today', stat_cop_dhw: 'COP DHW today', stat_energy: 'Energy today',
     stat_starts: 'Starts today', stat_spread: 'Spread', stat_volume: 'Flow rate', stat_heat: 'Heat output', pv_share: 'PV',
@@ -408,7 +416,8 @@ const HFC_I18N = {
       suction_temp: 'Sauggas', hot_gas: 'Heißgas', liquid_temp: 'Flüssigkeitsleitung', low_pressure: 'Niederdruck', high_pressure: 'Hochdruck',
       eev: 'Expansionsventil', superheat: 'Überhitzung', subcooling: 'Unterkühlung',
     },
-    source_flow: 'Quelle', target: 'Soll', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW',
+    source_flow: 'Quelle', target: 'Soll', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW', solar: 'Solar',
+    programs: { eco: 'Eco', night: 'Nacht', party: 'Party', holiday: 'Urlaub' },
     valve_heating: 'Heizen', valve_cooling: 'Kühlen', pv: 'PV', battery: 'Akku', grid: 'Netz',
     stat_cop_heating: 'COP Heizen heute', stat_cop_dhw: 'COP WW heute', stat_energy: 'Strom heute',
     stat_starts: 'Starts heute', stat_spread: 'Spreizung', stat_volume: 'Volumenstrom', stat_heat: 'Wärmeleistung', pv_share: 'PV',
@@ -459,6 +468,7 @@ const HFC_EDITOR = {
     preset_help: 'Found entities are filled in below. Pick another entity to override one, clear a field to hide it.',
     from_energy: 'Empty: taken from the Energy dashboard',
     detected: 'Detected', entities_found: 'entities', not_detected: 'Not found in this Home Assistant - check the integration, the prefix or choose another preset',
+    program: 'Heating program (eco, night, party, holiday)', solar_collector: 'Solar collector temperature', solar_pump: 'Solar pump running (binary)',
     source_out: 'Source outlet temperature', heater: 'Backup / inline heater active',
     dhw_heater: 'DHW heater rod active', buffer_heater: 'Buffer heater rod active',
     hc_underfloor: 'Underfloor heating', hc_radiator: 'Radiators',
@@ -503,6 +513,7 @@ const HFC_EDITOR = {
     preset_help: 'Gefundene Entitäten sind unten eingetragen. Andere Entität wählen zum Überschreiben, Feld leeren zum Ausblenden.',
     from_energy: 'Leer: aus dem Energie-Dashboard',
     detected: 'Erkannt', entities_found: 'Entitäten', not_detected: 'In diesem Home Assistant nicht gefunden - Integration und Präfix prüfen oder andere Voreinstellung wählen',
+    program: 'Heizprogramm (Eco, Nacht, Party, Urlaub)', solar_collector: 'Kollektortemperatur Solarthermie', solar_pump: 'Solarpumpe läuft (binär)',
     source_out: 'Quelle Austritt', heater: 'Heizstab / Zusatzheizer aktiv',
     dhw_heater: 'Heizstab Warmwasser aktiv', buffer_heater: 'Heizstab Puffer aktiv',
     hc_underfloor: 'Flächenheizung', hc_radiator: 'Heizkörper',
@@ -524,8 +535,8 @@ const HFC_EDITOR = {
 
 const HFC_ENTITY_GROUPS = {
   sec_hp: ['mode', 'status', 'compressor', 'defrost', 'power', 'heat', 'flow', 'return', 'volume', 'source_volume', 'source_in', 'source_out', 'outdoor', 'valve', 'heater'],
-  sec_storage: ['dhw_top', 'dhw_bottom', 'dhw_target', 'dhw_mode', 'circulation', 'dhw_heater', 'buffer_top', 'buffer_bottom', 'buffer_mode', 'buffer_heater'],
-  sec_hc: ['hc_flow', 'hc_return', 'hc_setpoint', 'hc_mode', 'hc_pump', 'hc_volume', 'room', 'room_target'],
+  sec_storage: ['dhw_top', 'dhw_bottom', 'dhw_target', 'dhw_mode', 'circulation', 'dhw_heater', 'buffer_top', 'buffer_bottom', 'buffer_mode', 'buffer_heater', 'solar_collector', 'solar_pump'],
+  sec_hc: ['hc_flow', 'hc_return', 'hc_setpoint', 'hc_mode', 'hc_pump', 'hc_volume', 'room', 'room_target', 'program'],
   sec_hc2: ['hc2_flow', 'hc2_return', 'hc2_setpoint', 'hc2_mode', 'hc2_pump', 'hc2_volume'],
   sec_hc3: ['hc3_flow', 'hc3_return', 'hc3_setpoint', 'hc3_mode', 'hc3_pump', 'hc3_volume'],
   sec_power: ['pv', 'battery', 'grid'],
@@ -536,7 +547,7 @@ const HFC_ENTITY_GROUPS = {
 // Entity domains usable as quick controls and the service each one calls.
 const HFC_CONTROL_DOMAINS = ['switch', 'input_boolean', 'light', 'fan', 'automation', 'button', 'input_button', 'script', 'scene',
   'select', 'input_select', 'water_heater', 'climate', 'number', 'input_number'];
-const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'hc2_pump', 'hc3_pump', 'circulation', 'defrost', 'heater', 'dhw_heater', 'buffer_heater'];
+const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'hc2_pump', 'hc3_pump', 'circulation', 'defrost', 'heater', 'dhw_heater', 'buffer_heater', 'solar_pump'];
 
 // Stat tile catalog for the `tiles` option. kind: cop | energy (kWh, or W for period "now") | count | hours | classes | cost.
 // legacy: entity key of the default tiles that serves as "today"; ratio: computed from two other tiles when the integration
@@ -547,6 +558,21 @@ const HFC_STAT_PERIODS = { today: ['day', 0], yesterday: ['day', -1], week: ['we
 // Home Assistant actions a tile can carry (more-info, navigate, url, toggle, perform-action …).
 const HFC_ACTIONS = ['tap_action', 'hold_action', 'double_tap_action'];
 const HFC_LAYOUTS = ['default', 'compact', 'wide'];
+// Heating program shown as a chip: the first pattern that matches the raw state of the `program` entity (or the circuit mode) wins.
+// A `program_map` (raw state → eco | night | party | holiday | none) takes precedence.
+const HFC_PROGRAMS = ['eco', 'night', 'party', 'holiday'];
+const HFC_PROGRAM_ICONS = {
+  eco: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19c0-8 5-13 14-14 0 9-5 14-13 14M5 19c2-5 5-8 9-10" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  night: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" stroke-linejoin="round"/></svg>',
+  party: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.4 5.6 6 .6-4.5 4 1.4 5.9L12 16l-5.3 3.1 1.4-5.9-4.5-4 6-.6z" stroke-linejoin="round"/></svg>',
+  holiday: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+};
+const HFC_PROGRAM_PATTERNS = [
+  ['holiday', /holiday|vacation|urlaub|ferien|abwes|absence|away/],
+  ['party', /party|boost|quick.?veto|powerful/],
+  ['night', /night|nacht|setback|absenk|reduced|reduziert|lowered/],
+  ['eco', /(^|[^a-z])eco|spar|economy/],
+];
 // Colours the card draws with. Every role can be restyled from a theme or card-mod with --hfc-<role>; the values here are the defaults.
 const HFC_COLORS = {
   heat: '#f97316', hot: '#dc2626', cool: '#38bdf8', 'cool-strong': '#0ea5e9', defrost: '#7dd3fc',
@@ -710,6 +736,12 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     if (config.layout !== undefined && config.layout !== null && !HFC_LAYOUTS.includes(config.layout)) {
       throw new Error(`layout must be one of: ${HFC_LAYOUTS.join(', ')}`);
+    }
+    if (config.program_map !== undefined && config.program_map !== null && (typeof config.program_map !== 'object' || Array.isArray(config.program_map))) {
+      throw new Error(`program_map must map raw states to ${HFC_PROGRAMS.join(', ')} or none`);
+    }
+    if (config.compressor_speed_max !== undefined && config.compressor_speed_max !== null && !(+config.compressor_speed_max > 0)) {
+      throw new Error('compressor_speed_max must be a number above 0 (the Hz or rpm that count as full speed)');
     }
     if (config.actions !== undefined && config.actions !== null) {
       if (typeof config.actions !== 'object' || Array.isArray(config.actions)) throw new Error('actions must map entity keys to actions, e.g. {dhw_top: {tap_action: {action: navigate, navigation_path: /dhw}}}');
@@ -908,6 +940,29 @@ class HeatpumpFlowCard extends HTMLElement {
     return v;
   }
   _on(key) { return ['on', 'true', 'open', '1'].includes(String(this._s(key)).toLowerCase()); }
+  // Compressor modulation 0..1 from `compressor_speed` (percent; Hz or rpm against `compressor_speed_max`), NaN without a usable value.
+  _speedFraction() {
+    const v = this._n('compressor_speed');
+    if (!Number.isFinite(v)) return NaN;
+    const u = this._unit('compressor_speed');
+    const max = +this._config.compressor_speed_max;
+    const full = max > 0 ? max : (u === 'rpm' || u.includes('min') ? 6000 : 100);
+    return Math.min(Math.max(v / full, 0), 1);
+  }
+  // Heating program (eco, night, party, holiday) from the `program` entity, else from the circuit mode; kind 'none' when it matches nothing.
+  _program() {
+    const key = this._has('program') ? 'program' : (this._has('hc_mode') ? 'hc_mode' : '');
+    if (!key) return null;
+    const raw = String(this._s(key));
+    const map = { ...(this._preset?.program_map || {}), ...(this._config.program_map || {}) };
+    const mapped = this._norm(map, raw);
+    let kind = HFC_PROGRAMS.includes(mapped) ? mapped : 'none';
+    if (kind === 'none' && mapped !== 'none') {
+      const hit = HFC_PROGRAM_PATTERNS.find(([, re]) => re.test(raw.toLowerCase()));
+      if (hit) kind = hit[0];
+    }
+    return { kind, entity: this._e[key] };
+  }
   // Heater level: 0 = off, 1 = on / stage 1, 2-3 = stage. Binary, on/off text, power (> 0) or a stage number.
   _level(key) {
     if (!this._has(key)) return 0;
@@ -957,6 +1012,7 @@ class HeatpumpFlowCard extends HTMLElement {
       hcs: this._hcCount > 1 ? this._hcTypes.slice(0, this._hcCount).join() : '',
       src: this._sourceType,
       heaters: ['heater', 'dhw_heater', 'buffer_heater'].map((k) => (this._has(k) ? 1 : 0)).join(''),
+      solar: (this._has('dhw_top') || this._has('dhw_mode')) && (this._has('solar_collector') || this._has('solar_pump')),
       controls: this._controlList().map((c) => c.entity).join(),
       drawer: this._drawerRows().map(([s, r]) => s + r.map((x) => x[0]).join('.')).join('|'),
       lang: this._lang,
@@ -1010,6 +1066,7 @@ class HeatpumpFlowCard extends HTMLElement {
           ${T ? `<div class="title">${T}</div>` : '<div></div>'}
           <div class="chips">
             <span class="chip" id="chip-mode" ${de('mode')}></span>
+            <span class="chip program" id="chip-program"></span>
             ${this._badges.map((b, n) => `<span class="chip badge" id="chip-b${n}" data-badge="${n}" data-entity="${this._esc(b.entity)}">${this._esc(b.label || b.entity)}</span>`).join('')}
             <span class="chip err" id="chip-err"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20.5h19z" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke-linecap="round"/></svg>${i.error}</span>
           </div>
@@ -1087,6 +1144,8 @@ class HeatpumpFlowCard extends HTMLElement {
             </g>
             ${this._heaterSvg('buffer_heater', 'buf', 455)}` : ''}
 
+
+          ${P.solar ? this._solarSvg() : ''}
 
           ${P.house ? `
             <g class="tap" ${de(e.room ? 'room' : 'room_target')}>
@@ -1593,6 +1652,21 @@ class HeatpumpFlowCard extends HTMLElement {
       <path class="heater-el" d="M640 ${y - 4} H${id === 'dhw' ? 610 : 584} Q${id === 'dhw' ? 604 : 578} ${y - 4} ${id === 'dhw' ? 604 : 578} ${y} Q${id === 'dhw' ? 604 : 578} ${y + 4} ${id === 'dhw' ? 610 : 584} ${y + 4} H640"/></g>`;
   }
 
+  // Solar thermal collector on the roof edge of the house, with a loop into the right side of the DHW tank.
+  _solarSvg() {
+    const entity = this._e.solar_collector || this._e.solar_pump;
+    const flow = 'M736 112 H706 Q690 112 690 128 V134 Q690 150 674 150 H640';
+    const back = 'M640 166 H700 Q712 166 712 154 V140 Q712 126 727 126';
+    const pp = (id, d) => `<path class="pipe" id="p-${id}" d="${d}"/><path class="flow" id="f-${id}" d="${d}"/>`;
+    return `${pp('sol', flow)}${pp('sol-rl', back)}
+      <path class="coil" id="coil-sol" d="M640 150 H612 Q602 150 602 158 Q602 166 612 166 H640"/>
+      <g class="tap solar" id="solar" data-entity="${this._esc(entity)}">
+        <g transform="translate(728 124) rotate(-36)"><rect class="collector" x="0" y="-24" width="84" height="22" rx="3"/>
+          <path class="collector-cells" d="M21 -24 V-2 M42 -24 V-2 M63 -24 V-2 M0 -13 H84"/></g>
+        <text class="small" id="t-sol" x="716" y="94" text-anchor="end"></text>
+      </g>`;
+  }
+
   // Ground loop (brine) or two wells (groundwater) below the heat pump; air keeps the fan.
   _sourceSvg() {
     if (this._sourceType === 'air') return '';
@@ -1727,10 +1801,15 @@ class HeatpumpFlowCard extends HTMLElement {
     let heatEstimated = false;
     if (!this._has('heat') && loop && running && vol > 0 && spread > 0) { heat = (vol * spread * 1.163) / 1000; heatEstimated = true; }
 
-    const dur = Number.isFinite(vol) && vol > 0 ? Math.min(Math.max(3.4 - vol / 1000, 0.8), 3) : 2;
+    // Animation speed: fan, flow dashes and pumps follow the compressor modulation when the integration reports it,
+    // the flow dashes the flow rate, the fan otherwise the electrical power.
+    const mod = this._speedFraction();
+    const modOk = Number.isFinite(mod) && mod > 0;
+    const dur = Number.isFinite(vol) && vol > 0 ? Math.min(Math.max(3.4 - vol / 1000, 0.8), 3) : (modOk ? 2.6 - mod * 1.8 : 2);
     this.style.setProperty('--hfc-dur', `${dur.toFixed(2)}s`);
-    const fanDur = running ? Math.min(Math.max(2.4 - (power || 0) / 1500, 0.5), 2.4) : 0;
+    const fanDur = running ? (modOk ? 2.4 - mod * 1.9 : Math.min(Math.max(2.4 - (power || 0) / 1500, 0.5), 2.4)) : 0;
     this.style.setProperty('--hfc-fan', `${fanDur.toFixed(2)}s`);
+    this.style.setProperty('--hfc-pump', `${(modOk ? 1.8 - mod * 1.2 : 1.2).toFixed(2)}s`);
 
     // pipes
     const cFlow = defrost || cooling ? hfcVar('defrost') : this._vlColor(tFlow);
@@ -1770,6 +1849,16 @@ class HeatpumpFlowCard extends HTMLElement {
         this._txt(`t-hc-vol${s}`, this._has(k('volume')) && Number.isFinite(hcVol) ? `${this._fmt(hcVol, 0)} l/h` : '');
         this._txt(`t-hc-mode${s}`, this._has(k('mode')) ? this._modeLabel(cMode, this._s(k('mode'))) : (hcOn ? i.running : ''));
       }
+    }
+
+    // solar thermal: collector temperature, loop animated while the solar pump runs
+    if (P.solar) {
+      const tc = this._n('solar_collector');
+      const on = this._level('solar_pump') > 0;
+      stroke('sol', this._vlColor(tc)); stroke('sol-rl', this._rlColor(this._n('dhw_bottom')));
+      pipe('sol', on); pipe('sol-rl', on);
+      this._cls('coil-sol', on); this._cls('solar', on);
+      this._txt('t-sol', Number.isFinite(tc) ? this._t(tc) : i.solar);
     }
 
     // heaters
@@ -1864,6 +1953,15 @@ class HeatpumpFlowCard extends HTMLElement {
       const st = this._hass.states[id]?.state; const v = parseFloat(st);
       return (Number.isFinite(v) && v !== 0) || st === 'on';
     });
+    const prog = this._program();
+    const pc = this._$('chip-program');
+    const progKind = prog && prog.kind !== 'none' ? prog.kind : '';
+    if (pc._kind !== progKind) {
+      pc._kind = progKind;
+      pc.className = `chip program${progKind ? ` on ${progKind}` : ''}`;
+      pc.innerHTML = progKind ? `${HFC_PROGRAM_ICONS[progKind]}${this._esc(i.programs[progKind])}` : '';
+    }
+    if (progKind) pc.dataset.entity = prog.entity;
     const err = this._$('chip-err');
     err.classList.toggle('on', errs.length > 0);
     if (errs.length) err.dataset.entity = errs[0];
@@ -1906,7 +2004,12 @@ HeatpumpFlowCard.styles = `
   .chip.mode-heat { background: ${hfcTint('heat', 18)}; color: ${hfcInk('heat')}; }
   .chip.mode-dhw { background: ${hfcTint('hot', 16)}; color: ${hfcInk('hot')}; }
   .chip.mode-defrost, .chip.mode-cool { background: ${hfcTint('cool', 20)}; color: ${hfcInk('cool')}; }
-  .chip.badge, .chip.err { display: none; }
+  .chip.badge, .chip.err, .chip.program { display: none; }
+  .chip.program.on { display: inline-block; }
+  .chip.program.eco { background: ${hfcTint('good', 18)}; color: ${hfcInk('good')}; }
+  .chip.program.night { background: ${hfcTint('cool-strong', 18)}; color: ${hfcInk('cool-strong')}; }
+  .chip.program.party { background: ${hfcTint('pv', 20)}; color: ${hfcInk('pv')}; }
+  .chip.program.holiday { background: ${hfcTint('badge', 18)}; color: ${hfcInk('badge')}; }
   .chip.badge.on { display: inline-block; background: ${hfcTint('badge', 18)}; color: ${hfcInk('badge')}; }
   .chip.err.on { display: inline-block; background: ${hfcTint('hot', 20)}; color: ${hfcInk('hot')}; }
   .chip .ico { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -.2em; margin-right: 4px; fill: none; stroke: currentColor; stroke-width: 2.2; }
@@ -1962,10 +2065,13 @@ HeatpumpFlowCard.styles = `
   .pump { fill: var(--card-background-color, #fff); stroke: var(--hfc-muted); stroke-width: 3; }
   .imp { fill: var(--hfc-muted); }
   .impeller { transform-box: view-box; transform-origin: 720px 360px; }
-  .impeller.on { animation: hfc-spin 1.2s linear infinite; }
+  .impeller.on { animation: hfc-spin var(--hfc-pump, 1.2s) linear infinite; }
   .impeller.on .imp { fill: ${hfcVar('heat')}; }
   .house { fill: var(--secondary-background-color, rgba(127,127,127,.1)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; stroke-linejoin: round; }
   .screed { fill: var(--divider-color, rgba(127,127,127,.35)); }
+  .collector { fill: var(--secondary-background-color, rgba(127,127,127,.15)); stroke: var(--divider-color, rgba(127,127,127,.5)); stroke-width: 2; transition: fill .4s, stroke .4s; }
+  .collector-cells { fill: none; stroke: var(--divider-color, rgba(127,127,127,.5)); stroke-width: 1.5; }
+  .solar.on .collector { fill: ${hfcTint('pv', 28)}; stroke: ${hfcVar('pv')}; }
   .heater-el { fill: none; stroke: var(--disabled-text-color, #9e9e9e); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
   .heater-flange, .heater-box { fill: var(--secondary-background-color, rgba(127,127,127,.15)); stroke: var(--divider-color, rgba(127,127,127,.5)); stroke-width: 1.5; }
   .heater.on .heater-el { stroke: ${hfcVar('heat')}; filter: url(#glow); }

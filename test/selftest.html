@@ -84,7 +84,8 @@
   for (const cfg of [{ preset: 'foo' }, { hc_type: 'x' }, { source_type: 'lava' }, null, { tiles: ['nope'] }, { tiles: ['cop_heating:fortnight'] }, { tiles: 'cop_heating' },
     { price: { v: 1 } }, { tiles: [{ key: 'spread', tap_action: 'navigate' }] }, { stats: [{ entity: 'sensor.x', hold_action: true }] },
     { layout: 'huge' }, { actions: [] }, { actions: { mode: 'navigate' } }, { actions: { mode: { tap_action: 'navigate' } } },
-    { badges: [{ entity: 'sensor.x', hold_action: 'toggle' }] }]) {
+    { badges: [{ entity: 'sensor.x', hold_action: 'toggle' }] },
+    { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -335,7 +336,7 @@
     const pipe = card.shadowRoot.getElementById('p-vl')?.style.stroke || '';
     check(/--hfc-flow-cold/.test(pipe) || /--hfc-defrost/.test(pipe), `pipe colour follows the theme variables (${pipe})`);
     card.style.setProperty('--hfc-heat', 'rgb(1, 2, 3)');
-    const box = card.shadowRoot.getElementById('hp-box'); box.classList.add('on');
+    const box = card.shadowRoot.getElementById('hp-box'); box.classList.add('on'); box.style.transition = 'none';
     check(getComputedStyle(box).stroke === 'rgb(1, 2, 3)', `--hfc-heat overrides the running colour (${getComputedStyle(box).stroke})`);
     card.remove();
 
@@ -384,6 +385,81 @@
     ev.length = 0; click(c.shadowRoot.getElementById('chip-b0'));
     check(ev.length === 1 && ev[0][1] === 'tap' && ev[0][2].tap_action.action === 'toggle' && ev[0][2].entity === 'input_boolean.demo', `badge action (${JSON.stringify(ev)})`);
     c.remove();
+  }
+
+  // 11. animation speed, heating program chip, solar thermal
+  {
+    const s = setups[0];
+    const hassWith = (setup, scen, extra = {}, reg = {}) => hassOf(toStates({ ...setup.states(scen), ...extra }), { ...(setup.registry || {}), ...reg }, null, setup);
+    const rating = 'sensor.eu08l_hp1_compressor_unit_rating';
+    const fanOf = async (extra, cfg = {}) => {
+      const c = mount({ ...s.config, ...cfg }, hassWith(s, 'heat', extra)); await wait(20);
+      const r = [c.style.getPropertyValue('--hfc-fan'), c.style.getPropertyValue('--hfc-pump')]; c.remove(); return r;
+    };
+    let r = await fanOf({});
+    check(r[0] === '1.53s' && r[1] === '1.25s', `fan and pump follow the compressor modulation of 46 % (${r})`);
+    r = await fanOf({ [rating]: ['100', '%'] });
+    check(r[0] === '0.50s' && r[1] === '0.60s', `full speed: fastest (${r})`);
+    r = await fanOf({ [rating]: ['50', '%'] });
+    check(r[0] === '1.45s', `half speed (${r})`);
+    r = await fanOf({ [rating]: 'unknown' });
+    check(r[0] === '1.57s' && r[1] === '1.20s', `without a modulation value the fan follows the power, the pump keeps its pace (${r})`);
+    r = await fanOf({ [rating]: ['60', 'Hz'] }, { compressor_speed_max: 120 });
+    check(r[0] === '1.45s', `Hz against compressor_speed_max (${r})`);
+
+    // heating program chip
+    const prog = async (setup, scen, extra, cfg = {}) => {
+      const c = mount({ ...setup.config, ...cfg }, hassWith(setup, scen, extra)); await wait(20);
+      const chip = c.shadowRoot.getElementById('chip-program');
+      const out = [chip.classList.contains('on') ? [...chip.classList].find((x) => HFC_KINDS.includes(x)) : '', chip.textContent.trim()]; c.remove(); return out;
+    };
+    const HFC_KINDS = ['eco', 'night', 'party', 'holiday'];
+    for (const [scen, kind, label] of [['heat', 'eco', 'Eco'], ['dhw', 'party', 'Party'], ['defrost', 'night', 'Night'], ['idle', 'holiday', 'Holiday']]) {
+      const p = await prog(s, scen);
+      check(p[0] === kind && p[1] === label, `program chip ${scen}: ${kind} (${p})`);
+    }
+    check((await prog(s, 'heat', { 'select.heatpump_heating_program': 'Comfort' }))[0] === '', 'comfort shows no chip');
+    check((await prog(s, 'heat', { 'select.heatpump_heating_program': 'Reduziert' }))[0] === 'night', 'German "reduziert" is night');
+    check((await prog(s, 'heat', { 'select.heatpump_heating_program': 'Comfort' }, { program_map: { Comfort: 'party' } }))[0] === 'party', 'program_map maps a raw state');
+    check((await prog(s, 'heat', {}, { program_map: { Eco: 'none' } }))[0] === '', 'program_map none hides the chip');
+    const noProgram = { ...s.config, entities: { ...s.config.entities, program: null } };
+    check((await prog({ ...s, config: noProgram }, 'heat', { 'sensor.eu08l_hc1_operating_state': 'ECO' }))[0] === 'eco', 'without a program entity the circuit mode ECO shows eco');
+    check((await prog({ ...s, config: noProgram }, 'heat', {}))[0] === '', 'circuit mode HEATING shows no chip');
+    const hm = setups[5];
+    check((await prog(hm, 'heat', { 'sensor.panasonic_heat_pump_main_holiday_mode_state': 'Active' }))[0] === 'holiday', 'HeishaMon holiday mode Active');
+    check((await prog(hm, 'heat', { 'sensor.panasonic_heat_pump_main_holiday_mode_state': 'Scheduled' }))[0] === '', 'HeishaMon holiday mode Scheduled shows nothing');
+    {
+      const c = mount(s.config, hassWith(s, 'heat')); await wait(20);
+      const ev = []; c.addEventListener('hass-more-info', (e) => ev.push(e.detail.entityId));
+      c.shadowRoot.getElementById('chip-program').dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+      check(ev[0] === 'select.heatpump_heating_program', `program chip opens the program entity (${ev})`);
+      c.remove();
+    }
+
+    // solar thermal
+    const sol = async (scen, cfg = {}, setup = s, extra = {}, reg = {}) => {
+      const c = mount({ ...setup.config, ...cfg }, hassWith(setup, scen, extra, reg)); await wait(20);
+      const q = (id) => c.shadowRoot.getElementById(id);
+      const out = { has: !!q('solar'), text: q('t-sol')?.textContent, flow: q('f-sol')?.classList.contains('on'), coil: q('coil-sol')?.classList.contains('on'), panel: q('solar')?.classList.contains('on'), ok: ok(c) };
+      c.remove(); return out;
+    };
+    let o = await sol('heat');
+    check(o.has && o.text === '58.4 °C' && o.flow && o.coil && o.panel, `solar loop animated while the pump runs (${JSON.stringify(o)})`);
+    o = await sol('defrost');
+    check(o.has && o.text === '12.5 °C' && !o.flow && !o.coil && !o.panel, `solar loop idle with the pump off (${JSON.stringify(o)})`);
+    o = await sol('heat', { entities: { ...s.config.entities, solar_collector: null } });
+    check(o.has && o.text === 'Solar' && o.flow, `pump only: label without a temperature (${JSON.stringify(o)})`);
+    o = await sol('heat', { entities: { ...s.config.entities, dhw_top: null, dhw_mode: null } });
+    check(!o.has && o.ok, 'no solar loop without a hot water tank');
+    o = await sol('heat', { entities: { ...s.config.entities, solar_collector: null, solar_pump: null } });
+    check(!o.has && o.ok, 'no solar loop without solar entities');
+    const vi = setups[2];
+    o = await sol('heat', {}, vi, { 'sensor.vitocal_kollektor': ['63.0', '°C'], 'binary_sensor.vitocal_solarpumpe': 'on' },
+      { 'sensor.vitocal_kollektor': { platform: 'vicare', translation_key: 'collector_temperature' }, 'binary_sensor.vitocal_solarpumpe': { platform: 'vicare', translation_key: 'solar_pump' } });
+    check(o.has && o.text === '63.0 °C' && o.flow, `ViCare preset finds the solar collector and pump (${JSON.stringify(o)})`);
+    const keys = (n) => (n.schema ? n.schema.flatMap(keys) : [n.name]);
+    const formKeys = C._formSchema().schema.flatMap(keys);
+    check(['program', 'solar_collector', 'solar_pump'].every((k) => formKeys.includes(k)), 'editor offers program and solar entities');
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);

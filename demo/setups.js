@@ -56,6 +56,10 @@ const extras = (s) => ({
   'number.heatpump_dhw_target': { state: '50', attributes: { friendly_name: 'DHW target', min: 40, max: 60, step: 1, unit_of_measurement: '°C' } },
   'button.heatpump_dhw_boost': { state: 'unknown', attributes: { friendly_name: 'DHW boost once' } },
   'sensor.heating_curve_flow': ['33.5', '°C'],
+  // Heating program and a solar thermal collector (pump runs while the collector is hotter than the tank).
+  'select.heatpump_heating_program': { state: { heat: 'Eco', dhw: 'Party', defrost: 'Night', idle: 'Holiday' }[s], attributes: { friendly_name: 'Heating program' } },
+  'sensor.heatpump_solar_collector': [{ heat: '58.4', dhw: '71.0', defrost: '12.5', idle: '44.0' }[s], '°C'],
+  'binary_sensor.heatpump_solar_pump': s === 'heat' || s === 'dhw' ? 'on' : 'off',
 });
 const otherStates = (s) => ({
   'sensor.wp_betriebsart': { heat: 'Heating', dhw: 'Hot water', defrost: 'Defrost', idle: 'Standby' }[s],
@@ -180,6 +184,7 @@ const setups = [
       entities: {
         room: 'sensor.living_room_temperature', pv: 'sensor.heatpump_power_from_pv', battery: 'sensor.heatpump_power_from_battery',
         grid: 'sensor.heatpump_power_from_grid', energy_today: 'sensor.heatpump_energy_today', pv_share_today: 'sensor.heatpump_pv_share_today',
+        program: 'select.heatpump_heating_program', solar_collector: 'sensor.heatpump_solar_collector', solar_pump: 'binary_sensor.heatpump_solar_pump',
       },
       badges: [{ entity: 'input_boolean.heatpump_boost', label: 'Boost' }],
       controls: ['input_boolean.heatpump_boost', 'button.heatpump_dhw_boost', 'select.heatpump_operating_mode', 'number.heatpump_dhw_target'],
