@@ -7,6 +7,8 @@
 
 [![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Sturmi77&repository=heatpump-flow-card&category=plugin)
 
+![Heatpump Flow Card: the animated heat pump schematic in a light and a dark theme](docs/social-preview.png)
+
 An **animated hydraulic schematic** for air-to-water heat pumps in Home Assistant.
 
 It shows electricity flowing from **PV, battery and grid** into the heat pump, the **diverter valve** switching between hot water and heating, colour-coded **tanks**, the **heating circuit** and your rooms. Animation speed follows the real flow rate. The core is vendor-neutral: **presets** make it zero-config for popular heat pumps:
@@ -22,7 +24,7 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 > [!NOTE]
 > The **Viessmann**, **Vaillant**, **EMS-ESP** and **HeishaMon** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open an issue](https://github.com/Sturmi77/heatpump-flow-card/issues) with your entity list if something is missing or wrong. The Lambda preset runs on a real installation.
 
-![Animated demo: heating, hot water and defrost](docs/demo.gif)
+![Animated demo: heating, hot water and defrost, with the Lambda and Vaillant unit drawings](docs/demo.gif)
 
 **[Try the live demo](https://sturmi77.github.io/heatpump-flow-card/demo/)**: every preset in heating, hot water, defrost and standby, light and dark, English and German, with the matching card configuration. Runs in the browser with simulated data, no Home Assistant needed.
 
@@ -50,15 +52,23 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 
 | Viessmann preset, radiators | Vaillant preset, DHW run | Lambda zero-config, DHW run |
 |---|---|---|
-| ![](docs/vicare-radiator.jpg) | ![](docs/vaillant-dhw.jpg) | ![](docs/zero-config-dhw.jpg) |
+| ![](docs/vicare-radiator.png) | ![](docs/vaillant-dhw.png) | ![](docs/zero-config-dhw.png) |
 
 | Details drawer and quick controls | Ground source, two circuits, heater rod | EMS-ESP preset (Buderus) | HeishaMon preset (Panasonic), radiators | Other brand, minimal setup | Dark theme |
 |---|---|---|---|---|---|
-| ![](docs/details.png) | ![](docs/ground-source.png) | ![](docs/emsesp-heating.jpg) | ![](docs/heishamon-radiator.jpg) | ![](docs/other-brand-minimal.jpg) | ![](docs/dark.jpg) |
+| ![](docs/details.png) | ![](docs/ground-source.png) | ![](docs/emsesp-heating.png) | ![](docs/heishamon-radiator.png) | ![](docs/other-brand-minimal.png) | ![](docs/dark.png) |
 
 | Live on a real Lambda installation |
 |---|
 | ![Live view while heating](docs/live-heating.jpg) |
+
+![One card from phone to wall tablet: phone light and dark, compact, wide and wall layout](docs/layouts.png)
+
+![The outdoor unit in the schematic: generic fan, Lambda EU-L and the Vaillant aroTHERM plus in three sizes](docs/units.png)
+
+| Keyboard focus |
+|---|
+| ![Focus frame around the hot water tank](docs/keyboard-focus.png) |
 
 ## Installation
 
