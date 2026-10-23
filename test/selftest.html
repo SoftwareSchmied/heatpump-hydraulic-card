@@ -86,7 +86,7 @@
     { layout: 'huge' }, { actions: [] }, { actions: { mode: 'navigate' } }, { actions: { mode: { tap_action: 'navigate' } } },
     { badges: [{ entity: 'sensor.x', hold_action: 'toggle' }] },
     { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' },
-    { wall_timeout: -1 }, { wall_timeout: 'soon' }]) {
+    { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -542,6 +542,45 @@
     const one = mount(s.config, hass); await wait(10);
     check(one.shadowRoot.querySelectorAll('.hop').length === 0, 'single circuit has no bridge');
     one.remove();
+  }
+
+  // 14. outdoor unit drawings: style per preset, Vaillant sizes, fans and snowflakes, loop symbol for ground sources
+  {
+    const draw = async (setup, scen, cfg = {}) => {
+      const c = mount({ ...setup.config, ...cfg }, hassOf(toStates(setup.states(scen)), setup.registry || {}, setup.energy, setup)); await wait(20);
+      const q = (sel) => c.shadowRoot.querySelectorAll(sel).length;
+      const out = { lam: q('.lam-body'), vai: q('.vai-body'), ring: q('.fan-ring'), fans: q('.fan'), snows: q('.snow'), fan2on: c.shadowRoot.getElementById('fan2')?.classList.contains('on'), snow2on: c.shadowRoot.getElementById('snow2')?.classList.contains('on'),
+        origin: c.shadowRoot.getElementById('fan')?.style.transformOrigin, ok: ok(c) };
+      c.remove(); return out;
+    };
+    let o = await draw(setups[1], 'heat');
+    check(o.lam === 1 && o.vai === 0 && o.ring === 0 && o.fans === 1 && o.ok, `Lambda preset draws the Lambda unit (${JSON.stringify(o)})`);
+    check(o.origin === '170px 263px', `the fan spins around its own centre (${o.origin})`);
+    o = await draw(setups[1], 'heat', { unit_style: 'generic' });
+    check(o.lam === 0 && o.ring === 1 && o.fans === 1, 'unit_style generic keeps the fan ring');
+    o = await draw(setups[1], 'heat', { unit_style: 'auto' });
+    check(o.lam === 1, 'unit_style auto follows the preset');
+    o = await draw(setups[4], 'heat');
+    check(o.lam === 0 && o.vai === 0 && o.ring === 1, 'presets without a style keep the generic drawing');
+    o = await draw(setups[3], 'heat');
+    check(o.vai === 1 && o.fans === 1, `Vaillant preset draws the aroTHERM plus, medium by default (${JSON.stringify(o)})`);
+    o = await draw(setups[3], 'heat', { unit_size: 'small' });
+    check(o.vai === 1 && o.fans === 1, 'Vaillant small has one fan');
+    o = await draw(setups[3], 'heat', { unit_size: 'large' });
+    check(o.vai === 1 && o.fans === 2 && o.fan2on === true, `Vaillant large has two fans and both spin (${JSON.stringify(o)})`);
+    o = await draw(setups[3], 'idle', { unit_size: 'large' });
+    check(o.fans === 2 && o.fan2on === false, 'both fans stand still in standby');
+    o = await draw(setups[3], 'defrost', { unit_size: 'large' });
+    check(o.snows === 2, 'two snowflakes for two fans');
+    o = await draw(setups[1], 'defrost');
+    check(o.snows === 1, 'one snowflake on the Lambda unit');
+    o = await draw(setups[3], 'heat', { unit_style: 'lambda' });
+    check(o.lam === 1 && o.vai === 0, 'any preset can use another unit drawing');
+    o = await draw(setups[6], 'heat', { unit_style: 'lambda' });
+    check(o.lam === 0 && o.ok, 'ground sources keep their loop symbol');
+    const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
+    const names = (cfg) => C._formSchema(cfg).schema.flatMap(keysOf);
+    check(names({}).includes('unit_style') && !names({ preset: 'lambda' }).includes('unit_size') && names({ preset: 'vaillant' }).includes('unit_size') && names({ unit_style: 'vaillant' }).includes('unit_size') && !names({ preset: 'vaillant', unit_style: 'lambda' }).includes('unit_size'), 'editor offers unit_style, and unit_size only for Vaillant');
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);

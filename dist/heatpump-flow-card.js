@@ -25,6 +25,7 @@ const HFC_PRESETS = {
   lambda: {
     name: 'Lambda (lambda_heat_pumps)',
     tested: true,
+    unit_style: 'lambda',
     // Legacy naming: sensor.<prefix>_hp1_…; new naming (no prefix): sensor.hp1_…
     detect: (ctx) => {
       const re = new RegExp(`^sensor\\.(?:(.+)_)?hp${ctx.idx.hp}_operating_state$`);
@@ -202,6 +203,7 @@ const HFC_PRESETS = {
   vaillant: {
     name: 'Vaillant (myPyllant)',
     index: { hc: 0, dhw: 0 },
+    unit_style: 'vaillant',
     detect: (ctx) => {
       const id = ctx.match(/^sensor\.(.+)_energy_manager_state$/, 'mypyllant')
         || ctx.match(/^sensor\.(.+)_system_flow_temperature$/, 'mypyllant');
@@ -447,6 +449,8 @@ const HFC_EDITOR = {
     power_sources: 'PV / battery / grid', ps_auto: 'Energy dashboard, unless set below', ps_manual: 'Only the sensors below',
     source_type: 'Heat source', src_air: 'Air', src_brine: 'Ground (brine)', src_water: 'Groundwater',
     hc_count: 'Heating circuits', hc2_type: 'Circuit 2 emitter', hc3_type: 'Circuit 3 emitter',
+    unit_style: 'Unit drawing', unit_auto: 'Automatic (from the preset)', unit_generic: 'Generic (fan)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus',
+    unit_size: 'Vaillant size', size_small: '3.5 / 5.5 kW (1 fan, low)', size_medium: '7.5 kW (1 fan)', size_large: '10.5 / 12.5 kW (2 fans)',
     layout: 'Layout', layout_default: 'Default', layout_compact: 'Compact (narrow columns)', layout_wide: 'Wide (tiles beside the schematic)', layout_wall: 'Wall display (large, controls fade out)',
     wall_timeout: 'Hide controls after (seconds, 0 = never)',
     hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
@@ -493,6 +497,8 @@ const HFC_EDITOR = {
     power_sources: 'PV / Akku / Netz', ps_auto: 'Energie-Dashboard, außer unten gesetzt', ps_manual: 'Nur die Sensoren unten',
     source_type: 'Wärmequelle', src_air: 'Luft', src_brine: 'Erdreich (Sole)', src_water: 'Grundwasser',
     hc_count: 'Heizkreise', hc2_type: 'Wärmeabgabe Heizkreis 2', hc3_type: 'Wärmeabgabe Heizkreis 3',
+    unit_style: 'Geräte-Zeichnung', unit_auto: 'Automatisch (aus der Voreinstellung)', unit_generic: 'Allgemein (Lüfter)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus',
+    unit_size: 'Vaillant-Größe', size_small: '3,5 / 5,5 kW (1 Lüfter, niedrig)', size_medium: '7,5 kW (1 Lüfter)', size_large: '10,5 / 12,5 kW (2 Lüfter)',
     layout: 'Layout', layout_default: 'Standard', layout_compact: 'Kompakt (schmale Spalten)', layout_wide: 'Breit (Kacheln neben dem Schema)', layout_wall: 'Wanddisplay (groß, Bedienelemente blenden aus)',
     wall_timeout: 'Bedienelemente ausblenden nach (Sekunden, 0 = nie)',
     hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
@@ -560,6 +566,9 @@ const HFC_STAT_PERIODS = { today: ['day', 0], yesterday: ['day', -1], week: ['we
 // Home Assistant actions a tile can carry (more-info, navigate, url, toggle, perform-action …).
 const HFC_ACTIONS = ['tap_action', 'hold_action', 'double_tap_action'];
 const HFC_LAYOUTS = ['default', 'compact', 'wide', 'wall'];
+// Drawing of the outdoor unit: `auto` takes the style of the preset; `unit_size` picks the Vaillant aroTHERM plus class.
+const HFC_UNIT_STYLES = ['auto', 'generic', 'lambda', 'vaillant'];
+const HFC_UNIT_SIZES = ['small', 'medium', 'large'];
 // Wall display: seconds the quick controls and the details toggle stay visible after the last touch or mouse move.
 const HFC_WALL_TIMEOUT = 10;
 // Heating program shown as a chip: the first pattern that matches the raw state of the `program` entity (or the circuit mode) wins.
@@ -582,7 +591,7 @@ const HFC_COLORS = {
   heat: '#f97316', hot: '#dc2626', cool: '#38bdf8', 'cool-strong': '#0ea5e9', defrost: '#7dd3fc',
   pv: '#f59e0b', battery: '#10b981', grid: '#94a3b8', good: '#16a34a', badge: '#a855f7', brine: '#60a5fa', ground: '#a16207',
   'flow-cold': '#fb923c', 'flow-hot': '#dc2626', 'return-cold': '#7dd3fc', 'return-hot': '#2563eb', 'tank-cold': '#3b82f6', 'tank-cool': '#22d3ee', 'tank-warm': '#f97316', 'tank-hot': '#ef4444',
-  'flow-dash': 'rgba(255,255,255,.9)',
+  'flow-dash': 'rgba(255,255,255,.9)', anthracite: '#3b4148', casing: '#e6e9ec',
 };
 const hfcVar = (name) => `var(--hfc-${name}, ${HFC_COLORS[name]})`;
 // Translucent fill and a darker text colour of the same role, for chips and highlighted controls.
@@ -708,6 +717,9 @@ class HeatpumpFlowCard extends HTMLElement {
               { name: 'power_threshold', selector: { number: { min: 0, max: 2000, step: 10, mode: 'box', unit_of_measurement: 'W' } } },
               { name: 'language', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' }] } } },
               ...['hc_name', 'hc2_name', 'hc3_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
+              { name: 'unit_style', selector: { select: { mode: 'dropdown', options: HFC_UNIT_STYLES.map((v) => ({ value: v, label: L[`unit_${v}`] })) } } },
+              ...(config && (config.unit_style === 'vaillant' || ((!config.unit_style || config.unit_style === 'auto') && config.preset === 'vaillant'))
+                ? [{ name: 'unit_size', selector: { select: { mode: 'dropdown', options: HFC_UNIT_SIZES.map((v) => ({ value: v, label: L[`size_${v}`] })) } } }] : []),
               { name: 'details_open', selector: { boolean: {} } },
               ...(config && config.layout === 'wall' ? [{ name: 'wall_timeout', selector: { number: { min: 0, max: 600, step: 1, mode: 'box', unit_of_measurement: 's' } } }] : []),
             ],
@@ -744,6 +756,12 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     if (config.wall_timeout !== undefined && config.wall_timeout !== null && !(+config.wall_timeout >= 0)) {
       throw new Error('wall_timeout must be a number of seconds, 0 or more');
+    }
+    if (config.unit_style !== undefined && config.unit_style !== null && !HFC_UNIT_STYLES.includes(config.unit_style)) {
+      throw new Error(`unit_style must be one of: ${HFC_UNIT_STYLES.join(', ')}`);
+    }
+    if (config.unit_size !== undefined && config.unit_size !== null && !HFC_UNIT_SIZES.includes(config.unit_size)) {
+      throw new Error(`unit_size must be one of: ${HFC_UNIT_SIZES.join(', ')}`);
     }
     if (config.program_map !== undefined && config.program_map !== null && (typeof config.program_map !== 'object' || Array.isArray(config.program_map))) {
       throw new Error(`program_map must map raw states to ${HFC_PROGRAMS.join(', ')} or none`);
@@ -1037,6 +1055,7 @@ class HeatpumpFlowCard extends HTMLElement {
       hcType: this._hcType,
       hcs: this._hcCount > 1 ? this._hcTypes.slice(0, this._hcCount).join() : '',
       src: this._sourceType,
+      unit: this._unitKey(),
       heaters: ['heater', 'dhw_heater', 'buffer_heater'].map((k) => (this._has(k) ? 1 : 0)).join(''),
       solar: (this._has('dhw_top') || this._has('dhw_mode')) && (this._has('solar_collector') || this._has('solar_pump')),
       controls: this._controlList().map((c) => c.entity).join(),
@@ -1083,6 +1102,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const P_SRC = 'M70 70 V118 Q70 140 92 140 H148 Q170 140 170 162 V190';
     const G_SRC = 'M270 70 V118 Q270 140 248 140 H192 Q170 140 170 162 V190';
     const showHc = P.hc || this._hcCount > 1;
+    const U = this._sourceType === 'air' ? this._unitArt() : null;
     const H = 560 + (showHc ? (this._hcCount - 1) * 250 : 0);
 
     this.shadowRoot.innerHTML = `
@@ -1130,13 +1150,10 @@ class HeatpumpFlowCard extends HTMLElement {
           <g class="tap" ${de('mode')}>
             <rect class="unit" id="hp-box" x="50" y="190" width="240" height="235" rx="20"/>
             <text class="unit-title" x="170" y="218" text-anchor="middle">${i.heat_pump}</text>
-            <circle class="fan-ring" cx="170" cy="288" r="50"/>
-            <g class="fan" id="fan">
-              ${this._sourceType === 'air' ? [0, 120, 240].map((a) => `<path class="blade" d="M170 288 C160 262 168 246 182 244 C186 262 180 278 170 288Z" transform="rotate(${a} 170 288)"/>`).join('')
-                : '<path class="blade" d="M170 254 L184 288 L156 288Z M170 322 L156 288 L184 288Z"/>'}
-              <circle cx="170" cy="288" r="7" class="hub"/>
-            </g>
-            <g class="snow" id="snow" transform="translate(170 288)"><circle class="snow-bg" r="18"/><g class="snow-flake"><path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/><g transform="rotate(60)"><path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/></g><g transform="rotate(120)"><path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/></g></g></g>
+            ${U ? `${U.below}${U.fans.map((fn, n) => this._fanSvg(n ? `fan${n + 1}` : 'fan', ...fn)).join('')}${U.above}${U.snows.map((sn, n) => this._snowSvg(n ? `snow${n + 1}` : 'snow', ...sn)).join('')}`
+              : `<circle class="fan-ring" cx="170" cy="288" r="50"/>
+            <g class="fan" id="fan"><path class="blade" d="M170 254 L184 288 L156 288Z M170 322 L156 288 L184 288Z"/><circle cx="170" cy="288" r="7" class="hub"/></g>
+            ${this._snowSvg('snow', 170, 288, 18)}`}
             <text class="unit-status" id="t-hp-status" x="170" y="366" text-anchor="middle"></text>
             <text class="unit-val" id="t-hp-power" x="170" y="390" text-anchor="middle"></text>
             <text class="unit-val strong" id="t-hp-cop" x="170" y="412" text-anchor="middle"></text>
@@ -1674,6 +1691,60 @@ class HeatpumpFlowCard extends HTMLElement {
     </g>`;
   }
 
+  // Drawing of the outdoor unit inside the heat pump block (air source only; brine and water keep the loop symbol).
+  // Styles: generic (fan ring), lambda (EU-L), vaillant in three sizes (aroTHERM plus). `auto` takes the style of the preset.
+  _unitKey() {
+    if (this._sourceType !== 'air') return 'generic';
+    const style = this._config.unit_style && this._config.unit_style !== 'auto' ? this._config.unit_style : (this._preset?.unit_style || 'generic');
+    return style === 'vaillant' ? `vaillant-${this._config.unit_size || 'medium'}` : style;
+  }
+
+  // One blade, scaled to a fan of radius r at (cx, cy); the group spins around its own centre.
+  _fanSvg(id, cx, cy, r, cls = '') {
+    const k = r / 50;
+    const p = (x, y) => `${(cx + x * k).toFixed(1)} ${(cy + y * k).toFixed(1)}`;
+    const blade = `M${p(0, 0)} C${p(-10, -26)} ${p(-2, -42)} ${p(12, -44)} C${p(16, -26)} ${p(10, -10)} ${p(0, 0)}Z`;
+    return `<g class="fan ${cls}" id="${id}" style="transform-origin:${cx}px ${cy}px">${[0, 120, 240].map((a) => `<path class="blade" d="${blade}" transform="rotate(${a} ${cx} ${cy})"/>`).join('')}<circle cx="${cx}" cy="${cy}" r="${(7 * k).toFixed(1)}" class="hub"/></g>`;
+  }
+
+  _snowSvg(id, cx, cy, r) {
+    const arms = '<path d="M0-13V13M-4-11 0-7 4-11M-4 11 0 7 4 11"/>';
+    return `<g class="snow" id="${id}" transform="translate(${cx} ${cy}) scale(${(r / 18).toFixed(2)})"><circle class="snow-bg" r="18"/><g class="snow-flake">${arms}<g transform="rotate(60)">${arms}</g><g transform="rotate(120)">${arms}</g></g></g>`;
+  }
+
+  // { below, fans: [[cx, cy, r, class]], above, snows: [[cx, cy, r]] } in card coordinates. Parts are drawn relative to the block (50, 190).
+  _unitArt() {
+    const key = this._unitKey();
+    const T = (s) => (s ? `<g transform="translate(50 190)">${s}</g>` : '');
+    const abs = (x, y) => [x + 50, y + 190];
+    if (key === 'lambda') {
+      const bars = [45, 53, 61, 69, 77, 85, 93, 101].map((y) => `<path class="lam-cut" d="M99 ${y} H141"/>`).join('');
+      return {
+        below: T('<rect class="lam-plinth" x="83" y="150" width="74" height="5" rx="1"/><rect class="lam-body" x="88" y="36" width="64" height="114" rx="3"/><rect class="lam-edge" x="88" y="36" width="8" height="114" rx="2"/><rect class="lam-edge" x="144" y="36" width="8" height="114" rx="2"/><rect class="lam-open" x="99" y="40" width="42" height="66" rx="2"/>'),
+        fans: [[...abs(120, 73), 19, 'lam-fan']],
+        above: T(`${bars}<path class="lam-cut curve" d="M108 106 C105 84 111 60 120 41"/><path class="lam-cut curve" d="M132 106 C135 84 129 60 120 41"/><path class="lam-cut vein" d="M120 106 V66"/><path class="lam-hi" d="M88 106 H152"/><path class="lam-hi" d="M96 38 V148 M144 38 V148"/><rect class="lam-slot" x="128" y="132" width="3.5" height="13" rx="1.7"/><rect class="lam-rim" x="88" y="36" width="64" height="114" rx="3"/>`),
+        snows: [[...abs(120, 73), 17]],
+      };
+    }
+    if (key.startsWith('vaillant')) {
+      // Sizes from the data sheets (width 1100 mm): 765 mm (3.5 / 5.5 kW), 965 mm (7.5 kW), about 1480 mm with two fans (10.5 / 12.5 kW).
+      const size = { 'vaillant-small': [60, 68, 120, 82, 1], 'vaillant-large': [77, 34, 86, 116, 2] }[key] || [60, 45, 120, 105, 1];
+      const [x, y, w, h, n] = size;
+      const pw = Math.round(w * 0.6);
+      const grilles = n === 1
+        ? [[x + 4 + pw / 2, y + h / 2, Math.min(pw / 2 - 4, h / 2 - 8)]]
+        : [0, 1].map((m) => [x + 4 + pw / 2, y + 4 + (h - 8) * (0.25 + 0.5 * m), Math.min(pw / 2 - 3, (h - 8) / 4 - 2)]);
+      const ring = ([cx, cy, r]) => `<circle class="vai-gr" cx="${cx}" cy="${cy}" r="${r}"/><circle class="vai-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.76).toFixed(1)}"/><circle class="vai-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.52).toFixed(1)}"/>${Array.from({ length: 12 }, (_, m) => { const a = (m * Math.PI) / 6; return `<line class="vai-gr thin" x1="${(cx + Math.cos(a) * 7).toFixed(1)}" y1="${(cy + Math.sin(a) * 7).toFixed(1)}" x2="${(cx + Math.cos(a) * r).toFixed(1)}" y2="${(cy + Math.sin(a) * r).toFixed(1)}"/>`; }).join('')}`;
+      return {
+        below: T(`<rect class="vai-foot" x="${x + 10}" y="${y + h}" width="14" height="6" rx="2"/><rect class="vai-foot" x="${x + w - 24}" y="${y + h}" width="14" height="6" rx="2"/><rect class="vai-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(14, w / 8)}"/><rect class="vai-dark" x="${x + 4}" y="${y + 4}" width="${pw}" height="${h - 8}" rx="9"/>${grilles.map(ring).join('')}`),
+        fans: grilles.map(([cx, cy, r]) => [...abs(cx, cy), +(r * 0.86).toFixed(1), 'vai-fan']),
+        above: T(`<path class="vai-seam" d="M${x + pw + 8} ${y + 6} V${y + h - 6}"/>`),
+        snows: grilles.map(([cx, cy, r]) => [...abs(cx, cy), +Math.min(19, r * 0.58).toFixed(1)]),
+      };
+    }
+    return { below: '<circle class="fan-ring" cx="170" cy="288" r="50"/>', fans: [[170, 288, 50, '']], above: '', snows: [[170, 288, 18]] };
+  }
+
   // Heater rod entering a tank from the right wall at height y; backup / inline heater as a box inside the heat pump.
   _heaterSvg(key, id, y) {
     if (!this._has(key)) return '';
@@ -1932,7 +2003,8 @@ class HeatpumpFlowCard extends HTMLElement {
     this._txt('t-vol', this._has('volume') && loop && Number.isFinite(vol) ? `${this._fmt(vol, 0)} l/h` : '');
 
     // heat pump
-    this._cls('fan', running); this._cls('snow', defrost && this._sourceType === 'air'); this._cls('hp-box', running);
+    this._cls('fan', running); this._cls('fan2', running);
+    this._cls('snow', defrost && this._sourceType === 'air'); this._cls('snow2', defrost && this._sourceType === 'air'); this._cls('hp-box', running);
     // Some integrations report "heating" while charging DHW (e.g. ViCare compressor phase); the valve decides.
     const shownMode = toDhw && ['heating', 'idle', ''].includes(hp) ? 'dhw' : hp;
     const modeTxt = this._modeLabel(shownMode, rawMode);
@@ -2175,6 +2247,22 @@ HeatpumpFlowCard.styles = `
   .sv { font-weight: 700; font-size: 1.05em; color: var(--primary-text-color); }
   .sl { font-size: .78em; color: var(--hfc-muted); }
   .tap, .chip, .drow { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  /* outdoor unit drawings (unit_style): anthracite and light casings derive from --hfc-anthracite and --hfc-casing */
+  .lam-body { fill: ${hfcVar('anthracite')}; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 78%, #000); stroke-width: 1.5; }
+  .lam-edge { fill: color-mix(in srgb, ${hfcVar('anthracite')} 78%, #000); }
+  .lam-open, .lam-slot { fill: color-mix(in srgb, ${hfcVar('anthracite')} 30%, #000); }
+  .lam-cut { stroke: ${hfcVar('anthracite')}; stroke-width: 3; fill: none; }
+  .lam-cut.curve { stroke-width: 3.4; stroke-linecap: round; } .lam-cut.vein { stroke-width: 2.4; stroke-linecap: round; }
+  .lam-hi { stroke: color-mix(in srgb, ${hfcVar('anthracite')} 85%, #fff); stroke-width: 1.2; fill: none; opacity: .8; }
+  .lam-plinth { fill: color-mix(in srgb, var(--primary-text-color, #1f2937) 22%, var(--card-background-color, #fff)); }
+  /* a rim in the theme text colour keeps the anthracite body visible on dark cards */
+  .lam-rim { fill: none; stroke: color-mix(in srgb, var(--primary-text-color, #1f2937) 48%, transparent); stroke-width: 1.4; }
+  .fan.lam-fan .blade, .fan.vai-fan .blade { fill: #9aa3ad; opacity: .55; } .fan.lam-fan .hub, .fan.vai-fan .hub { fill: #9aa3ad; }
+  .fan.lam-fan.on .blade, .fan.vai-fan.on .blade { fill: ${hfcVar('cool')}; opacity: .95; }
+  .vai-body { fill: ${hfcVar('casing')}; stroke: color-mix(in srgb, ${hfcVar('casing')} 80%, #6b7280); stroke-width: 1.5; }
+  .vai-dark, .vai-foot { fill: color-mix(in srgb, ${hfcVar('anthracite')} 60%, #000); }
+  .vai-gr { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 45%, #a0a8b0); stroke-width: 2; } .vai-gr.thin { stroke-width: 1; opacity: .85; }
+  .vai-seam { stroke: color-mix(in srgb, ${hfcVar('casing')} 80%, #6b7280); stroke-width: 1.2; fill: none; opacity: .8; }
   /* narrow schematic (phones, narrow columns): larger type, secondary labels hidden */
   .stage { container-type: inline-size; }
   @container (max-width: 640px) { #svg { --k: 1.2; --ku: 1.1; --kp: 1; --k2: 1; --ks: 1.2; --kt: 1.15; } }

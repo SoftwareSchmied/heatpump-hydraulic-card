@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 (unreleased)
+Outdoor unit drawings.
+- The heat pump block draws the outdoor unit: the anthracite Lambda EU-L (tall, laser-cut pattern over the fan, solid lower panel) and the Vaillant aroTHERM plus in three sizes (one fan low, one fan, two fans). Drawn from photos and published sizes; simplified original drawings, no logos.
+- `unit_style: auto | generic | lambda | vaillant` (default `auto`: the style of the preset) and `unit_size: small | medium | large` for Vaillant. Also in the editor.
+- **What changes on existing cards:** Lambda and Vaillant cards now show their unit instead of the generic fan. Keep the old look with `unit_style: generic`.
+- The anthracite stays the same in every theme; a thin rim in the theme text colour keeps it visible on dark cards. New variables `--hfc-anthracite` and `--hfc-casing`.
+- Several fans spin and defrost independently (one snowflake per fan). Ground and groundwater sources keep their loop symbol.
+- Self-test: 342 checks.
+
 ## 0.8.1 – 2026-10-23
 Looks.
 - Narrow cards: the type size follows the width of the schematic. Below about 640 px labels grow, below about 500 px they grow further and secondary labels (flow rates, tank bottom temperature, VL / RL prefixes, valve, circulation and hot water target line) are hidden, so the main numbers stay readable on phones.
