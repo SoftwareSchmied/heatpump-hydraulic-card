@@ -1,11 +1,11 @@
 # Changelog
 
-## 0.9.2 (unreleased)
+## 0.9.2 – 2026-10-23
 Small refinements of the heat pump block.
 - The frame of the heat pump block follows the mode while running: orange for heating, red for hot water, blue for defrost and cooling; standby stays grey. It was always orange.
 - Air sources: the outdoor temperature is shown under the unit next to the air inlet instead of in the house. Ground and groundwater sources keep it in the house.
 - A status line that is too long for the block (for example "Hot water · starting compressor" or the German "Warmwasser · Verdichter startet") wraps into mode and status on two lines; a single long word is squeezed to fit.
-- Self-test: 376 checks.
+- Self-test: 378 checks.
 
 ## 0.9.1 – 2026-10-23
 Keyboard and screen readers.
