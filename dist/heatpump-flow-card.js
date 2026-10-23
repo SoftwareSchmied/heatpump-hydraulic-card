@@ -581,13 +581,13 @@ const HFC_PROGRAM_PATTERNS = [
 const HFC_COLORS = {
   heat: '#f97316', hot: '#dc2626', cool: '#38bdf8', 'cool-strong': '#0ea5e9', defrost: '#7dd3fc',
   pv: '#f59e0b', battery: '#10b981', grid: '#94a3b8', good: '#16a34a', badge: '#a855f7', brine: '#60a5fa', ground: '#a16207',
-  'flow-cold': '#fb923c', 'flow-hot': '#dc2626', 'return-cold': '#7dd3fc', 'return-hot': '#2563eb', 'tank-cold': '#3b82f6', 'tank-hot': '#ef4444',
+  'flow-cold': '#fb923c', 'flow-hot': '#dc2626', 'return-cold': '#7dd3fc', 'return-hot': '#2563eb', 'tank-cold': '#3b82f6', 'tank-cool': '#22d3ee', 'tank-warm': '#f97316', 'tank-hot': '#ef4444',
   'flow-dash': 'rgba(255,255,255,.9)',
 };
 const hfcVar = (name) => `var(--hfc-${name}, ${HFC_COLORS[name]})`;
 // Translucent fill and a darker text colour of the same role, for chips and highlighted controls.
 const hfcTint = (name, pct) => `color-mix(in srgb, ${hfcVar(name)} ${pct}%, transparent)`;
-const hfcInk = (name) => `color-mix(in srgb, ${hfcVar(name)} 78%, #000)`;
+const hfcInk = (name) => `color-mix(in srgb, ${hfcVar(name)} 47%, var(--primary-text-color, #212121))`;
 const HFC_TILES = {
   cop_live: { live: true },
   cop_heating: { kind: 'cop', legacy: 'cop_heating_today', ratio: ['heat_heating', 'energy_heating'] },
@@ -994,13 +994,31 @@ class HeatpumpFlowCard extends HTMLElement {
   _mix(cold, hot, t, lo, hi) {
     if (!Number.isFinite(t)) return 'var(--disabled-text-color, #9e9e9e)';
     const f = Math.min(Math.max((t - lo) / (hi - lo), 0), 1);
-    return `color-mix(in srgb, ${hfcVar(hot)} ${Math.round(f * 100)}%, ${hfcVar(cold)})`;
+    return `color-mix(in oklch, ${hfcVar(hot)} ${Math.round(f * 100)}%, ${hfcVar(cold)})`;
   }
-  _tankColor(t) { return this._mix('tank-cold', 'tank-hot', t, 20, 58); }
+  // Tank scale in four steps (cold, cool, warm, hot), each step mixed in oklch.
+  _tankColor(t) {
+    if (!Number.isFinite(t)) return 'var(--disabled-text-color, #9e9e9e)';
+    const stops = ['tank-cold', 'tank-cool', 'tank-warm', 'tank-hot'];
+    const x = Math.min(Math.max((t - 20) / (58 - 20), 0), 1) * (stops.length - 1);
+    const i = Math.min(Math.floor(x), stops.length - 2);
+    return `color-mix(in oklch, ${hfcVar(stops[i + 1])} ${Math.round((x - i) * 100)}%, ${hfcVar(stops[i])})`;
+  }
   // Pipes without a temperature sensor keep their conventional base colour instead of turning grey.
   _vlColor(t) { return Number.isFinite(t) ? this._mix('flow-cold', 'flow-hot', t, 25, 55) : `color-mix(in srgb, ${hfcVar('flow-cold')} 60%, #fff)`; }
   _rlColor(t) { return Number.isFinite(t) ? this._mix('return-cold', 'return-hot', t, 20, 45) : `color-mix(in srgb, ${hfcVar('return-cold')} 75%, #fff)`; }
   _$(id) { return this.shadowRoot.getElementById(id); }
+  // Label with a prefix (VL / RL) that narrow schematics leave out.
+  _txtPre(id, pre, text) {
+    const el = this._$(id); if (!el) return;
+    const key = text ? `${pre}|${text}` : '';
+    if (el._k === key) return;
+    el._k = key; el.textContent = '';
+    if (!text) return;
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+    t.setAttribute('class', 'pre'); t.textContent = `${pre} `;
+    el.append(t, text);
+  }
   _txt(id, text) { const el = this._$(id); if (el && el.textContent !== text) el.textContent = text; }
   _cls(id, on) { const el = this._$(id); if (el) el.classList.toggle('on', !!on); }
   _esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -1081,6 +1099,7 @@ class HeatpumpFlowCard extends HTMLElement {
         </div>
         ${this._needsBuild && this._preset ? `<div class="hint">${this._esc(i.not_found)}</div>` : ''}
         <div class="body">
+        <div class="stage">
         <svg viewBox="0 0 1000 ${H}" id="svg" role="img" aria-label="${T}">
           <defs>
             <linearGradient id="g-dhw" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-dhw-top"/><stop offset="100%" id="g-dhw-bottom"/></linearGradient>
@@ -1090,9 +1109,9 @@ class HeatpumpFlowCard extends HTMLElement {
           </defs>
 
           ${P.power ? `
-            ${this._source('pv', 70, i.pv, this._srcEntity('pv'))}${this._source('bat', 170, i.battery, this._srcEntity('battery'))}${this._source('grid', 270, i.grid, this._srcEntity('grid'))}
             <path class="eline pv" d="${P_SRC}"/><path class="eline bat" d="M170 70 V190"/><path class="eline grid" d="${G_SRC}"/>
-            <path class="eflow pv" id="ef-pv" d="${P_SRC}"/><path class="eflow bat" id="ef-bat" d="M170 70 V190"/><path class="eflow grid" id="ef-grid" d="${G_SRC}"/>` : ''}
+            <path class="eflow pv" id="ef-pv" d="${P_SRC}"/><path class="eflow bat" id="ef-bat" d="M170 70 V190"/><path class="eflow grid" id="ef-grid" d="${G_SRC}"/>
+            ${this._source('pv', 70, i.pv, this._srcEntity('pv'))}${this._source('bat', 170, i.battery, this._srcEntity('battery'))}${this._source('grid', 270, i.grid, this._srcEntity('grid'))}` : ''}
 
           ${pipePair('vl', P.dhw ? 'M290 250 H402' : 'M290 250 H400 Q420 250 420 270 V338 Q420 360 442 360 H520')}
           ${pipePair('vl-dhw', 'M420 232 V102 Q420 80 442 80 H520', P.dhw)}
@@ -1164,6 +1183,7 @@ class HeatpumpFlowCard extends HTMLElement {
               <text class="small" id="t-outdoor" x="830" y="226" text-anchor="middle"></text>
             </g>` : (this._has('outdoor') ? `<g class="tap" ${de('outdoor')}><text class="small" id="t-outdoor" x="880" y="120" text-anchor="middle"></text></g>` : '')}
         </svg>
+        </div>
         <div class="side">
           ${this._controlsHtml()}
           <div class="stats" id="stats"></div>
@@ -1638,7 +1658,8 @@ class HeatpumpFlowCard extends HTMLElement {
     let { vl, rl } = em;
     if (n > 1) { vl = vl.replace('M640 ', 'M660 '); rl = rl.replace(/H640$/, 'H676'); }
     const pp = (id, d) => `<path class="pipe" id="p-${id}" d="${d}"/><path class="flow" id="f-${id}" d="${d}"/>`;
-    const risers = n > 1 ? pp(`hc-up${s}`, `M660 360 V${360 + dy}`) + pp(`hc-down${s}`, `M676 ${495 + dy} V495`) : '';
+    const hop = n > 1 ? '<path class="hop" d="M660 483 V507"/>' : '';
+    const risers = n > 1 ? hop + pp(`hc-up${s}`, `M660 360 V${360 + dy}`) + pp(`hc-down${s}`, `M676 ${495 + dy} V495`) : '';
     return `${risers}<g transform="translate(0 ${dy})">
       <defs><linearGradient id="g-rad${s}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-rad${s}-top"/><stop offset="100%" id="g-rad${s}-bottom"/></linearGradient></defs>
       ${em.art.split('__S__').join(s)}${pp(`hc-vl${s}`, vl)}${pp(`hc-body${s}`, em.body)}${pp(`hc-rl${s}`, rl)}
@@ -1716,6 +1737,7 @@ class HeatpumpFlowCard extends HTMLElement {
     return `<g class="tap src ${key}${has ? '' : ' absent'}" ${has ? `data-entity="${this._esc(entity)}"` : ''} id="src-${key}">
       <circle cx="${x}" cy="40" r="28" class="src-ring"/>${icons[key]}
       <text class="small" x="${x}" y="88" text-anchor="middle" id="t-src-${key}">${label}</text>
+      <text class="small src-val" x="${x}" y="108" text-anchor="middle" id="t-src-${key}-v"></text>
     </g>`;
   }
 
@@ -1851,7 +1873,7 @@ class HeatpumpFlowCard extends HTMLElement {
     // pipes
     const cFlow = defrost || cooling ? hfcVar('defrost') : this._vlColor(tFlow);
     const cRet = this._rlColor(tRet);
-    const stroke = (id, c) => { const el = this._$(`p-${id}`); if (el) el.style.stroke = c; };
+    const stroke = (id, c) => { const el = this._$(`p-${id}`); if (el) el.style.setProperty('--pc', c); };
     ['vl', 'vl-dhw', 'vl-buf', 'byp-vl'].forEach((id) => stroke(id, cFlow));
     ['rl', 'rl-dhw', 'rl-buf', 'byp-rl'].forEach((id) => stroke(id, cRet));
     const pipe = (id, on) => { this._cls(`p-${id}`, on); this._cls(`f-${id}`, on); };
@@ -1905,8 +1927,8 @@ class HeatpumpFlowCard extends HTMLElement {
       el.classList.toggle('on', lv > 0); el.classList.toggle('stage2', lv > 1);
     });
 
-    this._txt('t-vl', this._has('flow') ? `VL ${this._t(tFlow)}` : '');
-    this._txt('t-rl', this._has('return') ? `RL ${this._t(tRet)}` : '');
+    this._txtPre('t-vl', 'VL', this._has('flow') ? this._t(tFlow) : '');
+    this._txtPre('t-rl', 'RL', this._has('return') ? this._t(tRet) : '');
     this._txt('t-vol', this._has('volume') && loop && Number.isFinite(vol) ? `${this._fmt(vol, 0)} l/h` : '');
 
     // heat pump
@@ -1977,7 +1999,8 @@ class HeatpumpFlowCard extends HTMLElement {
       [['pv', 'pv', i.pv], ['bat', 'battery', i.battery], ['grid', 'grid', i.grid]].forEach(([id, key, label]) => {
         const w = P.power === 'energy' ? (split ? split[key] : NaN) : this._w(key); const on = w > 10;
         this._cls(`ef-${id}`, on); this._cls(`src-${id}`, on);
-        this._txt(`t-src-${id}`, on ? `${label} ${P.power === 'energy' ? '≈' : ''}${this._fmt(w, 0)} W` : label);
+        this._txt(`t-src-${id}`, label);
+        this._txt(`t-src-${id}-v`, on ? `${P.power === 'energy' ? '≈' : ''}${this._fmt(w, 0)} W` : '');
       });
     }
 
@@ -2053,15 +2076,15 @@ HeatpumpFlowCard.styles = `
   svg { width: 100%; height: auto; display: block; }
   text { fill: var(--primary-text-color); font-family: var(--ha-font-family-body, inherit); }
   .tap { cursor: pointer; }
-  .small { font-size: 15px; fill: var(--hfc-muted); }
-  .pipe-label { font-size: 15px; font-weight: 600; }
+  .small { font-size: calc(15px * var(--k2, 1)); fill: var(--hfc-muted); }
+  .pipe-label { font-size: calc(15px * var(--kp, 1)); font-weight: 600; }
   .vol-label { font-size: 13px; fill: var(--hfc-muted); }
   .unit { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; transition: stroke .4s; }
   .unit.on { stroke: ${hfcVar('heat')}; filter: url(#glow); }
-  .unit-title, .tank-title { font-size: 17px; font-weight: 600; }
-  .unit-status { font-size: 16px; font-weight: 600; }
-  .unit-val { font-size: 15px; fill: var(--hfc-muted); }
-  .unit-val.strong { font-size: 17px; font-weight: 700; fill: ${hfcVar('good')}; }
+  .unit-title, .tank-title { font-size: calc(17px * var(--k, 1)); font-weight: 600; }
+  .unit-status { font-size: calc(16px * var(--ku, 1)); font-weight: 600; }
+  .unit-val { font-size: calc(15px * var(--ku, 1)); fill: var(--hfc-muted); }
+  .unit-val.strong { font-size: calc(17px * var(--ku, 1)); font-weight: 700; fill: ${hfcVar('good')}; }
   .fan-ring { fill: none; stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 3; }
   .blade { fill: var(--hfc-muted); opacity: .55; }
   .hub { fill: var(--hfc-muted); }
@@ -2072,8 +2095,9 @@ HeatpumpFlowCard.styles = `
   .snow-bg { fill: var(--card-background-color, #fff); opacity: .85; }
   .snow-flake { fill: none; stroke: ${hfcVar('cool-strong')}; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
   .snow.on { opacity: 1; animation: hfc-pulse 1.6s ease-in-out infinite; }
-  .pipe { fill: none; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; opacity: .22; stroke: var(--hfc-muted); transition: opacity .5s, stroke .5s; }
-  .pipe.on { opacity: 1; }
+  /* idle pipes are a solid pale tint, not transparent, so round caps that overlap at a junction do not show as dots */
+  .pipe { fill: none; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; stroke: color-mix(in srgb, var(--pc, var(--hfc-muted)) 22%, var(--card-background-color, #fff)); transition: stroke .5s; }
+  .pipe.on { stroke: var(--pc, var(--hfc-muted)); }
   .flow { fill: none; stroke: ${hfcVar('flow-dash')}; stroke-width: 3.5; stroke-linecap: round; stroke-dasharray: 3 17; opacity: 0; pointer-events: none; }
   .flow.on { opacity: 1; animation: hfc-dash var(--hfc-dur, 1.5s) linear infinite; }
   .eline { fill: none; stroke-width: 4; stroke-linecap: round; opacity: .18; }
@@ -2081,7 +2105,9 @@ HeatpumpFlowCard.styles = `
   .eflow { fill: none; stroke-width: 7; stroke-linecap: round; stroke-dasharray: 0.1 18; opacity: 0; pointer-events: none; }
   .eflow.pv { stroke: ${hfcVar('pv')}; } .eflow.bat { stroke: ${hfcVar('battery')}; } .eflow.grid { stroke: ${hfcVar('grid')}; }
   .eflow.on { opacity: 1; animation: hfc-dash 1.1s linear infinite; }
+  .hop { fill: none; stroke: var(--card-background-color, #fff); stroke-width: 15; }
   .src.absent { opacity: .35; }
+  .src text { font-size: calc(15px * var(--ks, 1)); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 5px; stroke-linejoin: round; }
   .src-ring { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; transition: stroke .4s; }
   .src.pv.on .src-ring { stroke: ${hfcVar('pv')}; } .src.bat.on .src-ring { stroke: ${hfcVar('battery')}; } .src.grid.on .src-ring { stroke: ${hfcVar('grid')}; }
   .ico { fill: var(--hfc-muted); } .ico-o { fill: none; stroke: var(--hfc-muted); stroke-width: 2.5; }
@@ -2092,12 +2118,12 @@ HeatpumpFlowCard.styles = `
   .valve { fill: var(--card-background-color, #fff); stroke: var(--hfc-muted); stroke-width: 3; }
   .valve-arrow { fill: none; stroke: var(--primary-text-color); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
   .tank { stroke: var(--divider-color, rgba(127,127,127,.4)); stroke-width: 2; }
-  .tank-temp { font-size: 26px; font-weight: 700; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.35); stroke-width: 3px; }
-  .tank-sub { font-size: 14px; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.35); stroke-width: 3px; }
-  .house-temp { font-size: 26px; font-weight: 700; }
-  .house-sub { font-size: 14px; }
-  .coil { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 3; stroke-linejoin: round; opacity: .35; }
-  .coil.on { opacity: 1; stroke-dasharray: 6 8; animation: hfc-dash 1.4s linear infinite; }
+  .tank-temp { font-size: calc(26px * var(--kt, 1)); font-weight: 700; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.45); stroke-width: 4px; stroke-linejoin: round; }
+  .tank-sub { font-size: calc(14px * var(--k2, 1)); fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.35); stroke-width: 3px; }
+  .house-temp { font-size: calc(26px * var(--kt, 1)); font-weight: 700; }
+  .house-sub { font-size: calc(14px * var(--k2, 1)); }
+  .coil { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 3; stroke-linejoin: round; opacity: .25; }
+  .coil.on { opacity: .6; stroke-width: 2.5; stroke-dasharray: 5 9; animation: hfc-dash 1.4s linear infinite; }
   .circ { opacity: .35; } .circ.on { opacity: 1; fill: ${hfcVar('cool-strong')}; }
   .pump { fill: var(--card-background-color, #fff); stroke: var(--hfc-muted); stroke-width: 3; }
   .imp { fill: var(--hfc-muted); }
@@ -2116,7 +2142,7 @@ HeatpumpFlowCard.styles = `
   .ground { fill: none; stroke: ${hfcVar('ground')}; stroke-width: 3; stroke-dasharray: 10 5; opacity: .7; }
   .well { fill: none; stroke: var(--divider-color, rgba(127,127,127,.5)); stroke-width: 2; }
   .water { fill: none; stroke: ${hfcVar('cool')}; stroke-width: 2; }
-  .pipe.src { stroke: ${hfcVar('brine')}; }
+  .pipe.src { --pc: ${hfcVar('brine')}; }
   .radiator { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.4)); stroke-width: 2; }
   .rib { fill: url(#g-rad); stroke: rgba(0,0,0,.08); stroke-width: 1; }
   #p-hc-body, #f-hc-body { display: var(--hfc-body, inline); }
@@ -2149,6 +2175,10 @@ HeatpumpFlowCard.styles = `
   .sv { font-weight: 700; font-size: 1.05em; color: var(--primary-text-color); }
   .sl { font-size: .78em; color: var(--hfc-muted); }
   .tap, .chip, .drow { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  /* narrow schematic (phones, narrow columns): larger type, secondary labels hidden */
+  .stage { container-type: inline-size; }
+  @container (max-width: 640px) { #svg { --k: 1.2; --ku: 1.1; --kp: 1.1; --k2: 1.15; --ks: 1.2; --kt: 1.15; } }
+  @container (max-width: 500px) { #svg { --k: 1.4; --ku: 1.25; --kp: 1.4; --k2: 1.3; --ks: 1.4; --kt: 1.3; } .vol-label, .tank-sub, .pre, #t-valve, #t-circ, #t-dhw-mode { display: none; } }
   /* layout: compact – tighter spacing for narrow dashboard columns */
   ha-card.layout-compact { padding: 6px 6px 4px; }
   .layout-compact .head { margin: 0 2px 2px; }

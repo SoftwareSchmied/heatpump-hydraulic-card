@@ -112,7 +112,7 @@
     await wait(20);
     const txt = (id) => card.shadowRoot.getElementById(id)?.textContent || '';
     check(card._powerMode() === 'energy', 'Energy dashboard mode');
-    check(/1,094/.test(txt('t-src-pv')) && /146/.test(txt('t-src-grid')), `Energy dashboard split (${txt('t-src-pv')} / ${txt('t-src-grid')})`);
+    check(/1,094/.test(txt('t-src-pv-v')) && /146/.test(txt('t-src-grid-v')), `Energy dashboard split (${txt('t-src-pv-v')} / ${txt('t-src-grid-v')})`);
     card.remove();
   }
   {
@@ -333,8 +333,8 @@
     check(/var\(--hfc-heat, #f97316\)/.test(css) && /var\(--hfc-pv, #f59e0b\)/.test(css), 'styles use --hfc-* variables with the old colours as defaults');
     check(!/#(f97316|10b981|dc2626|38bdf8|f59e0b|16a34a)/i.test(css.replace(/var\(--hfc-[a-z-]+, #[0-9a-f]{6}\)/gi, '')), 'no hard-coded role colour left in the styles');
     const stop = card.shadowRoot.getElementById('g-dhw-top')?.getAttribute('stop-color') || '';
-    check(/color-mix/.test(stop) && /--hfc-tank-hot/.test(stop) && /--hfc-tank-cold/.test(stop), `tank gradient follows the theme variables (${stop})`);
-    const pipe = card.shadowRoot.getElementById('p-vl')?.style.stroke || '';
+    check(/color-mix\(in oklch/.test(stop) && /--hfc-tank-/.test(stop), `tank gradient follows the theme variables (${stop})`);
+    const pipe = card.shadowRoot.getElementById('p-vl')?.style.getPropertyValue('--pc') || '';
     check(/--hfc-flow-cold/.test(pipe) || /--hfc-defrost/.test(pipe), `pipe colour follows the theme variables (${pipe})`);
     card.style.setProperty('--hfc-heat', 'rgb(1, 2, 3)');
     const box = card.shadowRoot.getElementById('hp-box'); box.classList.add('on'); box.style.transition = 'none';
@@ -345,7 +345,7 @@
     for (const l of ['default', 'compact', 'wide']) {
       const c = mount({ ...s.config, layout: l }, hass); await wait(10);
       check(ok(c) && c.shadowRoot.querySelector('ha-card').classList.contains(`layout-${l}`), `layout ${l} renders`);
-      check(!!c.shadowRoot.querySelector('.body > #svg') && !!c.shadowRoot.querySelector('.body > .side > #stats'), `layout ${l}: schematic and side column`);
+      check(!!c.shadowRoot.querySelector('.body > .stage > #svg') && !!c.shadowRoot.querySelector('.body > .side > #stats'), `layout ${l}: schematic and side column`);
       c.remove();
     }
     const ed = document.createElement('heatpump-flow-card-editor');
@@ -499,6 +499,49 @@
     c.remove();
     const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
     check(!C._formSchema({ layout: 'default' }).schema.flatMap(keysOf).includes('wall_timeout') && C._formSchema({ layout: 'wall' }).schema.flatMap(keysOf).includes('wall_timeout'), 'editor offers wall_timeout only for the wall layout');
+  }
+
+  // 13. appearance: narrow schematics, chip contrast, source labels, tank scale, idle pipes, bridge at crossing risers
+  {
+    const s = setups[1];
+    const hass = hassOf(toStates(s.states('heat')), s.registry || {}, s.energy, s);
+    const q = (c, id) => c.shadowRoot.getElementById(id);
+    // narrow: larger type tiers and hidden secondary labels, driven by the width of the schematic
+    const sized = async (px) => {
+      const c = mount(s.config, hass); c.style.display = 'block'; c.style.width = `${px}px`; await wait(30);
+      const svg = q(c, 'svg'); const cs = getComputedStyle(svg);
+      const out = { k: cs.getPropertyValue('--k').trim(), vol: getComputedStyle(c.shadowRoot.querySelector('.vol-label')).display, pre: getComputedStyle(c.shadowRoot.querySelector('#t-vl .pre')).display, valve: getComputedStyle(q(c, 't-valve')).display };
+      c.remove(); return out;
+    };
+    let o = await sized(900);
+    check(o.k === '' && o.vol !== 'none' && o.pre !== 'none', `wide schematic keeps the normal type (${JSON.stringify(o)})`);
+    o = await sized(560);
+    check(o.k === '1.2' && o.vol !== 'none', `medium schematic: type 1.2x, labels stay (${JSON.stringify(o)})`);
+    o = await sized(400);
+    check(o.k === '1.4' && o.vol === 'none' && o.pre === 'none' && o.valve === 'none', `narrow schematic: type 1.4x, secondary labels hidden (${JSON.stringify(o)})`);
+    const card = mount(s.config, hass); await wait(20);
+    check(!!card.shadowRoot.querySelector('.body > .stage > #svg'), 'schematic sits in its own container');
+    check(q(card, 't-vl').textContent.startsWith('VL ') && !!q(card, 't-vl').querySelector('.pre'), 'flow label keeps its VL prefix as a separate part');
+    // chip text follows the theme text colour (readable in light and dark themes)
+    check(/var\(--primary-text-color/.test(card.shadowRoot.querySelector('style').textContent), 'chip text mixes in the theme text colour');
+    // power sources: name above, value below
+    check(q(card, 't-src-pv').textContent === 'PV' && /W$/.test(q(card, 't-src-pv-v').textContent), `source label and value are separate lines (${q(card, 't-src-pv').textContent} / ${q(card, 't-src-pv-v').textContent})`);
+    // tank scale: four steps, mixed in oklch
+    const tank = (t) => card._tankColor(t);
+    check(/--hfc-tank-cold/.test(tank(21)) && /--hfc-tank-cool/.test(tank(30)) && /--hfc-tank-warm/.test(tank(45)) && /--hfc-tank-hot/.test(tank(57)) && /oklch/.test(tank(45)), 'tank scale has four steps in oklch');
+    check(/disabled-text-color/.test(tank(NaN)), 'tank without a temperature is grey');
+    // idle pipes are opaque tints: no transparency, so overlapping round caps leave no dots
+    const idle = mount(s.config, hassOf(toStates(s.states('idle')), s.registry || {}, s.energy, s)); await wait(20);
+    const p = q(idle, 'p-vl');
+    check(!p.classList.contains('on') && getComputedStyle(p).opacity === '1', `idle pipe is not transparent (opacity ${getComputedStyle(p).opacity})`);
+    idle.remove(); card.remove();
+    // bridge where the riser of circuit 2 crosses the return line of circuit 1
+    const two = mount({ ...setups[6].config }, hassOf(toStates(setups[6].states('heat')), setups[6].registry || {}, null, setups[6])); await wait(20);
+    check(two.shadowRoot.querySelectorAll('.hop').length >= 1, 'multi-circuit schematic bridges the crossing riser');
+    two.remove();
+    const one = mount(s.config, hass); await wait(10);
+    check(one.shadowRoot.querySelectorAll('.hop').length === 0, 'single circuit has no bridge');
+    one.remove();
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);

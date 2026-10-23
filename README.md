@@ -32,7 +32,7 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 - **Heat pump:** the fan spins while the compressor runs, faster at higher compressor modulation (or higher power, when the integration has no modulation value); the circuit pumps and the flow lines follow the modulation as well. Shows mode and sub-state, electrical power → heat output, and live COP. Defrost is shown with a snowflake and an icy flow line. A backup / inline heater (`heater`) glows inside the unit while it runs.
 - **Heat source:** air (fan, default), **ground** with a brine loop or **groundwater** with two wells (`source_type`), with source inlet and outlet temperatures and the source flow rate.
 - **Diverter valve:** shows DHW or heating; the active circuit is animated.
-- **Tanks:** DHW tank and buffer with a top/bottom temperature gradient (blue = cold, red = hot), target, mode, a heat-exchanger coil while charging, and the circulation pump. **Heater rods** (`dhw_heater`, `buffer_heater`) glow orange while on, red at stage 2 or higher.
+- **Tanks:** DHW tank and buffer with a top/bottom temperature gradient (blue = cold, then cyan and orange, red = hot), target, mode, a heat-exchanger coil while charging, and the circulation pump. **Heater rods** (`dhw_heater`, `buffer_heater`) glow orange while on, red at stage 2 or higher.
 - **Heating circuits:** up to **three circuits** (`hc_count`), each with a pump and either an **underfloor loop** or **radiators** with rising heat waves (`hc_type`, `hc2_type`, `hc3_type`), flow and target, plus a house with room temperature, target and outdoor temperature.
 - **Solar thermal:** with `solar_collector` and `solar_pump` a collector sits on the roof edge of the house and feeds a loop into the DHW tank; the loop runs while the solar pump runs. ViCare preset only, **not yet tested on a real installation**.
 - **Heating program:** a chip for eco, night / setback, party and holiday, from the `program` entity or, without one, from the heating circuit mode (e.g. Lambda `ECO`).
@@ -318,6 +318,8 @@ badges:
 
 An action for a key the card has no entity for does nothing; the browser console says so. Actions are edited in YAML.
 
+**Narrow cards.** The type size follows the width of the schematic, not the screen: below about 640 px the labels grow, below about 500 px (phones, narrow columns) they grow further and secondary labels (flow rates, tank bottom temperature, the VL / RL prefixes, valve and circulation labels, the hot water target line) are left out, so the important numbers stay readable. Chip text takes the colour of your theme text, so it reads in light and dark themes.
+
 **Colours.** The card draws with these CSS variables. Set them in a theme or per card with card-mod; without a value the default applies.
 
 | Variable | Default | Used for |
@@ -329,7 +331,7 @@ An action for a key the card has no entity for does nothing; the browser console
 | `--hfc-defrost` | `#7dd3fc` | flow pipe while defrosting or cooling |
 | `--hfc-flow-cold`, `--hfc-flow-hot` | `#fb923c`, `#dc2626` | flow pipes, 25 to 55 °C |
 | `--hfc-return-cold`, `--hfc-return-hot` | `#7dd3fc`, `#2563eb` | return pipes, 20 to 45 °C |
-| `--hfc-tank-cold`, `--hfc-tank-hot` | `#3b82f6`, `#ef4444` | tank gradient, 20 to 58 °C |
+| `--hfc-tank-cold`, `--hfc-tank-cool`, `--hfc-tank-warm`, `--hfc-tank-hot` | `#3b82f6`, `#22d3ee`, `#f97316`, `#ef4444` | tank gradient in four steps, 20 to 58 °C |
 | `--hfc-pv`, `--hfc-battery`, `--hfc-grid` | `#f59e0b`, `#10b981`, `#94a3b8` | power sources and their flow lines |
 | `--hfc-good` | `#16a34a` | live COP |
 | `--hfc-badge` | `#a855f7` | badge chips |

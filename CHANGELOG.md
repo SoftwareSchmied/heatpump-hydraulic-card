@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.1 (unreleased)
+Looks.
+- Narrow cards: the type size follows the width of the schematic. Below about 640 px labels grow, below about 500 px they grow further and secondary labels (flow rates, tank bottom temperature, VL / RL prefixes, valve, circulation and hot water target line) are hidden, so the main numbers stay readable on phones.
+- Chips: text colour is mixed with the theme text colour, so the mode, program, error and badge chips read in dark themes too (they were hard to see before).
+- Power sources: name and value on two lines with a halo, so the labels no longer run into each other and the lines do not cut through the text.
+- Tanks: a four-step scale (blue, cyan, orange, red) mixed in oklch instead of a blue-red mix that turned muddy violet. New variables `--hfc-tank-cool` and `--hfc-tank-warm`.
+- DHW coil: calmer, so it no longer clutters the temperature.
+- Idle pipes are solid pale tints instead of transparent, which removes the dark dots where pipes meet.
+- Multiple circuits: the riser bridges the return line of circuit 1 where they cross.
+- Self-test: 326 checks.
+
 ## 0.8.0 – 2026-10-22
 Wall display.
 - `layout: wall` for wall tablets: the wide layout with about 30 % larger type. The quick controls and the details toggle are hidden and not clickable until a touch or mouse move wakes the card, and fade out again after `wall_timeout` seconds (default 10, `0` = always visible); an open details drawer closes with them. Also in the editor.
