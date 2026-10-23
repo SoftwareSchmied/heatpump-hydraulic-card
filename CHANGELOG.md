@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.1 (unreleased)
+## 0.9.1 – 2026-10-23
 Keyboard and screen readers.
 - Every clickable part is a button: header chips, the parts of the schematic, tiles and details rows. Tab reaches them; the schematic, the tiles and the details are one tab stop each, with arrow keys, Home and End moving inside.
 - Enter or Space runs the tap action (default: more-info), Shift+Enter the hold action, Alt+Enter the double-tap action.
