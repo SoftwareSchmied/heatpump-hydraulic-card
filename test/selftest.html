@@ -583,6 +583,68 @@
     check(names({}).includes('unit_style') && !names({ preset: 'lambda' }).includes('unit_size') && names({ preset: 'vaillant' }).includes('unit_size') && names({ unit_style: 'vaillant' }).includes('unit_size') && !names({ preset: 'vaillant', unit_style: 'lambda' }).includes('unit_size'), 'editor offers unit_style, and unit_size only for Vaillant');
   }
 
+  // 15. keyboard: tab stops, roles, labels, arrow keys, activation keys, focus frame
+  {
+    const s = setups[0];
+    const hass = hassOf(toStates(s.states('heat')), s.registry || {}, null, s);
+    const c = mount({ ...s.config,
+      actions: { dhw_top: { tap_action: { action: 'navigate', navigation_path: '/dhw' }, hold_action: { action: 'more-info' }, double_tap_action: { action: 'url', url_path: 'https://example.org' } } } }, hass);
+    await wait(30);
+    const sr = c.shadowRoot;
+    const stops = (sel) => [...sr.querySelectorAll(sel)].filter((e) => e.getAttribute('tabindex') === '0');
+    const svgItems = [...sr.querySelectorAll('#svg [data-entity][tabindex]')];
+    check(svgItems.length >= 5 && svgItems.every((e) => e.getAttribute('role') === 'button'), `schematic parts are buttons (${svgItems.length})`);
+    check(stops('#svg [data-entity]').length === 1, 'the schematic is a single tab stop');
+    check(stops('#stats .stat').length === 1 && [...sr.querySelectorAll('#stats .stat')].every((e) => e.getAttribute('role') === 'button'), 'the tiles are a single tab stop');
+    check(stops('#drawer-body .drow').length === 1, 'the details are a single tab stop');
+    check([...sr.querySelectorAll('.head [data-entity]')].filter((e) => getComputedStyle(e).display !== 'none').every((e) => e.getAttribute('tabindex') === '0' && e.getAttribute('role') === 'button'), 'header chips are tab stops');
+    check(sr.getElementById('svg').getAttribute('role') === 'group', 'the schematic is a group, not an image');
+    const flow = sr.querySelector(`#svg [data-entity="${c._e.flow}"]`);
+    check(/32\.4/.test(flow.getAttribute('aria-label') || ''), `schematic parts carry a label with the value (${flow.getAttribute('aria-label')})`);
+    // arrow keys move through the schematic, the focused part becomes the tab stop, a frame is drawn
+    const first = stops('#svg [data-entity]')[0];
+    first.focus();
+    const key = (el, k, mods = {}) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, composed: true, cancelable: true, ...mods }));
+    key(first, 'ArrowRight');
+    const second = sr.activeElement;
+    check(second && second !== first && svgItems.includes(second), 'ArrowRight moves the focus to the next part');
+    check(stops('#svg [data-entity]').length === 1 && stops('#svg [data-entity]')[0] === second && first.getAttribute('tabindex') === '-1', 'the focused part is the only tab stop');
+    check(sr.querySelectorAll('.focus-ring').length === 1 && sr.querySelector('.focus-ring').parentNode === second, 'a focus frame sits in the focused part');
+    key(second, 'ArrowLeft');
+    check(sr.activeElement === first, 'ArrowLeft goes back');
+    key(first, 'End'); check(sr.activeElement === svgItems[svgItems.length - 1], 'End goes to the last part');
+    key(sr.activeElement, 'Home'); check(sr.activeElement === svgItems[0], 'Home goes to the first part');
+    sr.activeElement.blur();
+    check(sr.querySelectorAll('.focus-ring').length === 0, 'the frame disappears when the focus leaves');
+    // activation: Enter and Space tap, Shift+Enter holds, Alt+Enter double taps
+    const ev = [];
+    c.addEventListener('hass-action', (e) => ev.push(['action', e.detail.action, e.detail.config]));
+    c.addEventListener('hass-more-info', (e) => ev.push(['more-info', e.detail.entityId]));
+    const dhw = sr.querySelector(`#svg [data-entity="${c._e.dhw_top}"]`);
+    key(dhw, 'Enter');
+    check(ev.length === 1 && ev[0][1] === 'tap' && ev[0][2].tap_action.navigation_path === '/dhw', `Enter runs tap_action (${JSON.stringify(ev)})`);
+    ev.length = 0; key(dhw, ' ');
+    check(ev.length === 1 && ev[0][1] === 'tap', 'Space runs tap_action');
+    ev.length = 0; key(dhw, 'Enter', { shiftKey: true });
+    check(ev.length === 1 && ev[0][1] === 'hold', 'Shift+Enter runs hold_action');
+    ev.length = 0; key(dhw, 'Enter', { altKey: true });
+    check(ev.length === 1 && ev[0][1] === 'double_tap' && ev[0][2].double_tap_action.url_path === 'https://example.org', 'Alt+Enter runs double_tap_action');
+    ev.length = 0; key(flow, 'Enter');
+    check(ev.length === 1 && ev[0][0] === 'more-info' && ev[0][1] === c._e.flow, 'Enter without configured actions opens more-info');
+    ev.length = 0; key(flow, 'Enter', { shiftKey: true }); key(flow, 'a');
+    check(ev.length === 0, 'unconfigured hold and other keys do nothing');
+    ev.length = 0; key(sr.querySelector('#stats .stat'), 'Enter');
+    check(ev.length === 1 && ev[0][0] === 'more-info', 'Enter on a tile opens more-info');
+    ev.length = 0; key(sr.getElementById('chip-mode'), 'Enter');
+    check(ev.length === 1 && ev[0][0] === 'more-info', 'Enter on a header chip opens more-info');
+    // a tile keeps the focus when its values are drawn again
+    const tile = sr.querySelector('#stats .stat'); tile.focus();
+    const st2 = toStates({ ...s.states('heat'), 'sensor.eu08l_hp1_heating_cop_daily': '4.44' });
+    c.hass = { ...hass, states: st2 }; await wait(30);
+    check(sr.activeElement && sr.activeElement.classList.contains('stat'), 'a focused tile stays focused when values change');
+    c.remove();
+  }
+
   log.push(`${checks} checks, ${fails.length} failed`);
   document.getElementById('log').textContent = [...log, ...fails.map((f) => `FAIL ${f}`)].join('\n');
   document.getElementById('result').textContent = fails.length ? 'FAIL' : 'PASS';

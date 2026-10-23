@@ -1120,7 +1120,7 @@ class HeatpumpFlowCard extends HTMLElement {
         ${this._needsBuild && this._preset ? `<div class="hint">${this._esc(i.not_found)}</div>` : ''}
         <div class="body">
         <div class="stage">
-        <svg viewBox="0 0 1000 ${H}" id="svg" role="img" aria-label="${T}">
+        <svg viewBox="0 0 1000 ${H}" id="svg" role="group" tabindex="-1" aria-label="${T}">
           <defs>
             <linearGradient id="g-dhw" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-dhw-top"/><stop offset="100%" id="g-dhw-bottom"/></linearGradient>
             <linearGradient id="g-buf" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-buf-top"/><stop offset="100%" id="g-buf-bottom"/></linearGradient>
@@ -1217,9 +1217,12 @@ class HeatpumpFlowCard extends HTMLElement {
     this._actEvents(this._$('svg'));
     this._actEvents(this.shadowRoot.querySelector('.head'));
     this._tileEvents(this._$('stats'));
+    this._rove(this._$('svg'), '[data-entity]', 'svg');
+    this._rove(this._$('stats'), '.stat', 'stats');
     const drawer = this._$('drawer-body');
     if (drawer) {
       this._actEvents(drawer);
+      this._rove(drawer, '.drow', 'drawer');
       this._$('drawer-toggle').addEventListener('click', () => {
         this._drawerOpen = !this._drawerOpen;
         drawer.hidden = !this._drawerOpen;
@@ -1232,6 +1235,7 @@ class HeatpumpFlowCard extends HTMLElement {
       ctl.addEventListener('change', (ev) => { const el = ev.target.closest('[data-ctl]'); if (el) this._control(+el.dataset.ctl, el.value); });
     }
     this._rendered = true;
+    this._a11yAt = 0;
   }
 
   /* ---------- quick controls ---------- */
@@ -1745,6 +1749,85 @@ class HeatpumpFlowCard extends HTMLElement {
     return { below: '<circle class="fan-ring" cx="170" cy="288" r="50"/>', fans: [[170, 288, 50, '']], above: '', snows: [[170, 288, 18]] };
   }
 
+  /* ---------- keyboard and screen readers ---------- */
+  // Clickable parts become buttons. The schematic, the tiles and the details are one tab stop each (arrow keys, Home and End move
+  // inside); the header chips are tab stops of their own. Elements that are not shown (empty labels, hidden by the narrow layout) are skipped.
+  _a11y(force) {
+    const now = Date.now();
+    if (!force && now - (this._a11yAt || 0) < 2000) return;
+    this._a11yAt = now;
+    const root = this.shadowRoot;
+    if (!root) return;
+    const shown = (el) => {
+      if (el instanceof SVGGraphicsElement) { try { return el.getBBox().width > 0 && getComputedStyle(el).display !== 'none'; } catch (err) { return false; } }
+      return el.getClientRects().length > 0;
+    };
+    const label = (el) => {
+      const st = this._hass?.states[el.dataset.entity];
+      if (!st) return '';
+      const u = st.attributes?.unit_of_measurement;
+      return `${st.attributes?.friendly_name || el.dataset.entity}: ${st.state}${u ? ` ${u}` : ''}`;
+    };
+    [['#svg [data-entity]', 'svg', true], ['#stats .stat', 'stats', false], ['#drawer-body .drow', 'drawer', false]].forEach(([sel, name, labelled]) => {
+      const all = [...root.querySelectorAll(sel)];
+      const items = all.filter(shown);
+      const keep = Math.min(this._focusMem?.[name] ?? 0, items.length - 1);
+      items.forEach((el, n) => {
+        if (!el.hasAttribute('role')) el.setAttribute('role', 'button');
+        const t = n === keep ? '0' : '-1';
+        if (el.getAttribute('tabindex') !== t) el.setAttribute('tabindex', t);
+        if (labelled) { const l = label(el); if (l && el.getAttribute('aria-label') !== l) el.setAttribute('aria-label', l); }
+      });
+      all.forEach((el) => { if (!items.includes(el) && el.hasAttribute('tabindex')) el.removeAttribute('tabindex'); });
+    });
+    root.querySelectorAll('.head [data-entity], .head [data-badge]').forEach((el) => {
+      if (shown(el)) { el.setAttribute('role', 'button'); el.setAttribute('tabindex', '0'); } else el.removeAttribute('tabindex');
+    });
+  }
+
+  // Arrow keys, Home and End move the focus between the items of a group; the focused item is the group's tab stop.
+  _rove(box, selector, name) {
+    if (!box) return;
+    this._focusMem = this._focusMem || {};
+    const items = () => [...box.querySelectorAll(selector)].filter((el) => el.getAttribute('tabindex') !== null);
+    box.addEventListener('focusin', (ev) => {
+      const list = items(); const n = list.indexOf(ev.target);
+      if (n < 0) return;
+      this._focusMem[name] = n;
+      list.forEach((el, m) => el.setAttribute('tabindex', m === n ? '0' : '-1'));
+      if (name === 'svg') this._showRing(ev.target);
+    });
+    box.addEventListener('focusout', () => { if (name === 'svg') this._hideRing(); });
+    box.addEventListener('keydown', (ev) => {
+      const list = items(); const n = list.indexOf(ev.target);
+      if (n < 0) return;
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[ev.key];
+      let to = null;
+      if (step) to = (n + step + list.length) % list.length;
+      else if (ev.key === 'Home') to = 0;
+      else if (ev.key === 'End') to = list.length - 1;
+      if (to === null) return;
+      ev.preventDefault();
+      list[to].focus();
+      if (name === 'svg') this._showRing(list[to], true);
+    });
+  }
+
+  // Focus frame inside the schematic (outlines on SVG groups are not drawn everywhere): a rectangle around the focused group.
+  _showRing(el, force) {
+    if (!(el instanceof SVGGraphicsElement)) return;
+    if (!force && !el.matches(':focus-visible')) return;
+    this._hideRing();
+    let b;
+    try { b = el.getBBox(); } catch (err) { return; }
+    const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    r.setAttribute('class', 'focus-ring');
+    [['x', b.x - 5], ['y', b.y - 5], ['width', b.width + 10], ['height', b.height + 10], ['rx', 8]].forEach(([k, v]) => r.setAttribute(k, v));
+    el.appendChild(r);
+    this._ring = r;
+  }
+  _hideRing() { if (this._ring) { this._ring.remove(); this._ring = null; } }
+
   // Heater rod entering a tank from the right wall at height y; backup / inline heater as a box inside the heat pump.
   _heaterSvg(key, id, y) {
     if (!this._has(key)) return '';
@@ -1876,6 +1959,16 @@ class HeatpumpFlowCard extends HTMLElement {
     });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => box.addEventListener(t, () => clearTimeout(timer)));
     box.addEventListener('contextmenu', (ev) => { if (actOf(ev)?.hold_action) ev.preventDefault(); });
+    // Keyboard: Enter or Space = tap, Shift+Enter = hold, Alt+Enter = double tap.
+    box.addEventListener('keydown', (ev) => {
+      if (['BUTTON', 'SELECT', 'INPUT', 'TEXTAREA'].includes(ev.target.tagName)) return;
+      const act = ev.key === 'Enter' ? (ev.shiftKey ? 'hold' : ev.altKey ? 'double_tap' : 'tap') : (ev.key === ' ' || ev.key === 'Spacebar' ? 'tap' : null);
+      if (!act) return;
+      const a = actOf(ev);
+      if (!a) return;
+      ev.preventDefault();
+      this._tileAction(a, act);
+    });
     box.addEventListener('click', (ev) => {
       const a = actOf(ev);
       if (!a) return;
@@ -2120,9 +2213,15 @@ class HeatpumpFlowCard extends HTMLElement {
     this._tileActs = tiles.map(([, , id, s]) => ({ entity: id, ...Object.fromEntries(HFC_ACTIONS.filter((a) => s && s[a]).map((a) => [a, s[a]])) }));
     const html = tiles.map(([l, v, id], n) => `<div class="stat" data-tile="${n}" data-entity="${this._esc(id)}"><div class="sv">${this._esc(v)}</div><div class="sl">${this._esc(l)}</div></div>`).join('');
     const box = this._$('stats');
-    if (box._html !== html) { box.innerHTML = html; box._html = html; box.style.display = tiles.length ? '' : 'none'; }
+    if (box._html !== html) {
+      const had = this.shadowRoot.activeElement?.dataset?.tile;
+      box.innerHTML = html; box._html = html; box.style.display = tiles.length ? '' : 'none';
+      this._a11y(true);
+      if (had !== undefined) box.querySelector(`[data-tile="${had}"]`)?.focus();
+    }
     this._updateControls();
     this._updateDrawer();
+    this._a11y();
   }
 }
 
@@ -2263,6 +2362,10 @@ HeatpumpFlowCard.styles = `
   .vai-dark, .vai-foot { fill: color-mix(in srgb, ${hfcVar('anthracite')} 60%, #000); }
   .vai-gr { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 45%, #a0a8b0); stroke-width: 2; } .vai-gr.thin { stroke-width: 1; opacity: .85; }
   .vai-seam { stroke: color-mix(in srgb, ${hfcVar('casing')} 80%, #6b7280); stroke-width: 1.2; fill: none; opacity: .8; }
+  /* keyboard focus */
+  .focus-ring { fill: none; stroke: var(--primary-color, #03a9f4); stroke-width: 3; pointer-events: none; }
+  .tap:focus, .tap:focus-visible, #svg:focus { outline: none; }
+  .chip:focus-visible, .stat:focus-visible, .drow:focus-visible, .drawer-toggle:focus-visible, .ctl:focus-visible { outline: 2px solid var(--primary-color, #03a9f4); outline-offset: 2px; }
   /* narrow schematic (phones, narrow columns): larger type, secondary labels hidden */
   .stage { container-type: inline-size; }
   @container (max-width: 640px) { #svg { --k: 1.2; --ku: 1.1; --kp: 1; --k2: 1; --ks: 1.2; --kt: 1.15; } }

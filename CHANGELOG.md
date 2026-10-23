@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.1 (unreleased)
+Keyboard and screen readers.
+- Every clickable part is a button: header chips, the parts of the schematic, tiles and details rows. Tab reaches them; the schematic, the tiles and the details are one tab stop each, with arrow keys, Home and End moving inside.
+- Enter or Space runs the tap action (default: more-info), Shift+Enter the hold action, Alt+Enter the double-tap action.
+- A focus frame in the primary colour marks the focused part (a rectangle inside the schematic, an outline elsewhere).
+- Parts of the schematic carry a label with the entity name and value for screen readers; the schematic is a group instead of an image so its parts are announced. Hidden or empty parts are skipped.
+- A tile keeps the keyboard focus when its value is redrawn.
+- Self-test: 365 checks.
+
 ## 0.9.0 – 2026-10-23
 Outdoor unit drawings.
 - The heat pump block draws the outdoor unit: the anthracite Lambda EU-L (tall, laser-cut pattern over the fan, solid lower panel) and the Vaillant aroTHERM plus in three sizes (one fan low, one fan, two fans). Drawn from photos and published sizes; simplified original drawings, no logos.
