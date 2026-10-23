@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0 (unreleased)
+## 0.9.0 – 2026-10-23
 Outdoor unit drawings.
 - The heat pump block draws the outdoor unit: the anthracite Lambda EU-L (tall, laser-cut pattern over the fan, solid lower panel) and the Vaillant aroTHERM plus in three sizes (one fan low, one fan, two fans). Drawn from photos and published sizes; simplified original drawings, no logos.
 - `unit_style: auto | generic | lambda | vaillant` (default `auto`: the style of the preset) and `unit_size: small | medium | large` for Vaillant. Also in the editor.
