@@ -80,6 +80,18 @@ Click the **Open in HACS** button above, or:
 ### Manual
 Copy `dist/heatpump-flow-card.js` to `/config/www/` and add `/local/heatpump-flow-card.js` as a JavaScript module under *Settings → Dashboards → Resources*.
 
+### Other cards with the same name
+Several cards on GitHub are called "Heatpump Flow Card" and register the same element name, `heatpump-flow-card`. A browser keeps only the first definition, so with two of them installed the one that loads first answers to `type: custom:heatpump-flow-card`, and the other cannot be reached by that name.
+
+This card therefore also registers under its own names, **Heatpump Hydraulic Card**:
+
+```yaml
+type: custom:heatpump-hydraulic-card   # instead of custom:heatpump-flow-card
+preset: lambda
+```
+
+Both types are the same card with the same options. If you only use this card, nothing changes. If another card already owns the generic name, this card says so in the browser console and the card picker lists it as "Heatpump Hydraulic Card"; use that type in your configuration.
+
 ## Quick start
 
 ### Lambda (lambda_heat_pumps)

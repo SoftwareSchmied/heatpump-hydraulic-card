@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.3 (unreleased)
+No more clash with other cards of the same name.
+- The card is also registered as `heatpump-hydraulic-card` (editor `heatpump-hydraulic-card-editor`), the same card under its own name. `type: custom:heatpump-flow-card` keeps working.
+- Other cards use the generic element names too, and a browser keeps only the first definition. When another card already owns `heatpump-flow-card`, this card now says so in the console, tells which type to use, and the card picker lists it as "Heatpump Hydraulic Card". Before, it skipped its registration without a word.
+- Self-test: 387 checks, including a page where another card registered the generic names first (`test/collision.html`).
+
 ## 0.9.2 – 2026-10-23
 Small refinements of the heat pump block.
 - The frame of the heat pump block follows the mode while running: orange for heating, red for hot water, blue for defrost and cooling; standby stays grey. It was always orange.

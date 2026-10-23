@@ -2545,13 +2545,32 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     this._render();
   }
 }
-if (!customElements.get('heatpump-flow-card-editor')) customElements.define('heatpump-flow-card-editor', HeatpumpFlowCardEditor);
-if (!customElements.get('heatpump-flow-card')) customElements.define('heatpump-flow-card', HeatpumpFlowCard);
+// Registration. Other cards use the same generic element names (heatpump-flow-card, heatpump-flow-card-editor) and a browser keeps only the
+// first definition, so this card is always available under names of its own as well: custom:heatpump-hydraulic-card.
+HeatpumpFlowCard.hfcOwner = 'sturmi77';
+HeatpumpFlowCardEditor.hfcOwner = 'sturmi77';
+class HeatpumpHydraulicCard extends HeatpumpFlowCard {
+  static getConfigElement() { return document.createElement('heatpump-hydraulic-card-editor'); }
+}
+class HeatpumpHydraulicCardEditor extends HeatpumpFlowCardEditor {}
+const hfcDefine = (name, cls) => { if (!customElements.get(name)) customElements.define(name, cls); };
+const hfcMine = (name) => { const c = customElements.get(name); return !c || c.hfcOwner === 'sturmi77'; };
+hfcDefine('heatpump-hydraulic-card-editor', HeatpumpHydraulicCardEditor);
+hfcDefine('heatpump-hydraulic-card', HeatpumpHydraulicCard);
+hfcDefine('heatpump-flow-card-editor', HeatpumpFlowCardEditor);
+hfcDefine('heatpump-flow-card', HeatpumpFlowCard);
+// The card picker lists the card once: under the generic name when this card owns it, otherwise under the unique name.
+const hfcGeneric = hfcMine('heatpump-flow-card') && hfcMine('heatpump-flow-card-editor');
+if (!hfcGeneric) {
+  console.warn('heatpump-flow-card: the element name "heatpump-flow-card" is already used by another card, so "type: custom:heatpump-flow-card" opens that card. '
+    + 'Use "type: custom:heatpump-hydraulic-card" for this card (github.com/Sturmi77/heatpump-flow-card).');
+}
+const hfcType = hfcGeneric ? 'heatpump-flow-card' : 'heatpump-hydraulic-card';
 window.customCards = window.customCards || [];
-if (!window.customCards.some((c) => c.type === 'heatpump-flow-card')) {
+if (!window.customCards.some((c) => c.type === hfcType)) {
   window.customCards.push({
-    type: 'heatpump-flow-card',
-    name: 'Heatpump Flow Card',
+    type: hfcType,
+    name: hfcGeneric ? 'Heatpump Flow Card' : 'Heatpump Hydraulic Card',
     description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann, Vaillant, EMS-ESP (Bosch/Buderus/Junkers/Nefit), Panasonic Aquarea (HeishaMon).',
     preview: true,
     documentationURL: 'https://github.com/Sturmi77/heatpump-flow-card',
