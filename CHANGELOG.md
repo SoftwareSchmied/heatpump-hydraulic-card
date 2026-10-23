@@ -1,10 +1,12 @@
 # Changelog
 
 ## 0.9.3 (unreleased)
-No more clash with other cards of the same name.
+Timeline of the operating mode, a fading heating surface, and no more clash with other cards of the same name.
+- Timeline (`timeline: true`, `timeline_hours`): a strip under the schematic shows heating, hot water, defrost, blocked and standby over the last 24 hours (3 to 72), from the history of the `mode` entity; without it from the `compressor` and the `valve`. Tap or arrow keys show start, end and duration. One history query per card, kept for five minutes. Also in the editor.
+- The heating surface (underfloor loop and radiator) fades from the flow colour to the return colour; one colour when flow and return do not differ.
 - The card is also registered as `heatpump-hydraulic-card` (editor `heatpump-hydraulic-card-editor`), the same card under its own name. `type: custom:heatpump-flow-card` keeps working.
 - Other cards use the generic element names too, and a browser keeps only the first definition. When another card already owns `heatpump-flow-card`, this card now says so in the console, tells which type to use, and the card picker lists it as "Heatpump Hydraulic Card". Before, it skipped its registration without a word.
-- Self-test: 387 checks, including a page where another card registered the generic names first (`test/collision.html`).
+- Self-test: 405 checks, including a page where another card registered the generic names first (`test/collision.html`).
 
 ## 0.9.2 – 2026-10-23
 Small refinements of the heat pump block.

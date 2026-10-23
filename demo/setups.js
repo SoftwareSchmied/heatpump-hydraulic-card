@@ -130,6 +130,15 @@ const statChange = (setup, msg) => {
   const v = setup.statistics?.[msg.statistic_id]?.[c.period === 'day' ? (c.offset ? 'yesterday' : 'today') : c.period];
   return v === undefined ? Promise.reject(new Error('no statistics')) : Promise.resolve({ change: v });
 };
+// Simulated history (compact format of the history API, seconds): one day of operating modes, ending in heating.
+const historySim = (setup, msg) => {
+  const now = Date.now(); const out = {};
+  const plan = [[24, 'idle'], [22.5, 'heat'], [20, 'defrost'], [19.6, 'heat'], [17, 'dhw'], [16.3, 'idle'], [12, 'heat'], [8.5, 'defrost'], [8.1, 'heat'], [7, 'dhw'], [6.2, 'heat'], [3, 'defrost'], [2.9, 'heat']];
+  for (const id of msg.entity_ids) {
+    out[id] = plan.map(([h, k]) => { const v = setup.states(k)[id]; const st = Array.isArray(v) ? v[0] : (v && typeof v === 'object' ? v.state : v); return { s: String(st), lu: (now - h * 3600000) / 1000 }; });
+  }
+  return Promise.resolve(out);
+};
 // HeishaMon (Panasonic Aquarea): no operating-mode entity, valve as Room/Tank, flow in L/min, power in W.
 const hmStates = (s) => ({
   'sensor.panasonic_heat_pump_main_main_outlet_temp': [{ heat: '36.0', dhw: '50.5', defrost: '23', idle: '30' }[s], '°C'],
@@ -180,7 +189,7 @@ const setups = [
     states: (s) => ({ ...lambdaStates('eu08l_', s), ...extras(s) }),
     statistics: { 'sensor.eu08l_hp1_heating_energy_total': { yesterday: 12.9, week: 61.3 } },
     config: {
-      preset: 'lambda', title: 'Lambda', hc_type: 'radiator',
+      preset: 'lambda', title: 'Lambda', hc_type: 'radiator', timeline: true,
       entities: {
         room: 'sensor.living_room_temperature', pv: 'sensor.heatpump_power_from_pv', battery: 'sensor.heatpump_power_from_battery',
         grid: 'sensor.heatpump_power_from_grid', energy_today: 'sensor.heatpump_energy_today', pv_share_today: 'sensor.heatpump_pv_share_today',

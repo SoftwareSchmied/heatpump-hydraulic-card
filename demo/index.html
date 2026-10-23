@@ -136,6 +136,7 @@ function refresh(card = document.querySelector('heatpump-flow-card')) {
   }
   const callWS = (msg) => {
     if (msg.type === 'recorder/statistic_during_period') return statChange(setup, msg);
+    if (msg.type === 'history/history_during_period') return historySim(setup, msg);
     return msg.type === 'energy/get_prefs' && setup.energy ? Promise.resolve(setup.energy) : Promise.reject(new Error('not simulated'));
   };
   // Simulated services for the quick controls.

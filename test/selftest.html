@@ -35,6 +35,7 @@
   const hassOf = (states, registry = {}, energy, setup = {}) => ({
     states, entities: registry, locale: { language: 'en' }, language: 'en',
     callWS: (m) => (m.type === 'recorder/statistic_during_period' ? statChange(setup, m)
+      : m.type === 'history/history_during_period' && setup.states ? historySim(setup, m)
       : m.type === 'energy/get_prefs' && energy ? Promise.resolve(energy) : Promise.reject(new Error('n/a'))),
     callService: () => Promise.resolve(),
   });
@@ -86,7 +87,7 @@
     { layout: 'huge' }, { actions: [] }, { actions: { mode: 'navigate' } }, { actions: { mode: { tap_action: 'navigate' } } },
     { badges: [{ entity: 'sensor.x', hold_action: 'toggle' }] },
     { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' },
-    { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' }]) {
+    { timeline: 'yes' }, { timeline_hours: 0 }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -714,6 +715,71 @@
     check(!!w && (w.__warns || []).some((m) => /custom:heatpump-hydraulic-card/.test(m)), 'the console says which name to use');
     check(!!w && w.customCards.length === 1 && w.customCards[0].type === 'heatpump-hydraulic-card' && w.customCards[0].name === 'Heatpump Hydraulic Card', 'the card picker then lists the unique name');
     fr.remove();
+  }
+
+  // 18. timeline of the operating mode and the gradient of the heating surface
+  {
+    const s = setups[0];
+    const mk = async (scen, extra = {}, cfg = {}, setup = s) => {
+      const k = mount({ ...setup.config, ...cfg }, hassOf(toStates({ ...setup.states(scen), ...extra }), setup.registry || {}, setup.energy, setup)); await wait(25);
+      return k;
+    };
+    const tl = async (setup, extraCfg = {}, hassFn) => {
+      const h = hassOf(toStates(setup.states('heat')), setup.registry || {}, setup.energy, setup);
+      const c = mount({ ...setup.config, timeline: true, ...extraCfg }, hassFn ? hassFn(h) : h); await wait(60);
+      return c;
+    };
+    let c = await tl(s);
+    const box = c.shadowRoot.getElementById('timeline');
+    const segs = [...c.shadowRoot.querySelectorAll('#timeline .seg')];
+    const kinds = new Set(segs.map((x) => [...x.classList].find((k) => k.startsWith('k-'))));
+    check(!!box && !box.hidden && segs.length >= 10, `timeline shows the history (${segs.length} periods)`);
+    check(['k-heat', 'k-dhw', 'k-defrost', 'k-idle'].every((k) => kinds.has(k)), `all kinds are drawn (${[...kinds]})`);
+    check(parseFloat(segs[0].style.left) === 0 && segs.every((x) => parseFloat(x.style.left) + parseFloat(x.style.width) <= 100.01), 'periods fill the bar from left to right');
+    check(/Last 24 hours/.test(box.textContent) && /Heating/.test(box.querySelector('.tl-legend').textContent) && /Hot water/.test(box.querySelector('.tl-legend').textContent) && /Defrost/.test(box.querySelector('.tl-legend').textContent), 'title and legend');
+    check([...box.querySelectorAll('.tl-axis span')].map((x) => x.textContent).filter((t) => ['00', '06', '12', '18'].includes(t)).length >= 3, `hour ticks at clock times (${[...box.querySelectorAll('.tl-axis span')].map((x) => x.textContent)})`);
+    // tap and arrow keys select a period
+    segs[1].dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    const detail = () => c.shadowRoot.getElementById('tl-detail').textContent;
+    check(/Heating · \d\d:\d\d–\d\d:\d\d · /.test(detail()) && /min/.test(detail()), `a tap shows start, end and duration (${detail()})`);
+    check(c.shadowRoot.activeElement && c.shadowRoot.activeElement.id === 'tl-bar', 'the bar keeps the focus');
+    const before = detail();
+    c.shadowRoot.getElementById('tl-bar').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, composed: true, cancelable: true }));
+    check(detail() !== before && /Defrost/.test(detail()), `ArrowRight selects the next period (${detail()})`);
+    c.remove();
+    // no option, no timeline; no history, no timeline
+    c = mount(setups[1].config, hassOf(toStates(setups[1].states('heat')), {}, setups[1].energy, setups[1])); await wait(30);
+    check(!c.shadowRoot.getElementById('timeline'), 'without the option there is no timeline');
+    c.remove();
+    c = await tl(s, {}, (h) => ({ ...h, callWS: () => Promise.reject(new Error('no history')) }));
+    check(c.shadowRoot.getElementById('timeline').hidden === true, 'a failed history query hides the timeline');
+    c.remove();
+    // full state objects (ISO strings) work as well
+    const modeId = Object.keys(toStates(s.states('heat'))).find((k) => /hp1_operating_state$/.test(k));
+    const iso = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    c = await tl(s, {}, (h) => ({ ...h, callWS: (m) => (m.type === 'history/history_during_period' ? Promise.resolve({ [m.entity_ids[0]]: [{ state: 'STBY', last_updated: iso(30) }, { state: 'CH', last_updated: iso(10) }, { state: 'DHW', last_updated: iso(4) }, { state: 'unavailable', last_updated: iso(2) }, { state: 'CH', last_updated: iso(1) }] }) : h.callWS(m)) }));
+    const k2 = [...c.shadowRoot.querySelectorAll('#timeline .seg')].map((x) => [...x.classList].find((k) => k.startsWith('k-')));
+    check(k2.join() === 'k-idle,k-heat,k-dhw,k-gap,k-heat' || k2.join() === 'k-heat,k-dhw,k-gap,k-heat', `full state objects are understood (${k2})`);
+    c.remove();
+    // without a mode entity the compressor and the valve are used
+    const hm = setups[5];
+    c = await tl(hm);
+    const k3 = new Set([...c.shadowRoot.querySelectorAll('#timeline .seg')].map((x) => [...x.classList].find((k) => k.startsWith('k-'))));
+    check(!c.shadowRoot.getElementById('timeline').hidden && k3.has('k-heat') && k3.has('k-dhw'), `compressor and valve give heating and hot water (${[...k3]})`);
+    c.remove();
+    // heating surface: gradient from the flow to the return colour, one colour without a difference
+    c = await mk('heat');
+    const body = c.shadowRoot.getElementById('p-hc-body');
+    check(/url\(["']?#g-hcb["']?\)/.test(body.style.stroke) && /oklch/.test(c.shadowRoot.getElementById('g-hcb-m').getAttribute('stop-color')) && !!c.shadowRoot.getElementById('g-hcb-a').getAttribute('stop-color'), `heating surface fades from flow to return colour (${body.style.stroke})`);
+    c.remove();
+    c = await mk('heat', { 'sensor.eu08l_hc1_flow_line_temperature': '27.4', 'sensor.eu08l_buff1_actual_low_temperature': '27.4', 'sensor.eu08l_hp1_return_line_temperature': '27.4' });
+    check(c.shadowRoot.getElementById('p-hc-body').style.stroke === '', 'one colour when flow and return do not differ');
+    c.remove();
+    c = await mk('heat', {}, {}, setups[6]);
+    check(!!c.shadowRoot.getElementById('g-hcb2-a') && !!c.shadowRoot.getElementById('g-hcb-a'), 'every circuit has its own gradient');
+    c.remove();
+    const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
+    check(C._formSchema({}).schema.flatMap(keysOf).includes('timeline') && !C._formSchema({}).schema.flatMap(keysOf).includes('timeline_hours') && C._formSchema({ timeline: true }).schema.flatMap(keysOf).includes('timeline_hours'), 'editor offers the timeline and its length');
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);
