@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.3 (unreleased)
+## 0.9.3 – 2026-10-24
 Timeline of the operating mode, a fading heating surface, and no more clash with other cards of the same name.
 - Timeline (`timeline: true`, `timeline_hours`): a strip under the schematic shows heating, hot water, defrost, blocked and standby over the last 24 hours (3 to 72), from the history of the `mode` entity; without it from the `compressor` and the `valve`. Tap or arrow keys show start, end and duration. One history query per card, kept for five minutes. Also in the editor.
 - The heating surface (underfloor loop and radiator) fades from the flow colour to the return colour; one colour when flow and return do not differ.
