@@ -2144,7 +2144,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const srcParts = [];
     if (this._has('source_in')) srcParts.push(`${i.source_in} ${this._t(this._n('source_in'))}`);
     if (this._has('source_volume') && srcVol > 0) srcParts.push(`${i.source_flow} ${this._fmt(srcVol, 0)} l/h`);
-    if (this._sourceType === 'air') this._txt('t-src-in', srcParts.join(' · '));
+    if (this._sourceType === 'air') { this._txt('t-src-in', srcParts.join(' · ')); this._$('t-outdoor-hp')?.setAttribute('y', srcParts.length ? 472 : 450); }
     else {
       const brine = this._sourceType === 'brine';
       this._txt('t-src-in', this._has('source_in') ? `${brine ? i.brine_in : i.well_in} ${this._t(this._n('source_in'))}` : '');

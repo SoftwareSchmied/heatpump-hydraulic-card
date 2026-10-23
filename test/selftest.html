@@ -665,6 +665,10 @@
     let c = await mk('heat');
     check(/10\.4/.test(c.shadowRoot.getElementById('t-outdoor-hp')?.textContent || '') && !c.shadowRoot.getElementById('t-outdoor'), 'air source: outdoor temperature under the heat pump, not in the house');
     check(/9\.8/.test(c.shadowRoot.getElementById('t-src-in').textContent), 'the air inlet label is still there');
+    check(c.shadowRoot.getElementById('t-outdoor-hp').getAttribute('y') === '472', 'outdoor line sits below the air inlet line');
+    c.remove();
+    c = await mk('heat', {}, {}, setups[3]);
+    check(c.shadowRoot.getElementById('t-src-in').textContent === '' && c.shadowRoot.getElementById('t-outdoor-hp').getAttribute('y') === '450', 'without an air inlet line the outdoor line moves up');
     c.remove();
     c = await mk('heat', {}, {}, setups[6]);
     check(!c.shadowRoot.getElementById('t-outdoor-hp') && /6\.5/.test(c.shadowRoot.getElementById('t-outdoor')?.textContent || ''), 'ground source: outdoor temperature stays in the house');
