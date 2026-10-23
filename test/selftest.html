@@ -645,6 +645,45 @@
     c.remove();
   }
 
+  // 16. heat pump block: frame colour by mode, outdoor temperature at the unit, long status lines wrap
+  {
+    const s = setups[0];
+    const mk = async (scen, extra = {}, cfg = {}, setup = s) => {
+      const c = mount({ ...setup.config, ...cfg }, hassOf(toStates({ ...setup.states(scen), ...extra }), setup.registry || {}, setup.energy, setup)); await wait(25);
+      return c;
+    };
+    const tone = async (scen) => { const c = await mk(scen); const b = c.shadowRoot.getElementById('hp-box'); const out = [b.classList.contains('on'), ['dhw', 'defrost', 'cool'].filter((x) => b.classList.contains(x)).join(), getComputedStyle(b).stroke]; c.remove(); return out; };
+    let r = await tone('heat');
+    check(r[0] && r[1] === '', `heating: orange frame (${r})`);
+    r = await tone('dhw');
+    check(r[0] && r[1] === 'dhw', `hot water: red frame (${r})`);
+    r = await tone('defrost');
+    check(r[0] && r[1] === 'defrost', `defrost: blue frame (${r})`);
+    r = await tone('idle');
+    check(!r[0] && r[1] === '', `standby: no coloured frame (${r})`);
+    // outdoor temperature sits under the unit for air sources, in the house otherwise
+    let c = await mk('heat');
+    check(/10\.4/.test(c.shadowRoot.getElementById('t-outdoor-hp')?.textContent || '') && !c.shadowRoot.getElementById('t-outdoor'), 'air source: outdoor temperature under the heat pump, not in the house');
+    check(/9\.8/.test(c.shadowRoot.getElementById('t-src-in').textContent), 'the air inlet label is still there');
+    c.remove();
+    c = await mk('heat', {}, {}, setups[6]);
+    check(!c.shadowRoot.getElementById('t-outdoor-hp') && /6\.5/.test(c.shadowRoot.getElementById('t-outdoor')?.textContent || ''), 'ground source: outdoor temperature stays in the house');
+    c.remove();
+    // status line
+    const status = async (extra, cfg) => {
+      const k = await mk('dhw', extra, cfg); const el = k.shadowRoot.getElementById('t-hp-status');
+      const out = { spans: el.querySelectorAll('tspan').length, text: el.textContent, y: el.getAttribute('y'), py: k.shadowRoot.getElementById('t-hp-power').getAttribute('y') }; k.remove(); return out;
+    };
+    let st = await status({});
+    check(st.spans === 0 && st.y === '366' && st.py === '390', `short status stays on one line (${JSON.stringify(st)})`);
+    st = await status({ 'sensor.eu08l_hp1_state': 'START COMPRESSOR' }, { language: 'de' });
+    check(st.spans === 2 && st.y === '362' && st.py === '397' && st.text.startsWith('Warmwasser') && /Verdichter startet/.test(st.text), `long German status wraps at the separator (${JSON.stringify(st)})`);
+    st = await status({ 'sensor.eu08l_hp1_state': 'START COMPRESSOR' }, { language: 'en' });
+    check(st.spans === 2 && /starting compressor/.test(st.text), `long English status wraps (${JSON.stringify(st)})`);
+    st = await status({ 'sensor.eu08l_hp1_state': 'REGULATION' }, { language: 'de' });
+    check(st.spans === 0 && st.y === '366', 'a status that fits is not wrapped');
+  }
+
   log.push(`${checks} checks, ${fails.length} failed`);
   document.getElementById('log').textContent = [...log, ...fails.map((f) => `FAIL ${f}`)].join('\n');
   document.getElementById('result').textContent = fails.length ? 'FAIL' : 'PASS';

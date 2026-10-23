@@ -1026,6 +1026,31 @@ class HeatpumpFlowCard extends HTMLElement {
   _vlColor(t) { return Number.isFinite(t) ? this._mix('flow-cold', 'flow-hot', t, 25, 55) : `color-mix(in srgb, ${hfcVar('flow-cold')} 60%, #fff)`; }
   _rlColor(t) { return Number.isFinite(t) ? this._mix('return-cold', 'return-hot', t, 20, 45) : `color-mix(in srgb, ${hfcVar('return-cold')} 75%, #fff)`; }
   _$(id) { return this.shadowRoot.getElementById(id); }
+  // Status line of the heat pump block: one line, or mode on top and status below when it is too long for the block (the text of an
+  // SVG does not wrap by itself). A single long word is squeezed to the width of the block.
+  _hpStatus(text) {
+    const el = this._$('t-hp-status');
+    if (!el) return;
+    const ku = parseFloat(getComputedStyle(this._$('svg')).getPropertyValue('--ku')) || 1;
+    const key = `${text}|${ku}`;
+    if (el._k === key) return;
+    el._k = key;
+    const long = text.length * 7.4 * ku > 216;
+    const parts = long ? text.split(' · ') : [text];
+    const wrapped = parts.length > 1;
+    el.textContent = '';
+    if (wrapped) {
+      const NS = 'http://www.w3.org/2000/svg';
+      const a = document.createElementNS(NS, 'tspan'); a.setAttribute('x', 170); a.textContent = parts[0];
+      const b = document.createElementNS(NS, 'tspan'); b.setAttribute('x', 170); b.setAttribute('dy', 17); b.setAttribute('class', 'status2'); b.textContent = parts.slice(1).join(' · ');
+      el.append(a, b);
+    } else el.textContent = text;
+    if (long && !wrapped) { el.setAttribute('textLength', 216); el.setAttribute('lengthAdjust', 'spacingAndGlyphs'); } else { el.removeAttribute('textLength'); el.removeAttribute('lengthAdjust'); }
+    el.setAttribute('y', wrapped ? 362 : 366);
+    this._$('t-hp-power')?.setAttribute('y', wrapped ? 397 : 390);
+    this._$('t-hp-cop')?.setAttribute('y', wrapped ? 416 : 412);
+  }
+
   // Label with a prefix (VL / RL) that narrow schematics leave out.
   _txtPre(id, pre, text) {
     const el = this._$(id); if (!el) return;
@@ -1158,7 +1183,7 @@ class HeatpumpFlowCard extends HTMLElement {
             <text class="unit-val" id="t-hp-power" x="170" y="390" text-anchor="middle"></text>
             <text class="unit-val strong" id="t-hp-cop" x="170" y="412" text-anchor="middle"></text>
           </g>
-          ${this._sourceType === 'air' ? `<g class="tap" ${de(e.source_in ? 'source_in' : 'source_volume')}><text class="small" id="t-src-in" x="170" y="450" text-anchor="middle"></text></g>` : ''}
+          ${this._sourceType === 'air' ? `<g class="tap" ${de(e.source_in ? 'source_in' : 'source_volume')}><text class="small" id="t-src-in" x="170" y="450" text-anchor="middle"></text></g>${this._has('outdoor') ? `<g class="tap" ${de('outdoor')}><text class="small" id="t-outdoor-hp" x="170" y="472" text-anchor="middle"></text></g>` : ''}` : ''}
           ${this._heaterSvg('heater', 'inline')}
 
           ${P.dhw ? `
@@ -1197,8 +1222,8 @@ class HeatpumpFlowCard extends HTMLElement {
               <text class="tank-title" x="830" y="118" text-anchor="middle">${i.house}</text>
               <text class="house-temp" id="t-room" x="830" y="172" text-anchor="middle"></text>
               <text class="house-sub" id="t-room-target" x="830" y="202" text-anchor="middle"></text>
-              <text class="small" id="t-outdoor" x="830" y="226" text-anchor="middle"></text>
-            </g>` : (this._has('outdoor') ? `<g class="tap" ${de('outdoor')}><text class="small" id="t-outdoor" x="880" y="120" text-anchor="middle"></text></g>` : '')}
+              ${this._sourceType === 'air' ? '' : '<text class="small" id="t-outdoor" x="830" y="226" text-anchor="middle"></text>'}
+            </g>` : (this._has('outdoor') && this._sourceType !== 'air' ? `<g class="tap" ${de('outdoor')}><text class="small" id="t-outdoor" x="880" y="120" text-anchor="middle"></text></g>` : '')}
         </svg>
         </div>
         <div class="side">
@@ -2098,11 +2123,17 @@ class HeatpumpFlowCard extends HTMLElement {
     // heat pump
     this._cls('fan', running); this._cls('fan2', running);
     this._cls('snow', defrost && this._sourceType === 'air'); this._cls('snow2', defrost && this._sourceType === 'air'); this._cls('hp-box', running);
+    const hpBox = this._$('hp-box');
+    if (hpBox) {
+      ['dhw', 'defrost', 'cool'].forEach((c) => hpBox.classList.remove(c));
+      const tone = defrost ? 'defrost' : cooling ? 'cool' : toDhw ? 'dhw' : '';
+      if (tone) hpBox.classList.add(tone);
+    }
     // Some integrations report "heating" while charging DHW (e.g. ViCare compressor phase); the valve decides.
     const shownMode = toDhw && ['heating', 'idle', ''].includes(hp) ? 'dhw' : hp;
     const modeTxt = this._modeLabel(shownMode, rawMode);
     const sl = (this._statusLabels[this._lang] || {})[status];
-    this._txt('t-hp-status', `${modeTxt}${running && sl ? ` · ${sl}` : ''}`);
+    this._hpStatus(`${modeTxt}${running && sl ? ` · ${sl}` : ''}`);
     const heatTxt = Number.isFinite(heat) ? `${heatEstimated ? '≈' : ''}${this._fmt(heat, 1)} kW` : '';
     this._txt('t-hp-power', running
       ? (Number.isFinite(power) ? `${this._fmt(power, 0)} W${heatTxt ? ` → ${heatTxt}` : ''}` : (heatTxt || i.running))
@@ -2156,7 +2187,8 @@ class HeatpumpFlowCard extends HTMLElement {
       this._txt('t-room', Number.isFinite(r) ? this._t(r) : tgt);
       this._txt('t-room-target', Number.isFinite(r) ? tgt : '');
     }
-    this._txt('t-outdoor', this._has('outdoor') ? `${i.outdoor} ${this._t(this._n('outdoor'))}` : '');
+    const outTxt = this._has('outdoor') ? `${i.outdoor} ${this._t(this._n('outdoor'))}` : '';
+    this._txt('t-outdoor', outTxt); this._txt('t-outdoor-hp', outTxt);
 
     // power sources
     if (P.power) {
@@ -2251,9 +2283,11 @@ HeatpumpFlowCard.styles = `
   .pipe-label { font-size: calc(15px * var(--kp, 1)); font-weight: 600; }
   .vol-label { font-size: 13px; fill: var(--hfc-muted); }
   .unit { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; transition: stroke .4s; }
+  .unit.on.dhw { stroke: ${hfcVar('hot')}; } .unit.on.defrost, .unit.on.cool { stroke: ${hfcVar('cool-strong')}; }
   .unit.on { stroke: ${hfcVar('heat')}; filter: url(#glow); }
   .unit-title, .tank-title { font-size: calc(17px * var(--k, 1)); font-weight: 600; }
   .unit-status { font-size: calc(16px * var(--ku, 1)); font-weight: 600; }
+  .unit-status .status2 { font-size: .88em; font-weight: 500; fill: var(--hfc-muted); }
   .unit-val { font-size: calc(15px * var(--ku, 1)); fill: var(--hfc-muted); }
   .unit-val.strong { font-size: calc(17px * var(--ku, 1)); font-weight: 700; fill: ${hfcVar('good')}; }
   .fan-ring { fill: none; stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 3; }
