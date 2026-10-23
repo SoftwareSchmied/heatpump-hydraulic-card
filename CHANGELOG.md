@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.1 (unreleased)
+## 0.8.1 – 2026-10-23
 Looks.
 - Narrow cards: the type size follows the width of the schematic. Below about 640 px labels grow, below about 500 px they grow further and secondary labels (flow rates, tank bottom temperature, VL / RL prefixes, valve, circulation and hot water target line) are hidden, so the main numbers stay readable on phones.
 - Chips: text colour is mixed with the theme text colour, so the mode, program, error and badge chips read in dark themes too (they were hard to see before).
