@@ -384,7 +384,7 @@ const HFC_I18N = {
     fullscreen_open: 'Open full screen', fullscreen_close: 'Close full screen',
     det: {
       hours: 'Compressor hours', starts_total: 'Compressor starts total', aux_hours: 'Heater hours', energy_total: 'Electricity total',
-      heat_total: 'Heat total', cop_total: 'COP total', compressor_speed: 'Compressor', evap_temp: 'Evaporation', cond_temp: 'Condensation',
+      env_energy: 'Environmental energy total', heat_total: 'Heat total', cop_total: 'COP total', compressor_speed: 'Compressor', evap_temp: 'Evaporation', cond_temp: 'Condensation',
       suction_temp: 'Suction gas', hot_gas: 'Hot gas', liquid_temp: 'Liquid line', low_pressure: 'Low pressure', high_pressure: 'High pressure',
       eev: 'Expansion valve', superheat: 'Superheat', subcooling: 'Subcooling',
     },
@@ -397,7 +397,7 @@ const HFC_I18N = {
     stat_starts: 'Starts today', stat_spread: 'Spread', stat_volume: 'Flow rate', stat_heat: 'Heat output', pv_share: 'PV',
     tiles: {
       cop_live: 'COP live', cop_heating: 'COP heating', cop_dhw: 'COP DHW', cop_cooling: 'EER cooling', cop_total: 'COP total', spf: 'SPF (year)',
-      energy: 'Electricity', energy_heating: 'Electricity heating', energy_dhw: 'Electricity DHW', energy_cooling: 'Electricity cooling',
+      energy: 'Electricity', env_energy: 'Environmental energy', energy_heating: 'Electricity heating', energy_dhw: 'Electricity DHW', energy_cooling: 'Electricity cooling',
       energy_defrost: 'Electricity defrost', energy_standby: 'Standby', energy_aux: 'Electricity heater',
       heat: 'Heat', heat_heating: 'Heat heating', heat_dhw: 'Heat DHW', heat_cooling: 'Cooling output', heat_defrost: 'Heat defrost',
       starts: 'Compressor starts', cycles_heating: 'Heating cycles', cycles_dhw: 'DHW cycles', cycles_cooling: 'Cooling cycles', defrosts: 'Defrosts',
@@ -423,7 +423,7 @@ const HFC_I18N = {
     fullscreen_open: 'Vollbild öffnen', fullscreen_close: 'Vollbild schließen',
     det: {
       hours: 'Betriebsstunden Verdichter', starts_total: 'Verdichterstarts gesamt', aux_hours: 'Betriebsstunden Heizstab', energy_total: 'Strom gesamt',
-      heat_total: 'Wärme gesamt', cop_total: 'COP gesamt', compressor_speed: 'Verdichter', evap_temp: 'Verdampfung', cond_temp: 'Kondensation',
+      env_energy: 'Umweltenergie gesamt', heat_total: 'Wärme gesamt', cop_total: 'COP gesamt', compressor_speed: 'Verdichter', evap_temp: 'Verdampfung', cond_temp: 'Kondensation',
       suction_temp: 'Sauggas', hot_gas: 'Heißgas', liquid_temp: 'Flüssigkeitsleitung', low_pressure: 'Niederdruck', high_pressure: 'Hochdruck',
       eev: 'Expansionsventil', superheat: 'Überhitzung', subcooling: 'Unterkühlung',
     },
@@ -436,7 +436,7 @@ const HFC_I18N = {
     stat_starts: 'Starts heute', stat_spread: 'Spreizung', stat_volume: 'Volumenstrom', stat_heat: 'Wärmeleistung', pv_share: 'PV',
     tiles: {
       cop_live: 'COP live', cop_heating: 'COP Heizen', cop_dhw: 'COP WW', cop_cooling: 'EER Kühlen', cop_total: 'COP gesamt', spf: 'JAZ',
-      energy: 'Strom', energy_heating: 'Strom Heizen', energy_dhw: 'Strom WW', energy_cooling: 'Strom Kühlen',
+      energy: 'Strom', env_energy: 'Umweltenergie', energy_heating: 'Strom Heizen', energy_dhw: 'Strom WW', energy_cooling: 'Strom Kühlen',
       energy_defrost: 'Strom Abtauen', energy_standby: 'Standby', energy_aux: 'Strom Heizstab',
       heat: 'Wärme', heat_heating: 'Wärme Heizen', heat_dhw: 'Wärme WW', heat_cooling: 'Kälte', heat_defrost: 'Wärme Abtauen',
       starts: 'Verdichterstarts', cycles_heating: 'Heizzyklen', cycles_dhw: 'WW-Zyklen', cycles_cooling: 'Kühlzyklen', defrosts: 'Abtauungen',
@@ -502,7 +502,7 @@ const HFC_EDITOR = {
     errors: 'Error entities', error_ok_text: 'Text states that mean no error',
     errors_help: 'Active for a number other than 0 or state on. Text needs the no-error states below; unknown, unavailable, off and empty are ignored.',
     error_ok_help: 'Comma-separated, case-insensitive; for example: No Error, OK. Any other known text then shows the error chip.',
-    total_cop_help: 'Total heat and electricity must cover the same time range. Environmental energy alone is not heat output.',
+    total_cop_help: 'Total heat, environmental energy and electricity must cover the same time range. Without total heat, COP uses environmental energy plus electricity.',
     language_help: 'Additional languages and custom labels are configured with texts in YAML; missing labels fall back to English.',
     detected: 'Detected', entities_found: 'entities', not_detected: 'Not found in this Home Assistant - check the integration, the prefix or choose another preset',
     program: 'Heating program (eco, night, party, holiday)', solar_collector: 'Solar collector temperature', solar_pump: 'Solar pump running (binary)',
@@ -521,7 +521,7 @@ const HFC_EDITOR = {
     hc_flow: 'Circuit flow temperature', hc_return: 'Circuit return temperature', hc_setpoint: 'Circuit flow target',
     hc_mode: 'Circuit mode', hc_pump: 'Circuit pump running (binary)', hc_volume: 'Circuit flow rate', hc_pressure: 'Heating circuit pressure', brine_pressure: 'Brine circuit pressure',
     room: 'Room temperature', room_target: 'Room target',
-    pv: 'Power from PV (W)', battery: 'Power from battery (W)', grid: 'Power from grid (W)',
+    env_energy: 'Environmental energy total', pv: 'Power from PV (W)', battery: 'Power from battery (W)', grid: 'Power from grid (W)',
     cop_heating_today: 'COP heating today', cop_dhw_today: 'COP DHW today', energy_today: 'Energy today (kWh)',
     pv_share_today: 'PV share today (%)', starts_today: 'Compressor starts today',
   },
@@ -562,7 +562,7 @@ const HFC_EDITOR = {
     errors: 'Fehler-Entitäten', error_ok_text: 'Textzustände ohne Fehler',
     errors_help: 'Aktiv bei einer Zahl ungleich 0 oder Zustand on. Text braucht die fehlerfreien Zustände unten; unknown, unavailable, off und leer werden ignoriert.',
     error_ok_help: 'Kommagetrennt, ohne Beachtung der Groß-/Kleinschreibung; zum Beispiel: No Error, OK. Jeder andere bekannte Text zeigt dann den Fehler-Chip.',
-    total_cop_help: 'Gesamtwärme und Gesamtstrom müssen denselben Zeitraum abdecken. Umweltenergie allein ist keine abgegebene Wärme.',
+    total_cop_help: 'Gesamtwärme, Umweltenergie und Gesamtstrom müssen denselben Zeitraum abdecken. Ohne Gesamtwärme nutzt der COP Umweltenergie plus Strom.',
     language_help: 'Weitere Sprachen und eigene Beschriftungen werden mit texts im YAML konfiguriert; fehlende Texte fallen auf Englisch zurück.',
     detected: 'Erkannt', entities_found: 'Entitäten', not_detected: 'In diesem Home Assistant nicht gefunden - Integration und Präfix prüfen oder andere Voreinstellung wählen',
     program: 'Heizprogramm (Eco, Nacht, Party, Urlaub)', solar_collector: 'Kollektortemperatur Solarthermie', solar_pump: 'Solarpumpe läuft (binär)',
@@ -581,7 +581,7 @@ const HFC_EDITOR = {
     hc_flow: 'Heizkreis-Vorlauf', hc_return: 'Heizkreis-Rücklauf', hc_setpoint: 'Heizkreis-Vorlauf-Soll',
     hc_mode: 'Heizkreis-Betriebsart', hc_pump: 'Heizkreispumpe läuft (binär)', hc_volume: 'Volumenstrom Heizkreis', hc_pressure: 'Heizkreis-Druck', brine_pressure: 'Solekreis-Druck',
     room: 'Raumtemperatur', room_target: 'Raum-Soll',
-    pv: 'Strom aus PV (W)', battery: 'Strom aus Akku (W)', grid: 'Strom aus Netz (W)',
+    env_energy: 'Umweltenergie gesamt', pv: 'Strom aus PV (W)', battery: 'Strom aus Akku (W)', grid: 'Strom aus Netz (W)',
     cop_heating_today: 'COP Heizen heute', cop_dhw_today: 'COP WW heute', energy_today: 'Strom heute (kWh)',
     pv_share_today: 'PV-Anteil heute (%)', starts_today: 'Verdichterstarts heute',
   },
@@ -594,7 +594,7 @@ const HFC_ENTITY_GROUPS = {
   sec_hc2: ['hc2_flow', 'hc2_return', 'hc2_setpoint', 'hc2_mode', 'hc2_pump', 'hc2_volume'],
   sec_hc3: ['hc3_flow', 'hc3_return', 'hc3_setpoint', 'hc3_mode', 'hc3_pump', 'hc3_volume'],
   sec_power: ['pv', 'battery', 'grid'],
-  sec_details: ['hours', 'starts_total', 'aux_hours', 'energy_total', 'heat_total'],
+  sec_details: ['hours', 'starts_total', 'aux_hours', 'energy_total', 'env_energy', 'heat_total'],
   sec_refrigerant: ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev', 'superheat', 'subcooling'],
   sec_stats: ['cop_heating_today', 'cop_dhw_today', 'energy_today', 'pv_share_today', 'starts_today'],
 };
@@ -654,7 +654,7 @@ const HFC_TILES = {
   cop_cooling: { kind: 'cop', ratio: ['heat_cooling', 'energy_cooling'] },
   cop_total: { kind: 'cop', ratio: ['heat', 'energy'] },
   spf: { kind: 'cop', ratio: ['heat', 'energy'], periods: ['year'], noSuffix: true },
-  energy: { kind: 'energy', legacy: 'energy_today' },
+  energy: { kind: 'energy', legacy: 'energy_today' }, env_energy: { kind: 'energy' },
   energy_heating: { kind: 'energy' }, energy_dhw: { kind: 'energy' }, energy_cooling: { kind: 'energy' },
   energy_defrost: { kind: 'energy' }, energy_standby: { kind: 'energy' }, energy_aux: { kind: 'energy' },
   heat: { kind: 'energy' }, heat_heating: { kind: 'energy' }, heat_dhw: { kind: 'energy' }, heat_cooling: { kind: 'energy' }, heat_defrost: { kind: 'energy' },
@@ -984,6 +984,10 @@ class HeatpumpFlowCard extends HTMLElement {
         if (hit) (tiles[k] = tiles[k] || {})[period] = hit;
       }));
     }
+    // Total counters configured directly are also tile sources. Their calendar periods come from long-term statistics.
+    [['energy_total', 'energy'], ['env_energy', 'env_energy'], ['heat_total', 'heat']].forEach(([entityKey, tileKey]) => {
+      if (e[entityKey] && hass.states[e[entityKey]]) (tiles[tileKey] = tiles[tileKey] || {}).total = e[entityKey];
+    });
     return { preset, prefix, ready, idx, fromPreset, entities: e, presetErrors, errors, tiles };
   }
 
@@ -1672,6 +1676,11 @@ class HeatpumpFlowCard extends HTMLElement {
       const parts = def.ratio.map((k) => [this._tileSource(k, period), HFC_TILES[k].kind]);
       if (parts.every(([s]) => s)) return { ratio: parts };
     }
+    // Without a delivered-heat counter, heat = environmental energy + electricity. Keep this visibly approximate.
+    if (key === 'cop_total') {
+      const environmental = this._tileSource('env_energy', period); const electricity = this._tileSource('energy', period);
+      if (environmental && electricity) return { envCop: [environmental, electricity] };
+    }
     return null;
   }
 
@@ -1809,6 +1818,10 @@ class HeatpumpFlowCard extends HTMLElement {
     if (src.id) return this._tileRead(src.id, kind, period);
     if (src.stat) return this._statChange(src.stat, kind, period);
     if (src.ratio) { const [a, b] = src.ratio.map(([s, k]) => this._srcValue(s, k, period)); return b > 0 && a >= 0 ? a / b : NaN; }
+    if (src.envCop) {
+      const environmental = this._srcValue(src.envCop[0], 'energy', period); const electricity = this._srcValue(src.envCop[1], 'energy', period);
+      return electricity > 0 && environmental >= 0 ? (environmental + electricity) / electricity : NaN;
+    }
     return NaN;
   }
 
@@ -1816,6 +1829,7 @@ class HeatpumpFlowCard extends HTMLElement {
     if (!src) return '';
     if (src.id || src.stat) return src.id || src.stat;
     if (src.ratio) return this._tileEntity(src.ratio[0][0], period);
+    if (src.envCop) return this._tileEntity(src.envCop[0], period);
     if (src.classes) return this._tileMap.load_class1;
     if (src.cost) return this._tileEntity(this._tileSource('energy', period), period);
     return '';
@@ -1840,7 +1854,7 @@ class HeatpumpFlowCard extends HTMLElement {
       } catch (err) { return `${approx ? '≈' : ''}${out(v, 2, currency)}`; }
     }
     const v = this._srcValue(src, def.kind, period);
-    const approx = src.ratio ? '≈' : '';
+    const approx = src.ratio || src.envCop ? '≈' : '';
     if (def.kind === 'cop') return Number.isFinite(v) ? `${approx}${this._fmt(v, dec(2))}` : '–';
     // Small amounts (standby, defrost) keep two decimals so they do not read as 0.0.
     if (def.kind === 'energy') return period === 'now' ? out(v, 0, 'W') : out(v, Math.abs(v) >= 100 ? 0 : Math.abs(v) < 1 ? 2 : 1, 'kWh');
@@ -1923,9 +1937,14 @@ class HeatpumpFlowCard extends HTMLElement {
     // Entities that are unknown or unavailable (not reported by this model) are left out.
     const ok = (key) => this._has(key) && !['unknown', 'unavailable'].includes(this._s(key));
     const row = (key) => (ok(key) ? [key, D[key], this._e[key], () => this._fmtState(key)] : null);
-    const op = ['hours', 'starts_total', 'aux_hours', 'energy_total', 'heat_total'].map(row);
-    if (ok('energy_total') && ok('heat_total')) {
-      op.push(['cop_total', D.cop_total, this._e.heat_total, () => { const c = kwh('heat_total') / kwh('energy_total'); return Number.isFinite(c) && c > 0 ? `≈${this._fmt(c, 2)}` : '–'; }]);
+    const op = ['hours', 'starts_total', 'aux_hours', 'energy_total', 'env_energy', 'heat_total'].map(row);
+    if (ok('energy_total') && (ok('heat_total') || ok('env_energy'))) {
+      op.push(['cop_total', D.cop_total, ok('heat_total') ? this._e.heat_total : this._e.env_energy, () => {
+        const electricity = kwh('energy_total');
+        const heat = ok('heat_total') ? kwh('heat_total') : kwh('env_energy') + electricity;
+        const c = heat / electricity;
+        return Number.isFinite(c) && c > 0 ? `≈${this._fmt(c, 2)}` : '–';
+      }]);
     }
     const rf = ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev'].map(row);
     const hydraulic = [['brine_pressure', i.brine_pressure], ['hc_pressure', i.hc_pressure]].filter(([key]) => ok(key))
@@ -3091,7 +3110,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       if (s.name === 'price_entity') return L.price_help;
       if (s.name === 'errors') return L.errors_help;
       if (s.name === 'error_ok_text') return L.error_ok_help;
-      if (['energy_total', 'heat_total'].includes(s.name)) return L.total_cop_help;
+      if (['energy_total', 'env_energy', 'heat_total'].includes(s.name)) return L.total_cop_help;
       if (s.name === 'language') return L.language_help;
       if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
       if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;

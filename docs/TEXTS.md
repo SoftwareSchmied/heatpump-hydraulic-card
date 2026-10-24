@@ -83,6 +83,7 @@ hours
 starts_total
 aux_hours
 energy_total
+env_energy
 heat_total
 cop_total
 compressor_speed
@@ -117,6 +118,7 @@ cop_cooling
 cop_total
 spf
 energy
+env_energy
 energy_heating
 energy_dhw
 energy_cooling

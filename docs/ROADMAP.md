@@ -12,9 +12,9 @@ The immediate work is evidence gathering rather than another broad feature relea
 2. Leave Samsung [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) with its contributor until the requested cooling-mode and demo changes arrive and all required checks pass.
 3. Use diagnostic reports and verified integration data to unblock the ebusd preset ([#24](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24)) and pump/runtime mappings ([#31](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/31), [#34](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/34)).
 
-## Candidate for the next implementation sprint
+## Active implementation sprint
 
-Environmental energy ([#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26), impact medium-high, effort M) is the best currently unblocked, self-contained feature. Compressor cut-out counters ([#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35), effort S-M) may join that sprint only where entity meanings and units can be verified. Multiple entities per key ([#23](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23), impact high, effort L-XL) should remain a separate later sprint because it changes entity resolution, calculations and the editor contract.
+Environmental energy ([#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26), impact medium-high, effort M) is implemented for the next release: an optional total counter feeds details and calendar-period tiles, and provides an explicit total-COP fallback through environmental energy plus electricity when delivered heat is unavailable. No preset mappings are guessed; they follow only after integration data is verified. Compressor cut-out counters ([#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35), effort S-M) remain a possible later addition where entity meanings and units can be verified. Multiple entities per key ([#23](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23), impact high, effort L-XL) should remain a separate later sprint because it changes entity resolution, calculations and the editor contract.
 
 ## 0.10.0 – hydraulic clarity and small visual additions
 

@@ -150,6 +150,17 @@
     check(card._fmtState('energy_total') === '211 kWh', `Wh shown as kWh (${card._fmtState('energy_total')})`);
     card.remove();
   }
+  {
+    const s = setups[6];
+    const card = mount(s.config, hassOf(toStates(s.states('heat')), s.registry || {}, s.energy, s));
+    await wait(20);
+    const rows = Object.fromEntries([...card.shadowRoot.querySelectorAll('.drow')].map((r) => [r.querySelector('span').textContent, r.querySelector('b').textContent]));
+    check(rows['Environmental energy total'] === '8,200 kWh', `environmental energy in details (${rows['Environmental energy total']})`);
+    check(rows['COP total'] === '≈4.15', `total COP from environmental energy plus electricity (${rows['COP total']})`);
+    check(card._e.env_energy === 'sensor.boiler_environmental_energy_total', `environmental energy mapping (${card._e.env_energy})`);
+    check(/- env_energy: sensor\.boiler_environmental_energy_total = 8200 kWh/.test(C._diagnosticReport(s.config, card._hass)), 'diagnostic report contains environmental energy');
+    card.remove();
+  }
 
   // Direct systems use the heat-pump flow/return for their circuit and never leave the bypass pipes open.
   {
@@ -233,6 +244,16 @@
     check(cal['COP heating · year'] === '≈4.03' && !('SPF (year)' in cal), 'COP year; no SPF without total counters');
     const none = (await tilesOf(s, ['energy_heating', 'energy_heating:total'], 'heat', false)).t;
     check(none['Electricity heating · today'] === '–' && none['Electricity heating · total'] === '4,211 kWh', `missing statistics show a dash (${JSON.stringify(none)})`);
+  }
+  {
+    const s = setups[6];
+    const { t } = await tilesOf(s, ['energy', 'env_energy', 'env_energy:month', 'env_energy:total', 'cop_total', 'cop_total:month', 'cop_total:total']);
+    check(t['Electricity · today'] === '6.1 kWh' && t['Environmental energy · today'] === '24.3 kWh', `environmental energy next to electricity (${JSON.stringify(t)})`);
+    check(t['Environmental energy · month'] === '690 kWh' && t['Environmental energy · total'] === '8,200 kWh', `environmental energy periods (${JSON.stringify(t)})`);
+    check(t['COP total · today'] === '≈4.98' && t['COP total · month'] === '≈4.83' && t['COP total · total'] === '≈4.15', `COP from environmental energy (${JSON.stringify(t)})`);
+    const hass = hassOf(toStates(s.states('heat')), s.registry || {}, s.energy, s);
+    const values = C._tileOptions(s.config, C._resolve(s.config, hass), hass).options.map((x) => x.value);
+    check(values.includes('env_energy:today') && values.includes('env_energy:month') && values.includes('cop_total:month'), `editor offers environmental energy periods (${values.filter((v) => v.includes('env_energy') || v.includes('cop_total')).join(',')})`);
   }
   {
     const hm = (await tilesOf(setups[5], ['cop_heating', 'energy_heating'])).t;
@@ -999,7 +1020,7 @@
 
     const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
     const schema = C._formSchema({}).schema;
-    check(['brine_pressure_min', 'brine_pressure_crit', 'brine_pressure_max', 'hc_pressure_min', 'hc_pressure_crit', 'hc_pressure_max'].every((key) => schema.flatMap(keysOf).includes(key)), 'editor offers pressure thresholds');
+    check(['env_energy', 'brine_pressure_min', 'brine_pressure_crit', 'brine_pressure_max', 'hc_pressure_min', 'hc_pressure_crit', 'hc_pressure_max'].every((key) => schema.flatMap(keysOf).includes(key)), 'editor offers environmental energy and pressure thresholds');
     const emitter = (() => { let found; const visit = (n) => { if (n.name === 'hc_type') found = n; (n.schema || []).forEach(visit); }; schema.forEach(visit); return found; })();
     check(emitter.selector.select.options.some((o) => o.value === 'column'), 'editor offers column radiators');
   }
