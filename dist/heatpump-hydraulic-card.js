@@ -130,6 +130,7 @@ const HFC_PRESETS = {
   // so entity ids and the HA language do not matter. Restrict to one device with `device:`.
   vicare: {
     name: 'Viessmann (ViCare)',
+    unit_style: 'viessmann',
     // Gas boilers also report outside_temperature, so only compressor entities count as a heat pump.
     detect: (ctx) => (ctx.key('vicare', 'binary_sensor', 'compressor') || ctx.key('vicare', 'sensor', 'compressor_phase')
       || ctx.key('vicare', 'sensor', 'compressor_starts') ? '' : undefined),
@@ -251,6 +252,7 @@ const HFC_PRESETS = {
   // the "multiple instances" entity format adds a prefix, which is detected. Enum texts follow the EMS-ESP language.
   emsesp: {
     name: 'EMS-ESP (Bosch, Buderus, Junkers, Nefit …)',
+    unit_style: 'bosch',
     source_type: (e, hass) => (/hpbrinein$/.test(e.source_in || '') && hass.states[e.source_in] ? 'brine' : 'air'),
     detect: (ctx) => {
       // Gas boilers have curflowtemp as well; only heat pump entities count.
@@ -318,6 +320,7 @@ const HFC_PRESETS = {
   // Entity ids are slugs of the MQTT topics: sensor.<prefix>_main_<topic>, prefix default panasonic_heat_pump.
   heishamon: {
     name: 'Panasonic Aquarea (HeishaMon)',
+    unit_style: 'panasonic',
     auto_circuits: false,
     detect: (ctx) => {
       const id = ctx.match(/^sensor\.(.+)_main_main_outlet_temp$/, 'aquarea');
@@ -471,7 +474,7 @@ const HFC_EDITOR = {
     power_sources: 'PV / battery / grid', ps_auto: 'Energy dashboard, unless set below', ps_manual: 'Only the sensors below',
     source_type: 'Heat source', src_air: 'Air', src_brine: 'Ground (brine)', src_water: 'Groundwater',
     hc_count: 'Heating circuits', hc2_type: 'Circuit 2 emitter', hc3_type: 'Circuit 3 emitter',
-    unit_style: 'Unit drawing', unit_auto: 'Automatic (from the preset)', unit_generic: 'Generic (fan)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus',
+    unit_style: 'Unit drawing', unit_auto: 'Automatic (from the preset)', unit_generic: 'Generic (fan)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus', unit_panasonic: 'Panasonic Aquarea', unit_viessmann: 'Viessmann Vitocal', unit_bosch: 'Bosch / Buderus', unit_saunier: 'Saunier Duval GeniaAir', unit_samsung: 'Samsung EHS Mono',
     unit_size: 'Vaillant size', size_small: '3.5 / 5.5 kW (1 fan, low)', size_medium: '7.5 kW (1 fan)', size_large: '10.5 / 12.5 kW (2 fans)',
     timeline: 'Timeline of the operating mode', timeline_hours: 'Timeline length (hours)',
     layout: 'Layout', layout_default: 'Default', layout_compact: 'Compact (narrow columns)', layout_wide: 'Wide (tiles beside the schematic)', layout_wall: 'Wall display (large, controls fade out)',
@@ -531,7 +534,7 @@ const HFC_EDITOR = {
     power_sources: 'PV / Akku / Netz', ps_auto: 'Energie-Dashboard, außer unten gesetzt', ps_manual: 'Nur die Sensoren unten',
     source_type: 'Wärmequelle', src_air: 'Luft', src_brine: 'Erdreich (Sole)', src_water: 'Grundwasser',
     hc_count: 'Heizkreise', hc2_type: 'Wärmeabgabe Heizkreis 2', hc3_type: 'Wärmeabgabe Heizkreis 3',
-    unit_style: 'Geräte-Zeichnung', unit_auto: 'Automatisch (aus der Voreinstellung)', unit_generic: 'Allgemein (Lüfter)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus',
+    unit_style: 'Geräte-Zeichnung', unit_auto: 'Automatisch (aus der Voreinstellung)', unit_generic: 'Allgemein (Lüfter)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus', unit_panasonic: 'Panasonic Aquarea', unit_viessmann: 'Viessmann Vitocal', unit_bosch: 'Bosch / Buderus', unit_saunier: 'Saunier Duval GeniaAir', unit_samsung: 'Samsung EHS Mono',
     unit_size: 'Vaillant-Größe', size_small: '3,5 / 5,5 kW (1 Lüfter, niedrig)', size_medium: '7,5 kW (1 Lüfter)', size_large: '10,5 / 12,5 kW (2 Lüfter)',
     timeline: 'Zeitleiste der Betriebsart', timeline_hours: 'Länge der Zeitleiste (Stunden)',
     layout: 'Layout', layout_default: 'Standard', layout_compact: 'Kompakt (schmale Spalten)', layout_wide: 'Breit (Kacheln neben dem Schema)', layout_wall: 'Wanddisplay (groß, Bedienelemente blenden aus)',
@@ -616,7 +619,7 @@ const HFC_LAYOUTS = ['default', 'compact', 'wide', 'wall'];
 const HFC_ANIMATIONS = ['auto', 'always', 'off'];
 const HFC_THEMES = ['auto', 'night', 'contrast'];
 // Drawing of the outdoor unit: `auto` takes the style of the preset; `unit_size` picks the Vaillant aroTHERM plus class.
-const HFC_UNIT_STYLES = ['auto', 'generic', 'lambda', 'vaillant'];
+const HFC_UNIT_STYLES = ['auto', 'generic', 'lambda', 'vaillant', 'panasonic', 'viessmann', 'bosch', 'saunier', 'samsung'];
 const HFC_UNIT_SIZES = ['small', 'medium', 'large'];
 const HFC_EMITTERS = ['underfloor', 'radiator', 'column'];
 // Wall display: seconds the quick controls and the details toggle stay visible after the last touch or mouse move.
@@ -2022,7 +2025,7 @@ class HeatpumpFlowCard extends HTMLElement {
   }
 
   // Drawing of the outdoor unit inside the heat pump block (air source only; brine and water keep the loop symbol).
-  // Styles: generic (fan ring), lambda (EU-L), vaillant in three sizes (aroTHERM plus). `auto` takes the style of the preset.
+  // Manufacturer-inspired, logo-free outdoor units. `auto` takes the style of the preset.
   _unitKey() {
     if (this._sourceType !== 'air') return 'generic';
     const style = this._config.unit_style && this._config.unit_style !== 'auto' ? this._config.unit_style : (this._preset?.unit_style || 'generic');
@@ -2070,6 +2073,63 @@ class HeatpumpFlowCard extends HTMLElement {
         fans: grilles.map(([cx, cy, r]) => [...abs(cx, cy), +(r * 0.86).toFixed(1), 'vai-fan']),
         above: T(`<path class="vai-seam" d="M${x + pw + 8} ${y + 6} V${y + h - 6}"/>`),
         snows: grilles.map(([cx, cy, r]) => [...abs(cx, cy), +Math.min(19, r * 0.58).toFixed(1)]),
+      };
+    }
+    if (key === 'panasonic') {
+      // Aquarea H/J/K outdoor units: a pale rectangular casing, large left-hand grille and a narrow service panel.
+      // This is an original simplified drawing without branding; proportions follow the common single-fan 824/875 mm units.
+      const x = 58; const y = 48; const w = 124; const h = 96;
+      const cx = 102; const cy = 95; const r = 37;
+      const grille = `<circle class="pana-gr" cx="${cx}" cy="${cy}" r="${r}"/><circle class="pana-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.78).toFixed(1)}"/><circle class="pana-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.54).toFixed(1)}"/>${Array.from({ length: 16 }, (_, m) => { const a = (m * Math.PI) / 8; return `<line class="pana-gr thin" x1="${(cx + Math.cos(a) * 7).toFixed(1)}" y1="${(cy + Math.sin(a) * 7).toFixed(1)}" x2="${(cx + Math.cos(a) * r).toFixed(1)}" y2="${(cy + Math.sin(a) * r).toFixed(1)}"/>`; }).join('')}`;
+      return {
+        below: T(`<rect class="pana-foot" x="${x + 10}" y="${y + h}" width="15" height="6" rx="1.5"/><rect class="pana-foot" x="${x + w - 25}" y="${y + h}" width="15" height="6" rx="1.5"/><rect class="pana-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="4"/><path class="pana-top" d="M${x + 3} ${y + 7} H${x + w - 3}"/>${grille}`),
+        fans: [[...abs(cx, cy), +(r * 0.82).toFixed(1), 'pana-fan']],
+        above: T(`<path class="pana-seam" d="M148 ${y + 8} V${y + h - 7}"/><path class="pana-vents" d="M156 76h17M156 82h17M156 88h17M156 94h17M156 100h17M156 106h17M156 112h17"/><rect class="pana-panel" x="157" y="119" width="15" height="12" rx="1.5"/>`),
+        snows: [[...abs(cx, cy), 18]],
+      };
+    }
+    if (key === 'viessmann') {
+      // Vitocal 250-A: tall graphite body with a softly rounded, full-height horizontal-louvre front.
+      const x = 78; const y = 28; const w = 84; const h = 124; const cx = 120; const cy = 88; const r = 32;
+      const slats = Array.from({ length: 17 }, (_, n) => `<path class="vies-slat" d="M${x + 9} ${y + 12 + n * 6} H${x + w - 9}"/>`).join('');
+      return {
+        below: T(`<rect class="vies-foot" x="${x + 9}" y="${y + h}" width="14" height="5" rx="1.5"/><rect class="vies-foot" x="${x + w - 23}" y="${y + h}" width="14" height="5" rx="1.5"/><rect class="vies-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="12"/><circle class="vies-well" cx="${cx}" cy="${cy}" r="${r + 3}"/>`),
+        fans: [[...abs(cx, cy), r, 'vies-fan']],
+        above: T(`<g>${slats}</g><rect class="vies-rim" x="${x}" y="${y}" width="${w}" height="${h}" rx="12"/>`),
+        snows: [[...abs(cx, cy), 18]],
+      };
+    }
+    if (key === 'bosch') {
+      // Compress 5800i/6800i AW: broad pale casing, rounded corners and one centred circular intake.
+      const x = 52; const y = 50; const w = 136; const h = 94; const cx = 120; const cy = 96; const r = 37;
+      const spokes = Array.from({ length: 16 }, (_, n) => { const a = (n * Math.PI) / 8; return `<line class="bosch-gr thin" x1="${(cx + Math.cos(a) * 8).toFixed(1)}" y1="${(cy + Math.sin(a) * 8).toFixed(1)}" x2="${(cx + Math.cos(a) * r).toFixed(1)}" y2="${(cy + Math.sin(a) * r).toFixed(1)}"/>`; }).join('');
+      return {
+        below: T(`<rect class="bosch-foot" x="${x + 13}" y="${y + h}" width="15" height="6" rx="2"/><rect class="bosch-foot" x="${x + w - 28}" y="${y + h}" width="15" height="6" rx="2"/><rect class="bosch-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="13"/><circle class="bosch-gr" cx="${cx}" cy="${cy}" r="${r}"/><circle class="bosch-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.74).toFixed(1)}"/>${spokes}`),
+        fans: [[...abs(cx, cy), +(r * 0.83).toFixed(1), 'bosch-fan']],
+        above: T(`<path class="bosch-top" d="M${x + 13} ${y + 9} H${x + w - 13}"/><rect class="bosch-mark" x="${x + w - 19}" y="${y + 13}" width="5" height="18" rx="2.5"/>`),
+        snows: [[...abs(cx, cy), 18]],
+      };
+    }
+    if (key === 'saunier') {
+      // GeniaAir Mono: white horizontal casing, black fan grille with the characteristic red accent ring.
+      const x = 56; const y = 56; const w = 128; const h = 88; const cx = 101; const cy = 99; const r = 35;
+      const spokes = Array.from({ length: 14 }, (_, n) => { const a = (n * Math.PI) / 7; return `<line class="sd-gr thin" x1="${(cx + Math.cos(a) * 7).toFixed(1)}" y1="${(cy + Math.sin(a) * 7).toFixed(1)}" x2="${(cx + Math.cos(a) * r).toFixed(1)}" y2="${(cy + Math.sin(a) * r).toFixed(1)}"/>`; }).join('');
+      return {
+        below: T(`<rect class="sd-foot" x="${x + 10}" y="${y + h}" width="15" height="6" rx="2"/><rect class="sd-foot" x="${x + w - 25}" y="${y + h}" width="15" height="6" rx="2"/><rect class="sd-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/><circle class="sd-accent" cx="${cx}" cy="${cy}" r="${r + 2}"/><circle class="sd-gr" cx="${cx}" cy="${cy}" r="${r}"/><circle class="sd-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.7).toFixed(1)}"/>${spokes}`),
+        fans: [[...abs(cx, cy), +(r * 0.82).toFixed(1), 'sd-fan']],
+        above: T(`<path class="sd-seam" d="M148 ${y + 8} V${y + h - 8}"/><path class="sd-vents" d="M157 83h17M157 90h17M157 97h17M157 104h17M157 111h17"/><rect class="sd-badge" x="160" y="120" width="10" height="4" rx="2"/>`),
+        snows: [[...abs(cx, cy), 18]],
+      };
+    }
+    if (key === 'samsung') {
+      // EHS Mono HT Quiet: dark-grey monolith with a horizontal black grille hiding the fan.
+      const x = 57; const y = 46; const w = 126; const h = 102; const cx = 103; const cy = 97; const r = 34;
+      const slats = Array.from({ length: 13 }, (_, n) => `<path class="sam-slat" d="M${x + 8} ${y + 14 + n * 6} H${x + 88}"/>`).join('');
+      return {
+        below: T(`<rect class="sam-foot" x="${x + 10}" y="${y + h}" width="15" height="6" rx="2"/><rect class="sam-foot" x="${x + w - 25}" y="${y + h}" width="15" height="6" rx="2"/><rect class="sam-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/><rect class="sam-grille" x="${x + 5}" y="${y + 7}" width="88" height="${h - 14}" rx="3"/>`),
+        fans: [[...abs(cx, cy), r, 'sam-fan']],
+        above: T(`<g>${slats}</g><path class="sam-seam" d="M${x + 96} ${y + 8} V${y + h - 8}"/><circle class="sam-dot" cx="${x + 110}" cy="${y + 17}" r="2"/>`),
+        snows: [[...abs(cx, cy), 18]],
       };
     }
     return { below: '<circle class="fan-ring" cx="170" cy="288" r="50"/>', fans: [[170, 288, 50, '']], above: '', snows: [[170, 288, 18]] };
@@ -2961,12 +3021,37 @@ HeatpumpFlowCard.styles = `
   .lam-plinth { fill: color-mix(in srgb, var(--primary-text-color, #1f2937) 22%, var(--card-background-color, #fff)); }
   /* a rim in the theme text colour keeps the anthracite body visible on dark cards */
   .lam-rim { fill: none; stroke: color-mix(in srgb, var(--primary-text-color, #1f2937) 48%, transparent); stroke-width: 1.4; }
-  .fan.lam-fan .blade, .fan.vai-fan .blade { fill: #9aa3ad; opacity: .55; } .fan.lam-fan .hub, .fan.vai-fan .hub { fill: #9aa3ad; }
-  .fan.lam-fan.on .blade, .fan.vai-fan.on .blade { fill: ${hfcVar('cool')}; opacity: .95; }
+  .fan.lam-fan .blade, .fan.vai-fan .blade, .fan.pana-fan .blade, .fan.vies-fan .blade, .fan.bosch-fan .blade, .fan.sd-fan .blade, .fan.sam-fan .blade { fill: #9aa3ad; opacity: .55; }
+  .fan.lam-fan .hub, .fan.vai-fan .hub, .fan.pana-fan .hub, .fan.vies-fan .hub, .fan.bosch-fan .hub, .fan.sd-fan .hub, .fan.sam-fan .hub { fill: #9aa3ad; }
+  .fan.lam-fan.on .blade, .fan.vai-fan.on .blade, .fan.pana-fan.on .blade, .fan.vies-fan.on .blade, .fan.bosch-fan.on .blade, .fan.sd-fan.on .blade, .fan.sam-fan.on .blade { fill: ${hfcVar('cool')}; opacity: .95; }
   .vai-body { fill: ${hfcVar('casing')}; stroke: color-mix(in srgb, ${hfcVar('casing')} 80%, #6b7280); stroke-width: 1.5; }
   .vai-dark, .vai-foot { fill: color-mix(in srgb, ${hfcVar('anthracite')} 60%, #000); }
   .vai-gr { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 45%, #a0a8b0); stroke-width: 2; } .vai-gr.thin { stroke-width: 1; opacity: .85; }
   .vai-seam { stroke: color-mix(in srgb, ${hfcVar('casing')} 80%, #6b7280); stroke-width: 1.2; fill: none; opacity: .8; }
+  .pana-body { fill: ${hfcVar('casing')}; stroke: color-mix(in srgb, ${hfcVar('casing')} 76%, #64748b); stroke-width: 1.5; }
+  .pana-foot, .pana-panel { fill: color-mix(in srgb, ${hfcVar('anthracite')} 62%, #000); }
+  .pana-gr { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 52%, #94a3b8); stroke-width: 2; }
+  .pana-gr.thin { stroke-width: 1; opacity: .88; }
+  .pana-top, .pana-seam, .pana-vents { fill: none; stroke: color-mix(in srgb, ${hfcVar('casing')} 62%, #64748b); stroke-width: 1.25; }
+  .pana-vents { stroke-width: 1.5; stroke-linecap: round; }
+  .vies-body { fill: ${hfcVar('anthracite')}; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 76%, #000); stroke-width: 1.5; }
+  .vies-foot, .sam-foot { fill: color-mix(in srgb, ${hfcVar('anthracite')} 55%, #000); }
+  .vies-well { fill: color-mix(in srgb, ${hfcVar('anthracite')} 35%, #000); opacity: .8; }
+  .vies-slat { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 62%, #000); stroke-width: 2.3; stroke-linecap: round; }
+  .vies-rim { fill: none; stroke: color-mix(in srgb, var(--primary-text-color, #1f2937) 42%, transparent); stroke-width: 1.2; }
+  .bosch-body, .sd-body { fill: ${hfcVar('casing')}; stroke: color-mix(in srgb, ${hfcVar('casing')} 76%, #64748b); stroke-width: 1.5; }
+  .bosch-foot, .sd-foot { fill: color-mix(in srgb, ${hfcVar('anthracite')} 58%, #000); }
+  .bosch-gr, .sd-gr { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 50%, #94a3b8); stroke-width: 2; }
+  .bosch-gr.thin, .sd-gr.thin { stroke-width: 1; opacity: .88; }
+  .bosch-top, .sd-seam, .sd-vents { fill: none; stroke: color-mix(in srgb, ${hfcVar('casing')} 62%, #64748b); stroke-width: 1.3; }
+  .bosch-mark { fill: ${hfcVar('good')}; opacity: .8; }
+  .sd-accent { fill: none; stroke: ${hfcVar('hot')}; stroke-width: 2.5; }
+  .sd-vents { stroke-linecap: round; } .sd-badge { fill: ${hfcVar('hot')}; }
+  .sam-body { fill: color-mix(in srgb, ${hfcVar('anthracite')} 88%, #111827); stroke: color-mix(in srgb, ${hfcVar('anthracite')} 62%, #000); stroke-width: 1.5; }
+  .sam-grille { fill: color-mix(in srgb, ${hfcVar('anthracite')} 32%, #000); }
+  .sam-slat { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 48%, #000); stroke-width: 3; stroke-linecap: round; }
+  .sam-seam { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 75%, #94a3b8); stroke-width: 1.2; }
+  .sam-dot { fill: color-mix(in srgb, ${hfcVar('casing')} 70%, #fff); opacity: .7; }
   /* timeline of the operating mode */
   .timeline { margin: 8px 4px 0; }
   .tl-head { display: flex; justify-content: space-between; gap: 8px; font-size: .82em; color: var(--hfc-muted); }

@@ -83,7 +83,7 @@
       <div class="panel"><h2>Card theme</h2><div class="opts row" id="themes"></div>
         <p class="note">Automatic follows the dashboard. Night dims the card for wall tablets; high contrast strengthens text, pipes and outlines.</p></div>
       <div class="panel"><h2>Unit drawing</h2><div class="opts row" id="units"></div>
-        <p class="note">Automatic uses the drawing of the preset (Lambda, Vaillant); other heat pumps keep the generic fan. Vaillant comes in three sizes. Ground and groundwater sources keep their loop symbol.</p></div>
+        <p class="note">Automatic uses the drawing of the preset (Lambda, Viessmann, Vaillant, Bosch/Buderus, Panasonic). Saunier Duval and Samsung are selectable manually. Vaillant comes in three sizes. Ground and groundwater sources keep their loop symbol.</p></div>
       <div class="panel"><h2>Colours</h2><div class="opts row" id="palettes"></div>
         <p class="note">Every colour is a CSS variable (<code>--hfc-*</code>) you can set in a theme or with card-mod.</p></div>
       <div class="panel"><div class="yhead"><h2>Card configuration</h2><button id="copy">Copy</button></div><pre id="yaml"></pre>
@@ -103,7 +103,7 @@ let lang = ['en', 'de', 'nl'].includes(q.get('lang')) ? q.get('lang') : 'en';
 if (q.get('embed') === '1') document.body.classList.add('embed');
 let layout = ['default', 'compact', 'wide', 'wall'].includes(q.get('layout')) ? q.get('layout') : 'default';
 let theme = ['auto', 'night', 'contrast'].includes(q.get('theme')) ? q.get('theme') : 'auto';
-const unitKeys = ['auto', 'generic', 'lambda', 'vaillant-small', 'vaillant-medium', 'vaillant-large'];
+const unitKeys = ['auto', 'generic', 'lambda', 'vaillant-small', 'vaillant-medium', 'vaillant-large', 'panasonic', 'viessmann', 'bosch', 'saunier', 'samsung'];
 let unit = unitKeys.includes(q.get('unit')) ? q.get('unit') : 'auto';
 let palette = q.get('palette') === 'teal' ? 'teal' : 'default';
 const palettes = { teal: { '--hfc-heat': '#14b8a6', '--hfc-hot': '#e11d48', '--hfc-flow-cold': '#5eead4', '--hfc-flow-hot': '#e11d48', '--hfc-tank-cold': '#6366f1', '--hfc-tank-hot': '#f43f5e', '--hfc-pv': '#eab308' } };
@@ -202,7 +202,12 @@ setups.forEach((s, i) => mk('setups', `${esc(s.name)}<small>${esc(s.sub)}</small
 scenarios.forEach(([k, l]) => mk('states', l, k, () => { scen = k; }));
 [['default', 'Default'], ['compact', 'Compact'], ['wide', 'Wide'], ['wall', 'Wall display']].forEach(([k, l]) => mk('layouts', l, k, () => { layout = k; }));
 [['auto', 'Automatic'], ['night', 'Night'], ['contrast', 'High contrast']].forEach(([k, l]) => mk('themes', l, k, () => { theme = k; }));
-[['auto', 'Automatic'], ['generic', 'Generic'], ['lambda', 'Lambda'], ['vaillant-small', 'Vaillant 3.5 / 5.5 kW'], ['vaillant-medium', 'Vaillant 7.5 kW'], ['vaillant-large', 'Vaillant 10.5 / 12.5 kW']].forEach(([k, l]) => mk('units', l, k, () => { unit = k; }));
+[
+  ['auto', 'Automatic'], ['generic', 'Generic'], ['lambda', 'Lambda'],
+  ['vaillant-small', 'Vaillant 3.5 / 5.5 kW'], ['vaillant-medium', 'Vaillant 7.5 kW'], ['vaillant-large', 'Vaillant 10.5 / 12.5 kW'],
+  ['panasonic', 'Panasonic Aquarea'], ['viessmann', 'Viessmann Vitocal'], ['bosch', 'Bosch / Buderus'],
+  ['saunier', 'Saunier Duval GeniaAir'], ['samsung', 'Samsung EHS Mono'],
+].forEach(([k, l]) => mk('units', l, k, () => { unit = k; }));
 [['default', 'Default'], ['teal', 'Teal']].forEach(([k, l]) => mk('palettes', l, k, () => { palette = k; }));
 mk('display', 'English', 'en', () => { lang = 'en'; });
 mk('display', 'Deutsch', 'de', () => { lang = 'de'; });
