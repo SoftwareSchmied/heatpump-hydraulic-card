@@ -2,6 +2,19 @@
 
 This plan keeps correctness and supportability ahead of new surface area. Impact is the expected benefit across installations; effort is relative (`S` local, `M` several code paths, `L` public API or data logic, `XL` architecture or a second layout).
 
+## Next sprint – hydraulic clarity and small visual additions
+
+The compact follow-up sprint is implemented on the development branch and awaits its release decision:
+
+| Order | Issue | Scope | State |
+| --- | --- | --- | --- |
+| 1 | [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22) | Brine and heating pressure with unit conversion, thresholds, tiles, details and accessible status. | Implemented; automated tests added. |
+| 2 | [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29) | Optional middle sensors for three-point DHW and buffer gradients. | Implemented; two-sensor behaviour retained. |
+| 3 | [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) | Restrained defrost vapour for all air-source unit styles. | Implemented with animation and reduced-motion controls. |
+| 4 | [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) | Theme-aware column-radiator emitter. | Implemented as the sprint stretch item. |
+
+Real-installation testing remains a follow-up as soon as suitable testers respond. [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) remains contributor-owned and untouched.
+
 ## 0.9.6 – support and presentation
 
 This minor adds the support and presentation features that make broader real-installation testing practical:
@@ -50,12 +63,11 @@ Pump counters remain follow-up work in [#31](https://github.com/Sturmi77/heatpum
 
 | Rank | Issue | Impact | Effort | Reason / dependency |
 | ---: | --- | --- | --- | --- |
-| 1 | [#22 Circuit and brine pressure](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22) | Medium–high | M–L | Strong diagnostic value; requires thresholds, accessibility and layout coverage. |
-| 2 | [#24 ebusd preset](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24) | High | M | Blocked on a real entity/state sample; the 0.9.6 diagnostic report provides the preferred input. |
-| 3 | [#23 Multiple entities per key](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23) | High | L–XL | Broad value but changes resolution, editor and calculation contracts. |
-| 4 | [#26 Environmental energy](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26) | Medium–high | M | Useful after the counter semantics from #20 are explicit. |
-| 5 | [#27 Seasonal brine minimum](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/27) | Medium | M–L | Valuable for ground sources; needs recorder, season and date logic. |
-| 6 | [#4 Phone layouts](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/4) | High | XL | Use feedback from the 0.9.6 full-screen view before maintaining a second schematic geometry. |
+| 1 | [#24 ebusd preset](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24) | High | M | Blocked on a real entity/state sample; the 0.9.6 diagnostic report provides the preferred input. |
+| 2 | [#23 Multiple entities per key](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23) | High | L–XL | Broad value but changes resolution, editor and calculation contracts. |
+| 3 | [#26 Environmental energy](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26) | Medium–high | M | Useful after the counter semantics from #20 are explicit. |
+| 4 | [#27 Seasonal brine minimum](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/27) | Medium | M–L | Valuable for ground sources; needs recorder, season and date logic. |
+| 5 | [#4 Phone layouts](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/4) | High | XL | Use feedback from the 0.9.6 full-screen view before maintaining a second schematic geometry. |
 
 ## Deferred or demand-driven
 

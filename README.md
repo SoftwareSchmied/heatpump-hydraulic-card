@@ -34,12 +34,12 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 ## Features
 
 - **Power sources:** PV / battery / grid → heat pump, animated whenever more than 10 W flow. Taken automatically from your **Energy dashboard** (its power sensors), or from your own sensors.
-- **Heat pump:** the fan spins while the compressor runs, faster at higher compressor modulation (or higher power, when the integration has no modulation value); the circuit pumps and the flow lines follow the modulation as well. Shows mode and sub-state, electrical power → heat output, and live COP. Defrost is shown with a snowflake and an icy flow line. The frame of the block is orange while heating, red for hot water and blue while defrosting or cooling, grey in standby. A long status line wraps into mode and status. A backup / inline heater (`heater`) glows inside the unit while it runs.
+- **Heat pump:** the fan spins while the compressor runs, faster at higher compressor modulation (or higher power, when the integration has no modulation value); the circuit pumps and the flow lines follow the modulation as well. Shows mode and sub-state, electrical power → heat output, and live COP. Defrost is shown with a snowflake, restrained vapour and an icy flow line. The frame of the block is orange while heating, red for hot water and blue while defrosting or cooling, grey in standby. A long status line wraps into mode and status. A backup / inline heater (`heater`) glows inside the unit while it runs.
 - **Unit drawing:** the heat pump block shows the outdoor unit: the anthracite Lambda EU-L with its cut-out pattern, or the Vaillant aroTHERM plus in three sizes (one or two fans). Other brands keep the generic fan. The fan spins, the blades turn blue while running, and each fan gets its own snowflake while defrosting.
-- **Heat source:** air (the outdoor temperature is shown under the unit; default), **ground** with a brine loop or **groundwater** with two wells (`source_type`), with source inlet and outlet temperatures and the source flow rate.
+- **Heat source:** air (the outdoor temperature is shown under the unit; default), **ground** with a brine loop or **groundwater** with two wells (`source_type`), with source inlet and outlet temperatures and the source flow rate. Optional brine and heating-circuit pressures are normalized to bar and can show warning/critical thresholds with text symbols as well as colour.
 - **Diverter valve:** shows DHW or heating; the active circuit is animated.
-- **Tanks:** DHW tank and buffer with a top/bottom temperature gradient (blue = cold, then cyan and orange, red = hot), target, mode, a heat-exchanger coil while charging, and the circulation pump. **Heater rods** (`dhw_heater`, `buffer_heater`) glow orange while on, red at stage 2 or higher.
-- **Heating circuits:** up to **three circuits** (`hc_count`), each with a pump and either an **underfloor loop** or **radiators** with rising heat waves (`hc_type`, `hc2_type`, `hc3_type`), flow and target, plus a house with room temperature, target and outdoor temperature. The heating surface fades from the flow colour to the return colour, so you see the water cooling down.
+- **Tanks:** DHW tank and buffer with a top/bottom temperature gradient, optionally refined by a middle sensor (`dhw_middle`, `buffer_middle`; blue = cold, then cyan and orange, red = hot), target, mode, a heat-exchanger coil while charging, and the circulation pump. **Heater rods** (`dhw_heater`, `buffer_heater`) glow orange while on, red at stage 2 or higher.
+- **Heating circuits:** up to **three circuits** (`hc_count`), each with a pump and an **underfloor loop**, **panel radiator** or **column radiator** with rising heat waves (`hc_type`, `hc2_type`, `hc3_type`), flow and target, plus a house with room temperature, target and outdoor temperature. The heating surface fades from the flow colour to the return colour, so you see the water cooling down.
 - **Solar thermal:** with `solar_collector` and `solar_pump` a collector sits on the roof edge of the house and feeds a loop into the DHW tank; the loop runs while the solar pump runs. ViCare preset only, **not yet tested on a real installation**.
 - **Heating program:** a chip for eco, night / setback, party and holiday, from the `program` entity or, without one, from the heating circuit mode (e.g. Lambda `ECO`).
 - **Flow rates:** shown on the heating-side loop, at the circuit pump (`hc_volume`) and at the source (`source_volume`). Units l/h, l/min and m³/h are converted automatically.
@@ -263,7 +263,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | `prefix` | Preset prefix (Lambda device name, Vaillant home slug, EMS-ESP instance prefix, HeishaMon MQTT prefix). Omit for auto-detection, `""` for unprefixed Lambda ids. |
 | `device` | Device id: restricts preset detection to one device (several heat pumps of the same brand). |
 | `index` | Unit numbers for presets: `{hp, dhw, buffer, hc}` (default 1; Vaillant counts from 0). |
-| `hc_type` | Circuit 1: `underfloor` (default) or `radiator`. |
+| `hc_type` | Circuit 1: `underfloor` (default), `radiator` (panel radiator) or `column` (column radiator). |
 | `hc_count` | Number of heating circuits, 1 (default) to 3. Presets fill circuits 2 and 3 with the next circuit numbers. |
 | `hc2_type`, `hc3_type` | Emitter of circuits 2 and 3 (default `underfloor`). |
 | `hc_name`, `hc2_name`, `hc3_name` | Circuit titles (default "Heating circuit 1/2/3"). |
@@ -286,6 +286,8 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | `animations` | `auto` (default, respects reduced motion), `always` or `off`. |
 | `flow_speed` | Multiplier for all animation speeds, from `0.2` to `3` (default `1`). |
 | `source_spread` | Show `source_in − source_out` on a running ground/groundwater loop (default `true`). |
+| `brine_pressure_min`, `brine_pressure_crit`, `brine_pressure_max` | Optional brine-pressure thresholds in bar. Below `crit` is critical; below `min` or above `max` is a warning. |
+| `hc_pressure_min`, `hc_pressure_crit`, `hc_pressure_max` | Optional heating-pressure thresholds in bar, with the same warning/critical logic. |
 | `unit_style` | Drawing of the outdoor unit: `auto` (default, the style of the preset: `lambda` for the Lambda preset, `vaillant` for the Vaillant preset, otherwise the generic fan), `generic`, `lambda` or `vaillant`. Ground and groundwater sources keep their loop symbol. |
 | `unit_size` | Vaillant aroTHERM plus class: `small` (3.5 and 5.5 kW, one fan, low), `medium` (7.5 kW, one fan, default) or `large` (10.5 and 12.5 kW, two fans). |
 | `timeline` | `true` shows a strip with the operating mode of the last hours under the schematic (needs the `mode` entity, or the `compressor` and optionally the `valve`, and the Home Assistant history). |
@@ -301,9 +303,9 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | `stats` | Extra tiles `[{entity, name, unit, decimals}]`, added after the default tiles or after `tiles`; also with `tap_action`, `hold_action`, `double_tap_action`. |
 
 **Entity keys:**
-- **Heat pump:** `mode`, `status`, `compressor` (binary, or frequency/speed > 0), `defrost` (binary), `power` (W or kW), `heat` (kW or W), `flow`, `return`, `volume`, `source_volume`, `source_in`, `source_out`, `outdoor`, `valve` (binary, or a state like `Tank`/`DHW`), `heater` (backup / inline heater)
-- **Storage:** `dhw_top`, `dhw_bottom`, `dhw_target`, `dhw_mode`, `circulation`, `dhw_heater`, `buffer_top`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` (needs the DHW tank)
-- **Heating circuit and house:** `hc_flow`, `hc_return`, `hc_setpoint`, `hc_mode`, `hc_pump`, `hc_volume`, `room`, `room_target`, `program` (eco, night, party, holiday)
+- **Heat pump:** `mode`, `status`, `compressor` (binary, or frequency/speed > 0), `defrost` (binary), `power` (W or kW), `heat` (kW or W), `flow`, `return`, `volume`, `source_volume`, `source_in`, `source_out`, `brine_pressure` (bar, kPa, Pa, hPa, MPa or psi), `outdoor`, `valve` (binary, or a state like `Tank`/`DHW`), `heater` (backup / inline heater)
+- **Storage:** `dhw_top`, `dhw_middle`, `dhw_bottom`, `dhw_target`, `dhw_mode`, `circulation`, `dhw_heater`, `buffer_top`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` (needs the DHW tank)
+- **Heating circuit and house:** `hc_flow`, `hc_return`, `hc_setpoint`, `hc_mode`, `hc_pump`, `hc_volume`, `hc_pressure` (bar, kPa, Pa, hPa, MPa or psi), `room`, `room_target`, `program` (eco, night, party, holiday)
 - **Direct systems:** without a buffer and without circuit-specific temperature sensors, circuit 1 uses the heat pump's `flow` and `return` and remains connected in the schematic.
 - **Circuits 2 and 3:** the same keys with `hc2_` / `hc3_` (`hc2_flow`, `hc2_pump`, …)
 - **Heaters** (`heater`, `dhw_heater`, `buffer_heater`): binary or on/off, a power value (on above 0) or a stage number (1-3)
@@ -352,7 +354,7 @@ Periods: `now`, `today`, `yesterday`, `week`, `month`, `year`, `total`. A tile i
 | Electricity | `energy`, `energy_heating`, `energy_dhw`, `energy_cooling`, `energy_defrost`, `energy_standby`, `energy_aux` (heater) |
 | Heat | `heat`, `heat_heating`, `heat_dhw`, `heat_cooling`, `heat_defrost` |
 | Starts and runtime | `starts`, `cycles_heating`, `cycles_dhw`, `cycles_cooling`, `defrosts`, `hours`, `hours_per_start`, `load_classes`, `aux_hours`, `aux_starts` |
-| Live | `spread`, `volume`, `heat_estimated`, `power`, `heat_live`, `compressor_speed`, `source_spread`, `outdoor`, `dhw_top`, `room`, `pv_share` |
+| Live | `spread`, `volume`, `heat_estimated`, `power`, `heat_live`, `compressor_speed`, `source_spread`, `outdoor`, `dhw_top`, `room`, `brine_pressure`, `hc_pressure`, `pv_share` |
 | Other | `pv_production`, `solar_thermal` (ViCare), `cost` |
 
 What the presets provide:
@@ -488,7 +490,7 @@ Each preset section above lists the entities it uses.
 ![UI editor](docs/editor.jpg)
 
 ## Topology
-The layout is fixed on purpose: one heat pump (air, brine or groundwater), a diverter valve, an optional DHW tank, an optional buffer and up to three heating circuits (underfloor or radiators). That covers most single-family installations. Combined/layered storage and solar thermal are not drawn (yet).
+The layout is fixed on purpose: one heat pump (air, brine or groundwater), a diverter valve, an optional DHW tank, an optional buffer and up to three heating circuits (underfloor, panel or column radiators). That covers most single-family installations. Combined/layered storage is not drawn (yet).
 
 ## Adding a preset
 Presets live in `HFC_PRESETS` in `dist/heatpump-hydraulic-card.js`. A preset consists of:
@@ -512,12 +514,16 @@ Pull requests for other brands are very welcome.
 ## Development
 The prioritized bug-first release and feature plan is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-`demo/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, automatic/night/contrast themes, English/German and example custom Dutch text) without Home Assistant. It is published as the [live demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/) via GitHub Pages; locally, open it through any static web server. The simulated installations live in `demo/setups.js`.
+`demo/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, automatic/night/contrast themes, English/German and example custom Dutch text) without Home Assistant. It is published as the [live demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/) via GitHub Pages. The simulated installations live in `demo/setups.js`.
 
-`test/selftest.html` runs every installation in every scenario, broken entity states, edge-case configs, preset detection (gas boilers must not be detected as heat pumps) and the computed values. CI runs it in headless Chrome on every push; locally:
+Use Node.js 22 or newer. The first setup installs the locked development dependency and both test browsers; `npm run dev` serves the demo at <http://127.0.0.1:4173/demo/>:
 ```bash
-google-chrome --headless=new --allow-file-access-from-files --virtual-time-budget=15000 --dump-dom "file://$PWD/test/selftest.html" | grep -A3 'id="result"'
+npm ci
+npm run browsers:install
+npm run dev
 ```
+
+`test/selftest.html` runs every installation in every scenario, broken entity states, edge-case configs, preset detection (gas boilers must not be detected as heat pumps) and the computed values. `npm run check` runs syntax and release-contract checks plus the self-test in Chromium and Firefox. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for focused and interactive commands and failure diagnostics.
 
 ## Deutsch (Kurzfassung)
 Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Samsung EHS über esphome-samsung-nasa ist in PR #16 in Vorbereitung, noch nicht im aktuellen Release enthalten und bleibt bis zur abgeschlossenen Prüfung als ungetestet markiert. Nur Lambda ist bisher mit einer echten Anlage getestet, alle ausgelieferten anderen Voreinstellungen noch nicht – Rückmeldungen gern über das Preset-Formular mit dem zuvor geprüften Diagnosebericht. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Die Kacheln unter dem Schema lassen sich aus einem Katalog mit über 40 Kennzahlen zusammenstellen (COP, Strom und Wärme je Betriebsart, Abtauungen, Laufzeit pro Start …), jeweils für heute, gestern, Woche, Monat, Jahr oder gesamt; fehlende Zeiträume kommen aus der Langzeitstatistik von Home Assistant. Eine Kostenkachel rechnet mit festem Preis oder bei dynamischem Tarif stundengenau ab; jede Kachel und jedes Element des Schemas kann eine eigene Tipp-, Halte- oder Doppeltipp-Aktion haben. Heizprogramme (Eco, Nacht, Party, Urlaub) erscheinen als Chip, die Animation folgt der Verdichterleistung, und eine Solarthermie-Anlage (noch ungetestet) wird als Kollektor am Dach mit Kreis zum Warmwasserspeicher gezeichnet. Das Außengerät wird als Zeichnung dargestellt: die anthrazitfarbene Lambda EU-L oder die Vaillant aroTHERM plus in drei Größen (ein oder zwei Lüfter), andere Hersteller behalten den allgemeinen Lüfter. Die Karte lässt sich per Tastatur bedienen: Tab, Pfeiltasten im Schema, Enter oder Leertaste für die Aktion (Umschalt+Enter halten, Alt+Enter doppelt tippen), mit sichtbarem Fokusrahmen und Beschriftungen für Screenreader. Das Layout gibt es kompakt (schmale Spalten), breit (Kacheln neben dem Schema), als Wanddisplay und im Vollbild; die festen Karten-Themes `night` und `contrast` ergänzen das automatische Dashboard-Theme. Eigene Texte oder Sprachen werden über `texts` ergänzt, fehlende Beschriftungen fallen auf Englisch zurück. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/).

@@ -90,7 +90,8 @@
     { errors: 'sensor.error' }, { error_ok: 'No Error' }, { error_ok: ['No Error', 0] },
     { timeline: 'yes' }, { timeline_hours: 0 }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' },
     { animations: 'sometimes' }, { flow_speed: 0 }, { flow_speed: 3.1 }, { source_spread: 'yes' }, { theme: 'sepia' }, { fullscreen: 'yes' },
-    { texts: [] }, { texts: { NL: { title: 'x' } } }, { texts: { nl: { title: 7 } } }, { texts: { nl: { missing_key: 'x' } } }]) {
+    { texts: [] }, { texts: { NL: { title: 'x' } } }, { texts: { nl: { title: 7 } } }, { texts: { nl: { missing_key: 'x' } } },
+    { brine_pressure_min: -0.1 }, { hc_pressure_crit: 1.2, hc_pressure_min: 1.0 }, { hc_pressure_min: 3, hc_pressure_max: 2 }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -649,7 +650,7 @@
     };
     let o = await draw(setups[1], 'heat');
     check(o.lam === 1 && o.vai === 0 && o.ring === 0 && o.fans === 1 && o.ok, `Lambda preset draws the Lambda unit (${JSON.stringify(o)})`);
-    check(o.origin === '170px 263px', `the fan spins around its own centre (${o.origin})`);
+    check(/^170px 263px(?: 0px)?$/.test(o.origin || ''), `the fan spins around its own centre (${o.origin})`);
     o = await draw(setups[1], 'heat', { unit_style: 'generic' });
     check(o.lam === 0 && o.ring === 1 && o.fans === 1, 'unit_style generic keeps the fan ring');
     o = await draw(setups[1], 'heat', { unit_style: 'auto' });
@@ -799,7 +800,15 @@
     check(window.customCards.filter((c) => /^heatpump-(flow|hydraulic)-card$/.test(c.type)).length === 1 && window.customCards.some((c) => c.type === 'heatpump-flow-card'), 'the card picker lists the card once, under the generic name');
     // another card got the generic names first (iframe with a stand-in)
     const fr = document.createElement('iframe');
-    fr.src = 'collision.html'; fr.style.cssText = 'width:10px;height:10px;position:absolute;left:-99px';
+    // srcdoc inherits the parent origin. That keeps the collision test readable in Firefox, which otherwise gives each
+    // file:// document an opaque origin even when both files sit beside each other.
+    fr.srcdoc = `<!doctype html><meta charset="utf-8"><script>
+      window.__warns = []; const warn = console.warn;
+      console.warn = (...a) => { window.__warns.push(a.join(' ')); warn.apply(console, a); };
+      customElements.define('heatpump-flow-card', class extends HTMLElement {});
+      customElements.define('heatpump-flow-card-editor', class extends HTMLElement {});
+      <\/script><script src="../dist/heatpump-hydraulic-card.js"><\/script>`;
+    fr.style.cssText = 'width:10px;height:10px;position:absolute;left:-99px';
     document.body.appendChild(fr);
     await new Promise((resolve) => { fr.onload = resolve; setTimeout(resolve, 3000); });
     const w = fr.contentWindow;
@@ -940,11 +949,70 @@
     ed.remove();
   }
 
+  // 20. hydraulic pressure, three-point storage gradients, defrost vapour and column radiators
+  {
+    const states = toStates({
+      'sensor.mode': 'defrost', 'sensor.flow': ['35', '°C'], 'sensor.return': ['29', '°C'], 'sensor.dhw_top': ['52', '°C'],
+      'sensor.dhw_middle': ['44', '°C'], 'sensor.dhw_bottom': ['36', '°C'], 'sensor.buffer_top': ['34', '°C'],
+      'sensor.buffer_middle': ['30', '°C'], 'sensor.buffer_bottom': ['26', '°C'], 'sensor.brine_pressure': ['82', 'kPa'],
+      'sensor.heating_pressure': ['0.6', 'bar'], 'binary_sensor.pump': 'on',
+    });
+    const config = {
+      source_type: 'brine', hc_type: 'column', details_open: true, tiles: ['brine_pressure', 'hc_pressure'],
+      brine_pressure_min: 0.9, brine_pressure_crit: 0.6, brine_pressure_max: 2.5,
+      hc_pressure_min: 1.0, hc_pressure_crit: 0.7, hc_pressure_max: 2.8,
+      entities: { mode: 'sensor.mode', flow: 'sensor.flow', return: 'sensor.return', hc_pump: 'binary_sensor.pump',
+        dhw_top: 'sensor.dhw_top', dhw_middle: 'sensor.dhw_middle', dhw_bottom: 'sensor.dhw_bottom',
+        buffer_top: 'sensor.buffer_top', buffer_middle: 'sensor.buffer_middle', buffer_bottom: 'sensor.buffer_bottom',
+        brine_pressure: 'sensor.brine_pressure', hc_pressure: 'sensor.heating_pressure' },
+    };
+    const card = mount(config, hassOf(states)); await wait(30);
+    check(ok(card) && card.shadowRoot.querySelectorAll('.column-rib').length === 7, 'column radiator renders seven joined sections');
+    check(card._pressure('brine_pressure') === 0.82, 'pressure converts kPa to bar');
+    check(card.shadowRoot.getElementById('pressure-brine').classList.contains('warning') && /^! /.test(card.shadowRoot.getElementById('t-brine-pressure').textContent), 'brine pressure shows a non-colour warning');
+    check(card.shadowRoot.getElementById('pressure-hc').classList.contains('critical') && /^⚠ /.test(card.shadowRoot.getElementById('t-hc-pressure').textContent), 'heating pressure shows a non-colour critical state');
+    check(/bar/.test(card.shadowRoot.getElementById('pressure-hc').getAttribute('aria-label') || '') && /critical/.test(card.shadowRoot.getElementById('pressure-hc').getAttribute('aria-label') || ''), 'pressure accessibility label includes value and state');
+    check(card.shadowRoot.querySelectorAll('#stats .stat').length === 2 && /0\.8 bar/.test(card.shadowRoot.getElementById('stats').textContent), 'pressure values are available as live tiles');
+    check([...card.shadowRoot.querySelectorAll('#drawer-body .dsec-title')].some((x) => /Hydraulic/.test(x.textContent)) && /0\.6 bar/.test(card.shadowRoot.getElementById('drawer-body').textContent), 'pressure values are available in details');
+    check(!!card.shadowRoot.getElementById('g-dhw-middle') && !!card.shadowRoot.getElementById('g-buf-middle')
+      && /middle 44/.test(card.shadowRoot.getElementById('t-dhw-middle').textContent) && /middle 30/.test(card.shadowRoot.getElementById('t-buf-middle').textContent), 'middle sensors create labelled three-point tank gradients');
+    card.remove();
+
+    const old = setups[1];
+    const twoPoint = mount(old.config, hassOf(toStates(old.states('heat')), old.registry || {}, old.energy, old)); await wait(20);
+    check(!twoPoint.shadowRoot.getElementById('g-dhw-middle') && !twoPoint.shadowRoot.getElementById('g-buf-middle'), 'existing two-sensor tanks keep two-point gradients');
+    twoPoint.remove();
+
+    for (const unit_style of ['generic', 'lambda', 'vaillant']) {
+      const s = setups[0]; const vapour = mount({ ...s.config, unit_style }, hassOf(toStates(s.states('defrost')), s.registry || {}, s.energy, s)); await wait(20);
+      check(vapour.shadowRoot.getElementById('vapour')?.classList.contains('on'), `defrost vapour works with ${unit_style} unit`);
+      vapour.remove();
+    }
+    const airHeat = mount(setups[0].config, hassOf(toStates(setups[0].states('heat')))); await wait(20);
+    check(!airHeat.shadowRoot.getElementById('vapour').classList.contains('on'), 'vapour is off outside defrost');
+    const css = airHeat.shadowRoot.querySelector('style').textContent;
+    check(/motion-off[^}]*vapour/.test(css) && /prefers-reduced-motion[\s\S]*vapour/.test(css), 'vapour respects animation and reduced-motion settings');
+    airHeat.remove();
+    const ground = setups[6]; const noGroundVapour = mount(ground.config, hassOf(toStates(ground.states('defrost')), ground.registry || {}, ground.energy, ground)); await wait(20);
+    check(!noGroundVapour.shadowRoot.getElementById('vapour')?.classList.contains('on'), 'ground source does not show defrost vapour');
+    noGroundVapour.remove();
+
+    const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
+    const schema = C._formSchema({}).schema;
+    check(['brine_pressure_min', 'brine_pressure_crit', 'brine_pressure_max', 'hc_pressure_min', 'hc_pressure_crit', 'hc_pressure_max'].every((key) => schema.flatMap(keysOf).includes(key)), 'editor offers pressure thresholds');
+    const emitter = (() => { let found; const visit = (n) => { if (n.name === 'hc_type') found = n; (n.schema || []).forEach(visit); }; schema.forEach(visit); return found; })();
+    check(emitter.selector.select.options.some((o) => o.value === 'column'), 'editor offers column radiators');
+  }
+
   log.push(`${checks} checks, ${fails.length} failed`);
   document.getElementById('log').textContent = [...log, ...fails.map((f) => `FAIL ${f}`)].join('\n');
   document.getElementById('result').textContent = fails.length ? 'FAIL' : 'PASS';
-  document.title = fails.length ? 'FAIL' : 'PASS';
-})().catch((e) => { document.getElementById('result').textContent = 'FAIL'; document.getElementById('log').textContent = String(e && e.stack || e); });
+  document.title = fails.length ? `FAIL: ${fails[0]}` : `PASS: ${checks} checks`;
+})().catch((e) => {
+  const message = String(e && e.stack || e);
+  document.getElementById('result').textContent = 'FAIL'; document.getElementById('log').textContent = message;
+  document.title = `FAIL: ${message.split('\n')[0]}`;
+});
 </script>
 </body>
 </html>

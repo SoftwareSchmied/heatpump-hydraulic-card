@@ -56,6 +56,7 @@ const extras = (s) => ({
   'number.heatpump_dhw_target': { state: '50', attributes: { friendly_name: 'DHW target', min: 40, max: 60, step: 1, unit_of_measurement: '°C' } },
   'button.heatpump_dhw_boost': { state: 'unknown', attributes: { friendly_name: 'DHW boost once' } },
   'sensor.heating_curve_flow': ['33.5', '°C'],
+  'sensor.heatpump_dhw_middle': ['42.3', '°C'], 'sensor.heatpump_buffer_middle': ['29.4', '°C'],
   // Heating program and a solar thermal collector (pump runs while the collector is hotter than the tank).
   'select.heatpump_heating_program': { state: { heat: 'Eco', dhw: 'Party', defrost: 'Night', idle: 'Holiday' }[s], attributes: { friendly_name: 'Heating program' } },
   'sensor.heatpump_solar_collector': [{ heat: '58.4', dhw: '71.0', defrost: '12.5', idle: '44.0' }[s], '°C'],
@@ -161,6 +162,8 @@ const brineStates = (s) => ({
   'sensor.boiler_hptc0': [{ heat: '31.5', dhw: '47.0', defrost: '33.0', idle: '28.5' }[s], '°C'],
   'sensor.boiler_pc0flow': [s === 'idle' ? '0' : '1250', 'l/h'],
   'sensor.boiler_hpbrinein': [s === 'idle' ? '9.8' : '8.4', '°C'], 'sensor.boiler_hpbrineout': [s === 'idle' ? '9.6' : '5.1', '°C'],
+  'sensor.boiler_brine_pressure': [{ heat: '145', dhw: '118', defrost: '82', idle: '54' }[s], 'kPa'],
+  'sensor.boiler_heating_pressure': [{ heat: '1.8', dhw: '1.6', defrost: '0.9', idle: '0.6' }[s], 'bar'],
   'sensor.boiler_outdoortemp': ['-6.5', '°C'], 'sensor.boiler_dhw_curtemp': ['49.5', '°C'], 'sensor.boiler_dhw_seltemp': ['55', '°C'],
   'binary_sensor.boiler_auxheaterstatus': s === 'defrost' ? 'on' : 'off',
   'binary_sensor.dhw_heater_rod': s === 'dhw' ? 'on' : 'off',
@@ -193,6 +196,7 @@ const setups = [
         room: 'sensor.living_room_temperature', pv: 'sensor.heatpump_power_from_pv', battery: 'sensor.heatpump_power_from_battery',
         grid: 'sensor.heatpump_power_from_grid', energy_today: 'sensor.heatpump_energy_today', pv_share_today: 'sensor.heatpump_pv_share_today',
         program: 'select.heatpump_heating_program', solar_collector: 'sensor.heatpump_solar_collector', solar_pump: 'binary_sensor.heatpump_solar_pump',
+        dhw_middle: 'sensor.heatpump_dhw_middle', buffer_middle: 'sensor.heatpump_buffer_middle',
       },
       badges: [{ entity: 'input_boolean.heatpump_boost', label: 'Boost' }],
       controls: ['input_boolean.heatpump_boost', 'button.heatpump_dhw_boost', 'select.heatpump_operating_mode', 'number.heatpump_dhw_target'],
@@ -238,8 +242,11 @@ const setups = [
     scenarioLabels: { defrost: 'Backup heater' },
     config: {
       preset: 'emsesp', title: 'Logatherm WLW', source_type: 'brine',
-      hc_count: 2, hc_name: 'Ground floor', hc2_type: 'radiator', hc2_name: 'Upstairs',
-      entities: { dhw_heater: 'binary_sensor.dhw_heater_rod' },
+      hc_count: 2, hc_name: 'Ground floor', hc2_type: 'column', hc2_name: 'Upstairs',
+      brine_pressure_min: 0.9, brine_pressure_crit: 0.6, brine_pressure_max: 2.5,
+      hc_pressure_min: 1.0, hc_pressure_crit: 0.7, hc_pressure_max: 2.8,
+      entities: { dhw_heater: 'binary_sensor.dhw_heater_rod', brine_pressure: 'sensor.boiler_brine_pressure', hc_pressure: 'sensor.boiler_heating_pressure' },
+      tiles: ['spread', 'volume', 'brine_pressure', 'hc_pressure'],
     },
   },
   {

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+- Added optional brine and heating-circuit pressure entities, unit conversion to bar, configurable low/critical/high thresholds, accessible warning symbols, live tiles and details rows (#22).
+- Added optional middle temperature sensors for DHW and buffer tanks, producing a three-point gradient without changing existing two-sensor tanks (#29).
+- Added restrained vapour during air-source defrost for every unit drawing, respecting the animation and reduced-motion settings (#30).
+- Added an original, theme-aware column-radiator emitter available for every heating circuit (#37).
+- Updated the editor, live demo, custom-text reference and README for the new entities and options.
+- Added a locked Node.js/Playwright developer flow: one local HTTP entry point, Chromium and Firefox regression runs, failure artifacts and a small release-contract check in CI.
+- Self-test: 480 checks.
+
 ## 0.9.6 – 2026-10-24
 - Added a local, clipboard-only diagnostic report with resolved preset and entity mappings, current states/units, errors and quick controls. The report warns that entity ids may contain private names (#7).
 - Added an accessible full-screen overlay using the same card instance, with focus trapping, Escape/backdrop/close-button handling, focus restoration and `fullscreen: false` (#9).

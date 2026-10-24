@@ -7,33 +7,63 @@ on:
     - cron: "0 3 * * 1"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hacs:
     name: HACS validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: hacs/action@main
+      - uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main, 2026-06-08
         with:
           category: plugin
 
-  syntax:
-    name: JavaScript syntax
+  quality:
+    name: Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
-      - run: node --check dist/heatpump-hydraulic-card.js
+          cache: npm
+      - run: npm ci
+      - run: npm run syntax
+      - run: npm run release:check
 
-  selftest:
-    name: Self-test (headless browser)
+  browser:
+    name: Browser / ${{ matrix.browser }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
     steps:
-      - uses: actions/checkout@v4
-      - name: Run test/selftest.html in headless Chrome
-        run: |
-          google-chrome --headless=new --disable-gpu --no-sandbox --allow-file-access-from-files \
-            --virtual-time-budget=15000 --dump-dom "file://$PWD/test/selftest.html" > selftest-out.html
-          grep -A200 '<pre id="log">' selftest-out.html | sed '/<\/pre>/q'
-          grep -q '<pre id="result">PASS</pre>' selftest-out.html
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Run self-test in ${{ matrix.browser }}
+        run: npm run test:${{ matrix.browser }}
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: playwright-${{ matrix.browser }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

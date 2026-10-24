@@ -37,6 +37,7 @@ well_in
 well_out
 details
 sec_operation
+sec_hydraulic
 sec_refrigerant
 sec_more
 diagnostic_copy
@@ -46,7 +47,13 @@ fullscreen_open
 fullscreen_close
 source_flow
 target
+middle
 bottom
+brine_pressure
+hc_pressure
+pressure_normal
+pressure_warning
+pressure_critical
 error
 circulation
 valve_dhw
@@ -141,6 +148,8 @@ source_spread
 outdoor
 dhw_top
 room
+brine_pressure
+hc_pressure
 pv_share
 pv_production
 solar_thermal
