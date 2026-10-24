@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- The repository is now called `heatpump-hydraulic-card`, the file `dist/heatpump-hydraulic-card.js` and the HACS name "Heat Pump Hydraulic Card". The element names are unchanged: `custom:heatpump-flow-card` keeps working, `custom:heatpump-hydraulic-card` is the unique name.
+
 ## 0.9.3 – 2026-10-24
 Timeline of the operating mode, a fading heating surface, and no more clash with other cards of the same name.
 - Timeline (`timeline: true`, `timeline_hours`): a strip under the schematic shows heating, hot water, defrost, blocked and standby over the last 24 hours (3 to 72), from the history of the `mode` entity; without it from the `compressor` and the `valve`. Tap or arrow keys show start, end and duration. One history query per card, kept for five minutes. Also in the editor.

@@ -5,7 +5,7 @@
  * Vendor-neutral core with presets: Lambda, Viessmann (ViCare), Vaillant (myPyllant),
  * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …) and Panasonic Aquarea (HeishaMon).
  *
- * https://github.com/Sturmi77/heatpump-flow-card · MIT License
+ * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
 const HFC_VERSION = '0.9.3';
 
@@ -467,7 +467,7 @@ const HFC_EDITOR = {
     price_fixed: 'Electricity price per kWh', price_entity: 'Electricity price entity',
     price_help: 'Enables the cost tile. With an entity that has long-term statistics (e.g. a dynamic tariff), the cost is billed per hour.',
     untested: 'untested',
-    untested_help: 'Not yet tested on a real installation. Please report whether it works: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
+    untested_help: 'Not yet tested on a real installation. Please report whether it works: github.com/Sturmi77/heatpump-hydraulic-card/issues (Preset feedback).',
     warn_title: 'Missing in the card',
     warn_running: 'No operating mode, compressor, status or power: the card cannot tell whether the heat pump runs.',
     warn_power: 'No electrical power: no live COP, and no PV / battery / grid split from the Energy dashboard.',
@@ -516,7 +516,7 @@ const HFC_EDITOR = {
     price_fixed: 'Strompreis je kWh', price_entity: 'Strompreis-Entität',
     price_help: 'Schaltet die Kostenkachel frei. Mit einer Entität mit Langzeitstatistik (z. B. dynamischer Tarif) werden die Kosten stundengenau abgerechnet.',
     untested: 'ungetestet',
-    untested_help: 'Noch nicht mit einer echten Anlage getestet. Bitte melden, ob es funktioniert: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
+    untested_help: 'Noch nicht mit einer echten Anlage getestet. Bitte melden, ob es funktioniert: github.com/Sturmi77/heatpump-hydraulic-card/issues (Preset feedback).',
     warn_title: 'Fehlt in der Karte',
     warn_running: 'Keine Betriebsart, kein Verdichter, kein Status und keine Leistung: Die Karte kann nicht erkennen, ob die Wärmepumpe läuft.',
     warn_power: 'Keine Leistungsaufnahme: kein Live-COP und keine Aufteilung PV / Akku / Netz aus dem Energie-Dashboard.',
@@ -949,7 +949,7 @@ class HeatpumpFlowCard extends HTMLElement {
     this._failed = true;
     this._rendered = false;
     const msg = this._esc(err && err.message ? err.message : String(err));
-    this.shadowRoot.innerHTML = `<style>${HeatpumpFlowCard.styles}</style><ha-card><div class="hint">Heatpump Flow Card: ${msg}<br>Details in the browser console. Please report it: github.com/Sturmi77/heatpump-flow-card/issues</div></ha-card>`;
+    this.shadowRoot.innerHTML = `<style>${HeatpumpFlowCard.styles}</style><ha-card><div class="hint">Heatpump Flow Card: ${msg}<br>Details in the browser console. Please report it: github.com/Sturmi77/heatpump-hydraulic-card/issues</div></ha-card>`;
   }
 
   /* ---------- helpers ---------- */
@@ -2738,7 +2738,7 @@ hfcDefine('heatpump-flow-card', HeatpumpFlowCard);
 const hfcGeneric = hfcMine('heatpump-flow-card') && hfcMine('heatpump-flow-card-editor');
 if (!hfcGeneric) {
   console.warn('heatpump-flow-card: the element name "heatpump-flow-card" is already used by another card, so "type: custom:heatpump-flow-card" opens that card. '
-    + 'Use "type: custom:heatpump-hydraulic-card" for this card (github.com/Sturmi77/heatpump-flow-card).');
+    + 'Use "type: custom:heatpump-hydraulic-card" for this card (github.com/Sturmi77/heatpump-hydraulic-card).');
 }
 const hfcType = hfcGeneric ? 'heatpump-flow-card' : 'heatpump-hydraulic-card';
 window.customCards = window.customCards || [];
@@ -2748,7 +2748,7 @@ if (!window.customCards.some((c) => c.type === hfcType)) {
     name: hfcGeneric ? 'Heatpump Flow Card' : 'Heatpump Hydraulic Card',
     description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann, Vaillant, EMS-ESP (Bosch/Buderus/Junkers/Nefit), Panasonic Aquarea (HeishaMon).',
     preview: true,
-    documentationURL: 'https://github.com/Sturmi77/heatpump-flow-card',
+    documentationURL: 'https://github.com/Sturmi77/heatpump-hydraulic-card',
   });
 }
 console.info(`%c HEATPUMP-FLOW-CARD %c ${HFC_VERSION} `, 'background:#f97316;color:#fff;border-radius:3px 0 0 3px', 'background:#334155;color:#fff;border-radius:0 3px 3px 0');
