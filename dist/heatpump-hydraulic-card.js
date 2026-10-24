@@ -7,7 +7,7 @@
  *
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
-const HFC_VERSION = '0.9.6';
+const HFC_VERSION = '0.10.0';
 
 /* ------------------------------------------------------------------ */
 /* Presets                                                             */

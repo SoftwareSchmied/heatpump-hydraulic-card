@@ -2,18 +2,18 @@
 
 This plan keeps correctness and supportability ahead of new surface area. Impact is the expected benefit across installations; effort is relative (`S` local, `M` several code paths, `L` public API or data logic, `XL` architecture or a second layout).
 
-## Next sprint – hydraulic clarity and small visual additions
+## 0.10.0 – hydraulic clarity and small visual additions
 
-The compact follow-up sprint is implemented on the development branch and awaits its release decision:
+The compact follow-up sprint is released in 0.10.0:
 
 | Order | Issue | Scope | State |
 | --- | --- | --- | --- |
-| 1 | [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22) | Brine and heating pressure with unit conversion, thresholds, tiles, details and accessible status. | Implemented; automated tests added. |
-| 2 | [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29) | Optional middle sensors for three-point DHW and buffer gradients. | Implemented; two-sensor behaviour retained. |
-| 3 | [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) | Restrained defrost vapour for all air-source unit styles. | Implemented with animation and reduced-motion controls. |
-| 4 | [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) | Theme-aware column-radiator emitter. | Implemented as the sprint stretch item. |
+| 1 | [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22) | Brine and heating pressure with unit conversion, thresholds, tiles, details and accessible status. | Included in 0.10.0; automated tests added. |
+| 2 | [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29) | Optional middle sensors for three-point DHW and buffer gradients. | Included in 0.10.0; two-sensor behaviour retained. |
+| 3 | [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) | Restrained defrost vapour for all air-source unit styles. | Included in 0.10.0 with animation and reduced-motion controls. |
+| 4 | [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) | Theme-aware column-radiator emitter. | Included in 0.10.0 as the sprint stretch item. |
 
-Real-installation testing remains a follow-up as soon as suitable testers respond. [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) remains contributor-owned and untouched.
+The HACS, quality, Chromium and Firefox checks passed before release, including 480 browser self-tests. Real-installation testing remains a follow-up as soon as suitable testers respond. [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) remains contributor-owned and untouched.
 
 ## 0.9.6 – support and presentation
 
