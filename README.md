@@ -1,6 +1,6 @@
 # Heatpump Hydraulic Card
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://www.hacs.xyz/docs/use/repositories/dashboard/#search-repositories)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Validate](https://github.com/Sturmi77/heatpump-hydraulic-card/actions/workflows/validate.yml/badge.svg)](https://github.com/Sturmi77/heatpump-hydraulic-card/actions/workflows/validate.yml)
 [![GitHub release](https://img.shields.io/github/v/release/Sturmi77/heatpump-hydraulic-card)](https://github.com/Sturmi77/heatpump-hydraulic-card/releases)
@@ -103,12 +103,19 @@ These are deliberately simplified original drawings without manufacturer logos. 
 
 ## Installation
 
-### HACS (custom repository)
-Click the **Open in HACS** button above, or:
-1. HACS → ⋮ → **Custom repositories** → URL `https://github.com/Sturmi77/heatpump-hydraulic-card`, type **Dashboard**.
-2. Install **Heat Pump Hydraulic Card** and reload the browser.
+### HACS (recommended)
 
-The repository was called `heatpump-flow-card` until version 0.9.3. GitHub forwards the old address. If you installed the card before, remove it in HACS and add it again with the new address, so that HACS uses the folder `heatpump-hydraulic-card` and updates it from the new repository. The resource URL changes from `/hacsfiles/heatpump-flow-card/heatpump-flow-card.js` to `/hacsfiles/heatpump-hydraulic-card/heatpump-hydraulic-card.js` (HACS adjusts it by itself). `type: custom:heatpump-flow-card` in existing dashboards keeps working.
+1. Open **HACS** in Home Assistant.
+2. Search for **Heat Pump Hydraulic Card**. If needed, filter the repository type to **Dashboard**.
+3. Open the repository, select **Download**, keep the newest version selected and reload the browser afterwards.
+
+The **Open in HACS** button above opens the repository directly.
+
+#### Custom repository fallback
+
+If the standard HACS entry is not available in your installation, open HACS → ⋮ → **Custom repositories**, add `https://github.com/Sturmi77/heatpump-hydraulic-card` as type **Dashboard**, then install **Heat Pump Hydraulic Card** and reload the browser.
+
+The repository was called `heatpump-flow-card` until version 0.9.3. GitHub forwards the old address. If you installed the card before, remove it in HACS and reinstall it from the standard **Heat Pump Hydraulic Card** entry, so that HACS uses the folder `heatpump-hydraulic-card` and updates it from the renamed repository. The resource URL changes from `/hacsfiles/heatpump-flow-card/heatpump-flow-card.js` to `/hacsfiles/heatpump-hydraulic-card/heatpump-hydraulic-card.js` (HACS adjusts it by itself). `type: custom:heatpump-flow-card` in existing dashboards keeps working.
 
 ### Manual
 Copy `dist/heatpump-hydraulic-card.js` to `/config/www/` and add `/local/heatpump-hydraulic-card.js` as a JavaScript module under *Settings → Dashboards → Resources*.
