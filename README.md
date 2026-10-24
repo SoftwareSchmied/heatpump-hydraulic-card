@@ -17,13 +17,14 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 |---|---|---|---|
 | `lambda` | **Lambda** (EU-L series) | [lambda_heat_pumps](https://github.com/GuidoJeuken-6512/lambda_heat_pumps) (HACS) | tested on a real installation |
 | `vicare` | **Viessmann** (Vitocal) | [ViCare](https://www.home-assistant.io/integrations/vicare/) (core) | untested |
+| `open3e` | **Viessmann** (Vitocal) | [Open3E](https://github.com/MojoOli/open3e-ha) (HACS, MQTT) | untested |
 | `vaillant` | **Vaillant** (aroTHERM, aroTHERM plus), **Saunier Duval**, **Bulex**, **Glow-worm**, **DemirDöküm** | [myPyllant](https://github.com/signalkraft/mypyllant-component) (HACS) | untested |
 | `emsesp` | **Bosch**, **Buderus**, **Junkers**, **Nefit**, **Worcester**, **Sieger**, **elm.leblanc**, **iVT** – EMS/EMS+ heat pumps such as Buderus Logatherm WLW, Bosch Compress, Nefit EnviLine | [EMS-ESP](https://github.com/emsesp/EMS-ESP32) gateway (MQTT discovery) | untested |
 | `heishamon` | **Panasonic** Aquarea (H, J, K, L generation; monoblock, split, all-in-one) | [HeishaMon](https://github.com/heishamon/HeishaMon) + [heishamon-homeassistant](https://github.com/kamaradclimber/heishamon-homeassistant) (HACS) | untested |
 | `samsung` *(in preparation)* | **Samsung EHS** (Mono, Split, TDM) | [esphome-samsung-nasa](https://github.com/Beormund/esphome-samsung-nasa) via ESPHome | untested; pending [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16), not included in the current release |
 
 > [!NOTE]
-> The **Viessmann**, **Vaillant**, **EMS-ESP** and **HeishaMon** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open a preset feedback issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and paste the card's diagnostic report after reviewing its entity ids for private names. The Lambda preset runs on a real installation.
+> The **Viessmann**, **Open3E**, **Vaillant**, **EMS-ESP** and **HeishaMon** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open a preset feedback issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and paste the card's diagnostic report after reviewing its entity ids for private names. The Lambda preset runs on a real installation.
 >
 > **Samsung EHS support is in preparation in [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16).** It remains marked untested until the contributor changes have been reviewed, merged and validated; `preset: samsung` is not available in the current release yet.
 
@@ -35,7 +36,7 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 
 The current release is **[0.10.0](https://github.com/Sturmi77/heatpump-hydraulic-card/releases/tag/v0.10.0)**. Its HACS, quality, Chromium and Firefox checks pass, including 480 browser self-tests. The shipped presets and features are covered with simulated data, but only Lambda has been confirmed on a real installation so far.
 
-Real-installation feedback for Viessmann, Vaillant, EMS-ESP and HeishaMon is therefore the highest-priority follow-up. Please use the [tester issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) or the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and review the diagnostic report for private entity names before posting it. Samsung EHS remains in preparation in contributor-owned [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) and is not part of 0.10.0.
+Real-installation feedback for Viessmann via ViCare and Open3E, Vaillant, EMS-ESP and HeishaMon is therefore the highest-priority follow-up. Please use the [tester issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) or the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and review the diagnostic report for private entity names before posting it. Samsung EHS remains in preparation in contributor-owned [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) and is not part of 0.10.0.
 
 The completed release history and the prioritized post-0.10.0 backlog are maintained in the [development plan](docs/ROADMAP.md).
 
@@ -193,6 +194,16 @@ What you get:
 
 ViCare has no live electrical power, so add `power` from a meter if you have one; the heat output is estimated from flow rate × spread. For a Vitocal with a ground source, set `source_type: brine`: the primary circuit supply and return become brine in and out. Circuits 2 and 3 share the same translation keys in ViCare, so map their entities manually (`hc2_flow`, …).
 
+### Viessmann Vitocal (Open3E) – untested, feedback welcome
+```yaml
+type: custom:heatpump-flow-card
+preset: open3e
+hc_type: radiator
+```
+For the [Open3E Home Assistant integration](https://github.com/MojoOli/open3e-ha), which connects to the Open3E server over MQTT. The server communicates with the Vitocal over CAN. The preset uses the integration's entity-registry translation keys, so entity IDs and the Home Assistant language do not matter. If you have multiple Open3E devices, set `device:` to the Vitocal device ID.
+
+It maps the refrigeration-circuit mode, compressor and diverter valve; system electrical and thermal power; flow and return temperatures; DHW and buffer temperatures; and the first heating circuit, room temperature, and target. Daily COP and energy sensors, compressor and additional-heater counters, and available refrigerant sensors are mapped as well. Open3E's `hot_water` valve state is recognized as DHW operation. Add a power meter if your installation does not expose `power_consumption_system`.
+
 ### Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant) – untested, feedback welcome
 ```yaml
 type: custom:heatpump-flow-card
@@ -282,7 +293,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 
 | Option | Description |
 |---|---|
-| `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon` or omit. Fills entities, mode maps and error sensors. |
+| `preset` | `lambda`, `vicare`, `open3e`, `vaillant`, `emsesp`, `heishamon` or omit. Fills entities, mode maps and error sensors. |
 | `prefix` | Preset prefix (Lambda device name, Vaillant home slug, EMS-ESP instance prefix, HeishaMon MQTT prefix). Omit for auto-detection, `""` for unprefixed Lambda ids. |
 | `device` | Device id: restricts preset detection to one device (several heat pumps of the same brand). |
 | `index` | Unit numbers for presets: `{hp, dhw, buffer, hc}` (default 1; Vaillant counts from 0). |

@@ -2,7 +2,7 @@
  * Heatpump Flow Card
  * Animated hydraulic schematic for air-to-water heat pumps in Home Assistant:
  * power sources (PV / battery / grid) → heat pump → diverter valve → DHW tank / buffer → heating circuit.
- * Vendor-neutral core with presets: Lambda, Viessmann (ViCare), Vaillant (myPyllant),
+ * Vendor-neutral core with presets: Lambda, Viessmann (ViCare / Open3E), Vaillant (myPyllant),
  * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …) and Panasonic Aquarea (HeishaMon).
  *
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
@@ -198,6 +198,74 @@ const HFC_PRESETS = {
       cop_dhw_today: { de: 'COP Warmwasser', en: 'COP DHW' },
       starts_today: { de: 'Verdichterstarts', en: 'Compressor starts' },
     },
+  },
+
+  // Viessmann Vitocal via the Open3E MQTT integration. The integration exposes stable
+  // translation keys; entity ids include the device name and serial number.
+  open3e: {
+    name: 'Viessmann (Open3E)',
+    index: { hc: 1 },
+    detect: (ctx) => (ctx.key('open3e', 'sensor', 'refrigeration_circuit_mode')
+      || ctx.key('open3e', 'binary_sensor', 'heat_pump_compressor_active') ? '' : undefined),
+    entities: (p, i, ctx) => {
+      const s = (...tks) => tks.map((tk) => ctx.key('open3e', 'sensor', tk)).filter(Boolean);
+      const b = (...tks) => tks.map((tk) => ctx.key('open3e', 'binary_sensor', tk)).filter(Boolean);
+      return {
+        mode: s('refrigeration_circuit_mode'),
+        compressor: b('heat_pump_compressor_active'),
+        valve: s('four_three_way_valve_position'),
+        power: s('power_consumption_system'),
+        heat: s('thermal_power'),
+        flow: s('flow_temperature'),
+        return: s('return_temperature'),
+        source_in: s('primary_inlet_temperature'),
+        outdoor: s('outside_temperature'),
+        brine_pressure: s('water_pressure'),
+        dhw_top: s('dhw_buffer_top_temperature', 'domestic_hot_water_temperature'),
+        dhw_middle: s('dhw_buffer_mid_temperature'),
+        dhw_bottom: s('dhw_buffer_bottom_temperature'),
+        dhw_target: s('domestic_hot_water_temperature_setpoint'),
+        dhw_mode: s('domestic_hot_water_status'),
+        buffer_top: s('heating_buffer_temperature', 'heating_cooling_buffer_temperature'),
+        buffer_mode: ctx.key('open3e', 'select', 'buffer_operation_mode'),
+        heater: b('additional_heater_active'),
+        hc_flow: s(`flow_circuit${i.hc}_temperature`),
+        hc_setpoint: s(`flow_circuit_${i.hc}_supply_temp_setpoint`),
+        hc_mode: ctx.key('open3e', 'climate', `climate_circuit_${i.hc}`),
+        hc_pump: b(`circuit_${i.hc}_pump`),
+        room: s(`room${i.hc}_temperature`),
+        cop_heating_today: s('cop_heating_today'),
+        cop_dhw_today: s('cop_dhw_today'),
+        energy_today: s('energy_consumption_total_today'),
+        starts_total: s('compressor_starts'),
+        hours: s('compressor_operating_hours'),
+        compressor_speed: s('compressor_speed_percentage'),
+        evap_temp: s('evaporation_vapor_temperature'),
+        suction_temp: s('compressor_inlet_temperature'),
+        hot_gas: s('compressor_outlet_temperature'),
+        low_pressure: s('compressor_inlet_pressure'),
+        high_pressure: s('compressor_outlet_pressure'),
+        eev: s('expansion_valve1_position'),
+      };
+    },
+    tiles: (p, i, ctx) => {
+      const s = (tk) => ctx.key('open3e', 'sensor', tk);
+      return {
+        cop_heating: { today: s('cop_heating_today') }, cop_dhw: { today: s('cop_dhw_today') },
+        cop_cooling: { today: s('cop_cooling_today') }, cop_total: { today: s('cop_total_today') },
+        energy: { today: s('energy_consumption_total_today') },
+        energy_heating: { today: s('energy_consumption_central_heating_today') },
+        energy_dhw: { today: s('energy_consumption_domestic_hot_water_today') },
+        energy_cooling: { today: s('energy_consumption_cooling_today') },
+        heat_heating: { today: s('thermal_output_today') }, heat_dhw: { today: s('warm_water_output_today') },
+        starts: { total: s('compressor_starts') }, hours: { total: s('compressor_operating_hours') },
+        aux_hours: { total: s('additional_heater_operating_hours') }, aux_starts: { total: s('additional_heater_starts') },
+      };
+    },
+    mode_map: { off: 'off', shutdown: 'idle', heating: 'heating', cooling: 'cooling', defrost: 'defrost', grid_lock: 'blocked' },
+    dhw_mode_map: { off: 'idle', hot_water: 'dhw', parallel_operation: 'dhw', hygiene_function: 'legionella', automatic: 'idle' },
+    buffer_mode_map: { heating: 'heating', cooling: 'cooling' },
+    hc_mode_map: { heat: 'heating', cool: 'cooling', off: 'off', auto: 'idle' },
   },
 
   // Vaillant aroTHERM via myPyllant (HACS). Names are fixed English strings prefixed with the
@@ -2599,7 +2667,7 @@ class HeatpumpFlowCard extends HTMLElement {
       || (!this._has('compressor') && !this._has('power') && !this._has('status') && ['heating', 'dhw', 'cooling', 'defrost'].includes(hp));
     const defrost = hp === 'defrost' || status.toUpperCase().includes('DEFROST') || (this._has('defrost') && this._on('defrost'));
     // Valve: binary (on = DHW) or a state such as "Tank" / "DHW".
-    const valveDhw = this._has('valve') && (this._on('valve') || ['tank', 'dhw', 'hot water', 'warmwasser'].includes(String(this._s('valve')).toLowerCase()));
+    const valveDhw = this._has('valve') && (this._on('valve') || ['tank', 'dhw', 'hot water', 'hot_water', 'warmwasser'].includes(String(this._s('valve')).toLowerCase()));
     // Integrations without an operating-mode entity: a running compressor means heating unless the valve says DHW.
     if (!this._has('mode')) hp = !running ? 'idle' : (defrost ? 'defrost' : (valveDhw ? 'dhw' : 'heating'));
     const cooling = hp === 'cooling' || bufMode === 'cooling';
@@ -3299,7 +3367,7 @@ if (!window.customCards.some((c) => c.type === hfcType)) {
   window.customCards.push({
     type: hfcType,
     name: hfcGeneric ? 'Heatpump Flow Card' : 'Heatpump Hydraulic Card',
-    description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann, Vaillant, EMS-ESP (Bosch/Buderus/Junkers/Nefit), Panasonic Aquarea (HeishaMon).',
+    description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann (ViCare / Open3E), Vaillant, EMS-ESP (Bosch/Buderus/Junkers/Nefit), Panasonic Aquarea (HeishaMon).',
     preview: true,
     documentationURL: 'https://github.com/Sturmi77/heatpump-hydraulic-card',
   });
