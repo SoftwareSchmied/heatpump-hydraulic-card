@@ -4,7 +4,7 @@ This plan keeps correctness and supportability ahead of new surface area. Impact
 
 ## Current status after 0.10.0
 
-Version 0.10.0 is released and its HACS, quality, Chromium and Firefox checks pass. There are no known open bug issues. Issues [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22), [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29), [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) and [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) shipped in that release and are closed under the 0.10.0 milestone.
+Version 0.10.0 is released and its HACS, quality, Chromium and Firefox checks pass. There are no known open bug issues. Issues [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22), [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29), [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) and [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) shipped in that release and are closed under the 0.10.0 milestone. Environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26) is merged on `main` through [PR #39](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/39), but is not part of 0.10.0; it remains open and marked `ready for release` until the next version is published.
 
 The immediate work is evidence gathering rather than another broad feature release:
 
@@ -12,9 +12,13 @@ The immediate work is evidence gathering rather than another broad feature relea
 2. Leave Samsung [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) with its contributor until the requested cooling-mode and demo changes arrive and all required checks pass.
 3. Use diagnostic reports and verified integration data to unblock the ebusd preset ([#24](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24)) and pump/runtime mappings ([#31](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/31), [#34](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/34)).
 
-## Active implementation sprint
+## Next low-risk work
 
-Environmental energy ([#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26), impact medium-high, effort M) is implemented for the next release: an optional total counter feeds details and calendar-period tiles, and provides an explicit total-COP fallback through environmental energy plus electricity when delivered heat is unavailable. No preset mappings are guessed; they follow only after integration data is verified. Compressor cut-out counters ([#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35), effort S-M) remain a possible later addition where entity meanings and units can be verified. Multiple entities per key ([#23](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23), impact high, effort L-XL) should remain a separate later sprint because it changes entity resolution, calculations and the editor contract.
+1. Keep environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26) release-ready: the optional total counter, details and calendar-period tiles, total-COP fallback, demo, tests and documentation are merged. Close it only when the containing release is published.
+2. Treat the Panasonic Aquarea drawing as the next self-contained part of [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5). It needs its own visual and browser checks and must not close the umbrella issue while Viessmann and Bosch/Buderus drawings remain.
+3. Compressor cut-out counters [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35) are the next small data feature. Generic manual keys and unambiguous counter labels are safe; preset mappings are added only from verified integration or installation data.
+
+Multiple entities per key [#23](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23) remains a separate later sprint because it changes entity resolution, calculations and the editor contract. Recorder- and time-window-based features remain outside this small-work track.
 
 ## 0.10.0 – hydraulic clarity and small visual additions
 
@@ -73,15 +77,14 @@ Release gate:
 
 Pump counters remain follow-up work in [#31](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/31): the open presets do not currently provide verified, unambiguous entity semantics and units for heating-circuit or source-pump hours/starts. No guessed mappings are shipped. The tester and preset meta issues will be updated after the separate Samsung contribution is ready to merge.
 
-## Feature priority
+## Larger feature priority
 
 | Rank | Issue | Impact | Effort | Reason / dependency |
 | ---: | --- | --- | --- | --- |
 | 1 | [#24 ebusd preset](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24) | High | M | Blocked on a real entity/state sample; the 0.9.6 diagnostic report provides the preferred input. |
 | 2 | [#23 Multiple entities per key](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23) | High | L–XL | Broad value but changes resolution, editor and calculation contracts. |
-| 3 | [#26 Environmental energy](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26) | Medium–high | M | Useful after the counter semantics from #20 are explicit. |
-| 4 | [#27 Seasonal brine minimum](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/27) | Medium | M–L | Valuable for ground sources; needs recorder, season and date logic. |
-| 5 | [#4 Phone layouts](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/4) | High | XL | Use feedback from the 0.9.6 full-screen view before maintaining a second schematic geometry. |
+| 3 | [#27 Seasonal brine minimum](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/27) | Medium | M–L | Valuable for ground sources; needs recorder, season and date logic. |
+| 4 | [#4 Phone layouts](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/4) | High | XL | Use feedback from the full-screen view before maintaining a second schematic geometry. |
 
 ## Deferred or demand-driven
 
