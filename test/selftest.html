@@ -660,12 +660,12 @@
     one.remove();
   }
 
-  // 14. outdoor unit drawings: style per preset, Vaillant sizes, fans and snowflakes, loop symbol for ground sources
+  // 14. outdoor unit drawings: style per preset, manufacturer variants, fans and snowflakes, loop symbol for ground sources
   {
     const draw = async (setup, scen, cfg = {}) => {
       const c = mount({ ...setup.config, ...cfg }, hassOf(toStates(setup.states(scen)), setup.registry || {}, setup.energy, setup)); await wait(20);
       const q = (sel) => c.shadowRoot.querySelectorAll(sel).length;
-      const out = { lam: q('.lam-body'), vai: q('.vai-body'), ring: q('.fan-ring'), fans: q('.fan'), snows: q('.snow'), fan2on: c.shadowRoot.getElementById('fan2')?.classList.contains('on'), snow2on: c.shadowRoot.getElementById('snow2')?.classList.contains('on'),
+      const out = { lam: q('.lam-body'), vai: q('.vai-body'), pana: q('.pana-body'), vies: q('.vies-body'), bosch: q('.bosch-body'), sd: q('.sd-body'), samsung: q('.sam-body'), ring: q('.fan-ring'), fans: q('.fan'), snows: q('.snow'), fan2on: c.shadowRoot.getElementById('fan2')?.classList.contains('on'), snow2on: c.shadowRoot.getElementById('snow2')?.classList.contains('on'),
         origin: c.shadowRoot.getElementById('fan')?.style.transformOrigin, ok: ok(c) };
       c.remove(); return out;
     };
@@ -676,8 +676,12 @@
     check(o.lam === 0 && o.ring === 1 && o.fans === 1, 'unit_style generic keeps the fan ring');
     o = await draw(setups[1], 'heat', { unit_style: 'auto' });
     check(o.lam === 1, 'unit_style auto follows the preset');
+    o = await draw(setups[7], 'heat');
+    check(o.lam === 0 && o.vai === 0 && o.ring === 1, 'manual setups without a style keep the generic drawing');
+    o = await draw(setups[2], 'heat');
+    check(o.vies === 1 && o.ring === 0 && o.fans === 1, `ViCare preset draws the Viessmann Vitocal unit (${JSON.stringify(o)})`);
     o = await draw(setups[4], 'heat');
-    check(o.lam === 0 && o.vai === 0 && o.ring === 1, 'presets without a style keep the generic drawing');
+    check(o.bosch === 1 && o.ring === 0 && o.fans === 1, `EMS-ESP preset draws the Bosch/Buderus unit (${JSON.stringify(o)})`);
     o = await draw(setups[3], 'heat');
     check(o.vai === 1 && o.fans === 1, `Vaillant preset draws the aroTHERM plus, medium by default (${JSON.stringify(o)})`);
     o = await draw(setups[3], 'heat', { unit_size: 'small' });
@@ -688,6 +692,14 @@
     check(o.fans === 2 && o.fan2on === false, 'both fans stand still in standby');
     o = await draw(setups[3], 'defrost', { unit_size: 'large' });
     check(o.snows === 2, 'two snowflakes for two fans');
+    o = await draw(setups[5], 'heat');
+    check(o.pana === 1 && o.lam === 0 && o.vai === 0 && o.ring === 0 && o.fans === 1, `HeishaMon preset draws the Panasonic Aquarea unit (${JSON.stringify(o)})`);
+    o = await draw(setups[5], 'defrost');
+    check(o.pana === 1 && o.snows === 1, 'Panasonic unit gets one snowflake while defrosting');
+    o = await draw(setups[3], 'heat', { unit_style: 'saunier' });
+    check(o.sd === 1 && o.fans === 1, 'Saunier Duval style draws the GeniaAir unit');
+    o = await draw(setups[7], 'heat', { unit_style: 'samsung' });
+    check(o.samsung === 1 && o.fans === 1, 'Samsung style draws the EHS Mono unit without requiring a preset');
     o = await draw(setups[1], 'defrost');
     check(o.snows === 1, 'one snowflake on the Lambda unit');
     o = await draw(setups[3], 'heat', { unit_style: 'lambda' });
@@ -696,7 +708,7 @@
     check(o.lam === 0 && o.ok, 'ground sources keep their loop symbol');
     const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
     const names = (cfg) => C._formSchema(cfg).schema.flatMap(keysOf);
-    check(names({}).includes('unit_style') && !names({ preset: 'lambda' }).includes('unit_size') && names({ preset: 'vaillant' }).includes('unit_size') && names({ unit_style: 'vaillant' }).includes('unit_size') && !names({ preset: 'vaillant', unit_style: 'lambda' }).includes('unit_size'), 'editor offers unit_style, and unit_size only for Vaillant');
+    check(names({}).includes('unit_style') && !names({ preset: 'lambda' }).includes('unit_size') && names({ preset: 'vaillant' }).includes('unit_size') && names({ unit_style: 'vaillant' }).includes('unit_size') && !names({ preset: 'vaillant', unit_style: 'panasonic' }).includes('unit_size'), 'editor offers unit_style, and unit_size only for Vaillant');
   }
 
   // 15. keyboard: tab stops, roles, labels, arrow keys, activation keys, focus frame
@@ -1004,7 +1016,7 @@
     check(!twoPoint.shadowRoot.getElementById('g-dhw-middle') && !twoPoint.shadowRoot.getElementById('g-buf-middle'), 'existing two-sensor tanks keep two-point gradients');
     twoPoint.remove();
 
-    for (const unit_style of ['generic', 'lambda', 'vaillant']) {
+    for (const unit_style of ['generic', 'lambda', 'vaillant', 'panasonic', 'viessmann', 'bosch', 'saunier', 'samsung']) {
       const s = setups[0]; const vapour = mount({ ...s.config, unit_style }, hassOf(toStates(s.states('defrost')), s.registry || {}, s.energy, s)); await wait(20);
       check(vapour.shadowRoot.getElementById('vapour')?.classList.contains('on'), `defrost vapour works with ${unit_style} unit`);
       vapour.remove();
