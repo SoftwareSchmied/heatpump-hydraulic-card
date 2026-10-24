@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refreshed the README, development plan and tester guidance after the 0.10.0 release; completed release issues are now tracked under the 0.10.0 milestone.
+
 ## 0.10.0 – 2026-10-24
 - Added optional brine and heating-circuit pressure entities, unit conversion to bar, configurable low/critical/high thresholds, accessible warning symbols, live tiles and details rows (#22).
 - Added optional middle temperature sensors for DHW and buffer tanks, producing a three-point gradient without changing existing two-sensor tanks (#29).

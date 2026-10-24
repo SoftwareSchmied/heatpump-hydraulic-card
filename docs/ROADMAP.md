@@ -2,16 +2,30 @@
 
 This plan keeps correctness and supportability ahead of new surface area. Impact is the expected benefit across installations; effort is relative (`S` local, `M` several code paths, `L` public API or data logic, `XL` architecture or a second layout).
 
+## Current status after 0.10.0
+
+Version 0.10.0 is released and its HACS, quality, Chromium and Firefox checks pass. There are no known open bug issues. Issues [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22), [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29), [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) and [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) shipped in that release and are closed under the 0.10.0 milestone.
+
+The immediate work is evidence gathering rather than another broad feature release:
+
+1. Recruit real-installation testers through [#1](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) for Viessmann, Vaillant, EMS-ESP and HeishaMon. Treat findings as bug fixes before feature work.
+2. Leave Samsung [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) with its contributor until the requested cooling-mode and demo changes arrive and all required checks pass.
+3. Use diagnostic reports and verified integration data to unblock the ebusd preset ([#24](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24)) and pump/runtime mappings ([#31](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/31), [#34](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/34)).
+
+## Candidate for the next implementation sprint
+
+Environmental energy ([#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26), impact medium-high, effort M) is the best currently unblocked, self-contained feature. Compressor cut-out counters ([#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35), effort S-M) may join that sprint only where entity meanings and units can be verified. Multiple entities per key ([#23](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23), impact high, effort L-XL) should remain a separate later sprint because it changes entity resolution, calculations and the editor contract.
+
 ## 0.10.0 – hydraulic clarity and small visual additions
 
 The compact follow-up sprint is released in 0.10.0:
 
 | Order | Issue | Scope | State |
 | --- | --- | --- | --- |
-| 1 | [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22) | Brine and heating pressure with unit conversion, thresholds, tiles, details and accessible status. | Included in 0.10.0; automated tests added. |
-| 2 | [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29) | Optional middle sensors for three-point DHW and buffer gradients. | Included in 0.10.0; two-sensor behaviour retained. |
-| 3 | [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) | Restrained defrost vapour for all air-source unit styles. | Included in 0.10.0 with animation and reduced-motion controls. |
-| 4 | [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) | Theme-aware column-radiator emitter. | Included in 0.10.0 as the sprint stretch item. |
+| 1 | [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22) | Brine and heating pressure with unit conversion, thresholds, tiles, details and accessible status. | Released in 0.10.0 and closed; automated tests added. |
+| 2 | [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29) | Optional middle sensors for three-point DHW and buffer gradients. | Released in 0.10.0 and closed; two-sensor behaviour retained. |
+| 3 | [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) | Restrained defrost vapour for all air-source unit styles. | Released in 0.10.0 and closed with animation and reduced-motion controls. |
+| 4 | [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) | Theme-aware column-radiator emitter. | Released in 0.10.0 and closed as the sprint stretch item. |
 
 The HACS, quality, Chromium and Firefox checks passed before release, including 480 browser self-tests. Real-installation testing remains a follow-up as soon as suitable testers respond. [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) remains contributor-owned and untouched.
 
