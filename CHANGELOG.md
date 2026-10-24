@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Updated installation guidance for the HACS default listing: search and download through HACS first, with the custom-repository flow retained only as a fallback.
 - Added an optional environmental-energy total counter with details and calendar-period tiles. When delivered heat is unavailable, total COP can be derived as `(environmental energy + electricity) / electricity`; all counters must cover the same time range (#26).
 - Added a simplified, logo-free Panasonic Aquarea outdoor-unit drawing. The HeishaMon preset selects it automatically; `unit_style: panasonic` makes it available to custom configurations.
 - Added logo-free Viessmann Vitocal, Bosch/Buderus, Saunier Duval GeniaAir and Samsung EHS Mono outdoor-unit drawings plus a documented brand-to-style overview. ViCare and EMS-ESP select their drawings automatically; Saunier Duval and Samsung remain explicit choices where the preset cannot identify the brand yet.
