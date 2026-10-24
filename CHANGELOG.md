@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.6 – 2026-10-24
+- Added a local, clipboard-only diagnostic report with resolved preset and entity mappings, current states/units, errors and quick controls. The report warns that entity ids may contain private names (#7).
+- Added an accessible full-screen overlay using the same card instance, with focus trapping, Escape/backdrop/close-button handling, focus restoration and `fullscreen: false` (#9).
+- Added recursive custom text/language maps through YAML `texts`, strict key/type validation, English fallback and a stable key reference in `docs/TEXTS.md` (#11).
+- Added fixed per-card `auto`, `night` and high-contrast themes in the editor and live demo (#13).
+- Replaced the repository social preview with the feature-led Heat Pump Hydraulic Card artwork (proposal C).
+- Updated README, roadmap and issue templates for the renamed repository and a diagnostic-report-based real-installation test campaign. PR #16 remains contributor-owned and outside this work.
+- Self-test: 460 checks.
+
 ## 0.9.5 – 2026-10-24
 - The repository is now called `heatpump-hydraulic-card`, the file `dist/heatpump-hydraulic-card.js` and the HACS name "Heat Pump Hydraulic Card". The element names are unchanged: `custom:heatpump-flow-card` keeps working, `custom:heatpump-hydraulic-card` is the unique name.
 - Direct systems without buffer or circuit-specific sensors now draw a closed heating circuit and use the heat pump's flow and return temperatures (#18).

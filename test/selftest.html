@@ -89,7 +89,8 @@
     { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' },
     { errors: 'sensor.error' }, { error_ok: 'No Error' }, { error_ok: ['No Error', 0] },
     { timeline: 'yes' }, { timeline_hours: 0 }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' },
-    { animations: 'sometimes' }, { flow_speed: 0 }, { flow_speed: 3.1 }, { source_spread: 'yes' }]) {
+    { animations: 'sometimes' }, { flow_speed: 0 }, { flow_speed: 3.1 }, { source_spread: 'yes' }, { theme: 'sepia' }, { fullscreen: 'yes' },
+    { texts: [] }, { texts: { NL: { title: 'x' } } }, { texts: { nl: { title: 7 } } }, { texts: { nl: { missing_key: 'x' } } }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -872,6 +873,71 @@
     c.remove();
     const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
     check(C._formSchema({}).schema.flatMap(keysOf).includes('timeline') && !C._formSchema({}).schema.flatMap(keysOf).includes('timeline_hours') && C._formSchema({ timeline: true }).schema.flatMap(keysOf).includes('timeline_hours'), 'editor offers the timeline and its length');
+  }
+
+  // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
+  {
+    const s = setups[0];
+    const h = hassOf(toStates(s.states('heat')), s.registry || {}, null, s);
+    h.config = { version: '2026.10.1', time_zone: 'Europe/Vienna' };
+    const report = C._diagnosticReport(s.config, h);
+    check(/Privacy: entity ids can contain personal names/.test(report) && /Card version: \d+\.\d+\.\d+/.test(report) && /Home Assistant: 2026\.10\.1/.test(report), 'diagnostic report identifies itself and starts with the privacy warning');
+    check(/- flow: sensor\.eu08l_hp1_flow_line_temperature = 32\.4/.test(report) && /- hc3_flow: not mapped/.test(report), 'diagnostic report contains mapped states and missing keys');
+    check(/Preset: lambda/.test(report) && /Preset detected: yes/.test(report) && /Quick controls:/.test(report) && !/friendly_name/.test(report), 'diagnostic report contains detection and controls but no attribute dump');
+    const card = mount(s.config, h); await wait(20);
+    let copied = '';
+    card._writeClipboard = async (text) => { copied = text; };
+    card.shadowRoot.getElementById('diagnostic-copy').click(); await wait(0);
+    check(copied === report && /copied/i.test(card.shadowRoot.getElementById('tool-status').textContent), 'diagnostic button copies the local report and announces success');
+
+    const oldOverflow = document.body.style.overflow;
+    card.shadowRoot.getElementById('fullscreen-toggle').click();
+    let shell = card.shadowRoot.querySelector('ha-card');
+    check(shell.classList.contains('fullscreen') && shell.getAttribute('role') === 'dialog' && shell.getAttribute('aria-modal') === 'true'
+      && !card.shadowRoot.getElementById('fullscreen-backdrop').hidden && document.body.style.overflow === 'hidden', 'full-screen opens one modal card layer and locks background scrolling');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    shell = card.shadowRoot.querySelector('ha-card');
+    check(!shell.classList.contains('fullscreen') && card.shadowRoot.getElementById('fullscreen-backdrop').hidden
+      && document.body.style.overflow === oldOverflow && card.shadowRoot.activeElement?.id === 'fullscreen-toggle', 'Escape closes full-screen and returns focus to its button');
+    card.shadowRoot.getElementById('fullscreen-toggle').click();
+    card.shadowRoot.getElementById('fullscreen-backdrop').click();
+    check(!card.shadowRoot.querySelector('ha-card').classList.contains('fullscreen'), 'a backdrop click closes full-screen');
+    card.remove();
+    const noFull = mount({ ...s.config, fullscreen: false }, h);
+    check(!noFull.shadowRoot.getElementById('fullscreen-toggle'), 'fullscreen: false removes the button');
+    noFull.remove();
+
+    const custom = { ...s.config, title: undefined, language: 'nl', texts: { nl: {
+      title: 'Warmtepomp & huis', heat_pump: 'Warm <bron>', details: 'Details NL',
+      modes: { heating: 'Verwarming' }, tiles: { spread: 'Verschil' },
+    } } };
+    const nl = mount(custom, { ...h, locale: { language: 'nl-NL' }, language: 'nl-NL' }); await wait(20);
+    check(nl._lang === 'nl' && nl.shadowRoot.querySelector('.title').textContent === 'Warmtepomp & huis'
+      && nl.shadowRoot.querySelector('.unit-title').textContent === 'Warm <bron>' && !nl.shadowRoot.querySelector('.unit-title').querySelector('bron'), 'custom language renders escaped labels');
+    check(nl.shadowRoot.getElementById('chip-mode').textContent.startsWith('Verwarming')
+      && nl.shadowRoot.getElementById('drawer-toggle').textContent.startsWith('Details NL') && nl._i.compressor_off === 'Compressor off', 'custom texts merge recursively and missing labels fall back to English');
+    const tileOptions = C._tileOptions(custom, C._resolve(custom, h), h).options;
+    check(tileOptions.some((o) => o.value === 'spread' && o.label === 'Verschil'), 'custom tile labels reach the editor options');
+    nl.remove();
+
+    for (const theme of ['auto', 'night', 'contrast']) {
+      const themed = mount({ ...s.config, theme }, h); await wait(10);
+      check(themed.shadowRoot.querySelector('ha-card').classList.contains(`theme-${theme}`), `theme ${theme} renders`);
+      if (theme === 'night') check(getComputedStyle(themed.shadowRoot.querySelector('ha-card')).getPropertyValue('--card-background-color').trim() === '#111827', 'night theme supplies its dim surface');
+      if (theme === 'contrast') check(getComputedStyle(themed.shadowRoot.querySelector('ha-card')).getPropertyValue('--divider-color').trim() === '#000', 'contrast theme supplies strong outlines');
+      themed.remove();
+    }
+    const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
+    const schema = C._formSchema(custom).schema;
+    check(['theme', 'fullscreen', 'language'].every((key) => schema.flatMap(keysOf).includes(key)), 'editor offers theme, full-screen and language controls');
+    const languageField = (() => { let found; const visit = (n) => { if (n.name === 'language') found = n; (n.schema || []).forEach(visit); }; schema.forEach(visit); return found; })();
+    check(languageField.selector.select.options.some((o) => o.value === 'nl'), 'editor language selector includes configured custom languages');
+    const ed = document.createElement('heatpump-flow-card-editor'); let changed;
+    ed.addEventListener('config-changed', (ev) => { changed = ev.detail.config; });
+    ed.setConfig(custom); ed.hass = h; await wait(10);
+    ed._changed({ preset: 'lambda', language: 'nl', theme: 'night', fullscreen: false, entities: ed._form.data.entities });
+    check(changed.texts.nl.title === 'Warmtepomp & huis' && changed.theme === 'night' && changed.fullscreen === false, 'editor preserves YAML translations and writes theme/full-screen options');
+    ed.remove();
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);

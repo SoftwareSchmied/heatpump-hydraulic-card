@@ -7,7 +7,7 @@
  *
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
-const HFC_VERSION = '0.9.5';
+const HFC_VERSION = '0.9.6';
 
 /* ------------------------------------------------------------------ */
 /* Presets                                                             */
@@ -380,6 +380,8 @@ const HFC_I18N = {
     energy_missing: 'Energy dashboard: no power sensor for {sources}; energy counters alone cannot show live flow.',
     brine_in: 'Brine in', brine_out: 'Brine out', well_in: 'Well in', well_out: 'Well out',
     details: 'Details', sec_operation: 'Operation', sec_refrigerant: 'Refrigerant circuit', sec_more: 'More',
+    diagnostic_copy: 'Copy diagnostic report', diagnostic_copied: 'Diagnostic report copied', diagnostic_failed: 'Could not copy diagnostic report',
+    fullscreen_open: 'Open full screen', fullscreen_close: 'Close full screen',
     det: {
       hours: 'Compressor hours', starts_total: 'Compressor starts total', aux_hours: 'Heater hours', energy_total: 'Electricity total',
       heat_total: 'Heat total', cop_total: 'COP total', compressor_speed: 'Compressor', evap_temp: 'Evaporation', cond_temp: 'Condensation',
@@ -416,6 +418,8 @@ const HFC_I18N = {
     energy_missing: 'Energie-Dashboard: kein Leistungssensor für {sources}; Energiezähler allein zeigen keinen aktuellen Fluss.',
     brine_in: 'Sole ein', brine_out: 'Sole aus', well_in: 'Brunnen ein', well_out: 'Brunnen aus',
     details: 'Details', sec_operation: 'Betrieb', sec_refrigerant: 'Kältekreis', sec_more: 'Weitere',
+    diagnostic_copy: 'Diagnosebericht kopieren', diagnostic_copied: 'Diagnosebericht kopiert', diagnostic_failed: 'Diagnosebericht konnte nicht kopiert werden',
+    fullscreen_open: 'Vollbild öffnen', fullscreen_close: 'Vollbild schließen',
     det: {
       hours: 'Betriebsstunden Verdichter', starts_total: 'Verdichterstarts gesamt', aux_hours: 'Betriebsstunden Heizstab', energy_total: 'Strom gesamt',
       heat_total: 'Wärme gesamt', cop_total: 'COP gesamt', compressor_speed: 'Verdichter', evap_temp: 'Verdampfung', cond_temp: 'Kondensation',
@@ -447,6 +451,17 @@ const HFC_I18N = {
   },
 };
 
+// Translation objects are a public configuration surface. Merge them recursively so a custom language only needs to
+// provide the labels it changes; every missing leaf falls back to English (and then to a built-in language, if present).
+const hfcTextMerge = (...parts) => {
+  const out = {};
+  parts.filter((p) => p && typeof p === 'object' && !Array.isArray(p)).forEach((part) => Object.entries(part).forEach(([key, value]) => {
+    if (['__proto__', 'constructor', 'prototype'].includes(key)) return;
+    out[key] = value && typeof value === 'object' && !Array.isArray(value) ? hfcTextMerge(out[key], value) : value;
+  }));
+  return out;
+};
+
 const HFC_EDITOR = {
   en: {
     preset: 'Preset', prefix: 'Prefix (empty = auto-detect)', device: 'Device (optional, restricts the preset)',
@@ -460,6 +475,7 @@ const HFC_EDITOR = {
     layout: 'Layout', layout_default: 'Default', layout_compact: 'Compact (narrow columns)', layout_wide: 'Wide (tiles beside the schematic)', layout_wall: 'Wall display (large, controls fade out)',
     animations: 'Animations', animations_auto: 'Automatic (respect reduced motion)', animations_always: 'Always', animations_off: 'Off',
     flow_speed: 'Animation speed', source_spread: 'Show source spread',
+    theme: 'Card theme', theme_auto: 'Automatic (dashboard)', theme_night: 'Night', theme_contrast: 'High contrast', fullscreen: 'Full-screen button',
     wall_timeout: 'Hide controls after (seconds, 0 = never)',
     hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit',
@@ -485,6 +501,7 @@ const HFC_EDITOR = {
     errors_help: 'Active for a number other than 0 or state on. Text needs the no-error states below; unknown, unavailable, off and empty are ignored.',
     error_ok_help: 'Comma-separated, case-insensitive; for example: No Error, OK. Any other known text then shows the error chip.',
     total_cop_help: 'Total heat and electricity must cover the same time range. Environmental energy alone is not heat output.',
+    language_help: 'Additional languages and custom labels are configured with texts in YAML; missing labels fall back to English.',
     detected: 'Detected', entities_found: 'entities', not_detected: 'Not found in this Home Assistant - check the integration, the prefix or choose another preset',
     program: 'Heating program (eco, night, party, holiday)', solar_collector: 'Solar collector temperature', solar_pump: 'Solar pump running (binary)',
     source_out: 'Source outlet temperature', heater: 'Backup / inline heater active',
@@ -516,6 +533,7 @@ const HFC_EDITOR = {
     layout: 'Layout', layout_default: 'Standard', layout_compact: 'Kompakt (schmale Spalten)', layout_wide: 'Breit (Kacheln neben dem Schema)', layout_wall: 'Wanddisplay (groß, Bedienelemente blenden aus)',
     animations: 'Animationen', animations_auto: 'Automatisch (reduzierte Bewegung beachten)', animations_always: 'Immer', animations_off: 'Aus',
     flow_speed: 'Animationsgeschwindigkeit', source_spread: 'Quellenspreizung anzeigen',
+    theme: 'Kartendarstellung', theme_auto: 'Automatisch (Dashboard)', theme_night: 'Nacht', theme_contrast: 'Hoher Kontrast', fullscreen: 'Vollbild-Schaltfläche',
     wall_timeout: 'Bedienelemente ausblenden nach (Sekunden, 0 = nie)',
     hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis',
@@ -541,6 +559,7 @@ const HFC_EDITOR = {
     errors_help: 'Aktiv bei einer Zahl ungleich 0 oder Zustand on. Text braucht die fehlerfreien Zustände unten; unknown, unavailable, off und leer werden ignoriert.',
     error_ok_help: 'Kommagetrennt, ohne Beachtung der Groß-/Kleinschreibung; zum Beispiel: No Error, OK. Jeder andere bekannte Text zeigt dann den Fehler-Chip.',
     total_cop_help: 'Gesamtwärme und Gesamtstrom müssen denselben Zeitraum abdecken. Umweltenergie allein ist keine abgegebene Wärme.',
+    language_help: 'Weitere Sprachen und eigene Beschriftungen werden mit texts im YAML konfiguriert; fehlende Texte fallen auf Englisch zurück.',
     detected: 'Erkannt', entities_found: 'Entitäten', not_detected: 'In diesem Home Assistant nicht gefunden - Integration und Präfix prüfen oder andere Voreinstellung wählen',
     program: 'Heizprogramm (Eco, Nacht, Party, Urlaub)', solar_collector: 'Kollektortemperatur Solarthermie', solar_pump: 'Solarpumpe läuft (binär)',
     source_out: 'Quelle Austritt', heater: 'Heizstab / Zusatzheizer aktiv',
@@ -573,6 +592,7 @@ const HFC_ENTITY_GROUPS = {
   sec_refrigerant: ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev', 'superheat', 'subcooling'],
   sec_stats: ['cop_heating_today', 'cop_dhw_today', 'energy_today', 'pv_share_today', 'starts_today'],
 };
+const HFC_DIAGNOSTIC_KEYS = [...new Set(Object.values(HFC_ENTITY_GROUPS).flat())];
 // Entity domains usable as quick controls and the service each one calls.
 const HFC_CONTROL_DOMAINS = ['switch', 'input_boolean', 'light', 'fan', 'automation', 'button', 'input_button', 'script', 'scene',
   'select', 'input_select', 'water_heater', 'climate', 'number', 'input_number'];
@@ -588,6 +608,7 @@ const HFC_STAT_PERIODS = { today: ['day', 0], yesterday: ['day', -1], week: ['we
 const HFC_ACTIONS = ['tap_action', 'hold_action', 'double_tap_action'];
 const HFC_LAYOUTS = ['default', 'compact', 'wide', 'wall'];
 const HFC_ANIMATIONS = ['auto', 'always', 'off'];
+const HFC_THEMES = ['auto', 'night', 'contrast'];
 // Drawing of the outdoor unit: `auto` takes the style of the preset; `unit_size` picks the Vaillant aroTHERM plus class.
 const HFC_UNIT_STYLES = ['auto', 'generic', 'lambda', 'vaillant'];
 const HFC_UNIT_SIZES = ['small', 'medium', 'large'];
@@ -689,6 +710,9 @@ class HeatpumpFlowCard extends HTMLElement {
     const lang = (document.querySelector('home-assistant')?.hass?.locale?.language || navigator.language || 'en').slice(0, 2);
     const L = HFC_EDITOR[lang] || HFC_EDITOR.en;
     const hcCount = config ? Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3) : 3;
+    const customLanguages = Object.keys(config?.texts || {}).filter((v) => !['en', 'de'].includes(v));
+    const languageOptions = [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' },
+      ...customLanguages.map((value) => ({ value, label: value }))];
     const keep = (name) => !(/^hc2_/.test(name) && hcCount < 2) && !(/^hc3_/.test(name) && hcCount < 3);
     const groups = Object.entries(HFC_ENTITY_GROUPS).filter(([sec]) => keep(sec.replace('sec_', '') + '_'));
     const hcTypeSel = (name) => ({ name, selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } });
@@ -708,6 +732,7 @@ class HeatpumpFlowCard extends HTMLElement {
             hcTypeSel('hc_type'),
             { name: 'hc_count', selector: { number: { min: 1, max: 3, step: 1, mode: 'box' } } },
             { name: 'layout', selector: { select: { mode: 'dropdown', options: HFC_LAYOUTS.map((v) => ({ value: v, label: L[`layout_${v}`] })) } } },
+             { name: 'theme', selector: { select: { mode: 'dropdown', options: HFC_THEMES.map((v) => ({ value: v, label: L[`theme_${v}`] })) } } },
             ...['hc2_type', 'hc3_type'].filter(keep).map(hcTypeSel),
           ],
         },
@@ -742,7 +767,8 @@ class HeatpumpFlowCard extends HTMLElement {
               { name: 'animations', selector: { select: { mode: 'dropdown', options: HFC_ANIMATIONS.map((v) => ({ value: v, label: L[`animations_${v}`] })) } } },
               { name: 'flow_speed', selector: { number: { min: 0.2, max: 3, step: 0.1, mode: 'slider' } } },
               { name: 'source_spread', selector: { boolean: {} } },
-              { name: 'language', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' }] } } },
+              { name: 'language', selector: { select: { mode: 'dropdown', options: languageOptions } } },
+              { name: 'fullscreen', selector: { boolean: {} } },
               ...['hc_name', 'hc2_name', 'hc3_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
               { name: 'unit_style', selector: { select: { mode: 'dropdown', options: HFC_UNIT_STYLES.map((v) => ({ value: v, label: L[`unit_${v}`] })) } } },
               ...(config && (config.unit_style === 'vaillant' || ((!config.unit_style || config.unit_style === 'auto') && config.preset === 'vaillant'))
@@ -759,6 +785,38 @@ class HeatpumpFlowCard extends HTMLElement {
       computeLabel: (s) => L[s.name] || L[String(s.name).replace(/^hc[23]_/, 'hc_')] || (HFC_I18N[lang] || HFC_I18N.en).det[s.name] || s.name,
       L,
     };
+  }
+
+  static _language(config, hass) {
+    const raw = String(config?.language && config.language !== 'auto'
+      ? config.language : (hass?.locale?.language || hass?.language || navigator.language || 'en')).toLowerCase().replace('_', '-');
+    const exact = raw; const base = raw.split('-')[0]; const custom = config?.texts || {};
+    if (HFC_I18N[exact] || custom[exact]) return exact;
+    if (HFC_I18N[base] || custom[base]) return base;
+    return 'en';
+  }
+
+  static _texts(config, hass) {
+    const lang = HeatpumpFlowCard._language(config, hass);
+    const base = lang.split('-')[0]; const custom = config?.texts || {};
+    return hfcTextMerge(HFC_I18N.en, HFC_I18N[base], HFC_I18N[lang], custom[base], custom[lang]);
+  }
+
+  static _validateTexts(texts) {
+    if (!texts || typeof texts !== 'object' || Array.isArray(texts)) throw new Error('texts must map language codes to text objects');
+    const visit = (value, reference, path) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} must be an object`);
+      Object.entries(value).forEach(([key, child]) => {
+        if (!Object.prototype.hasOwnProperty.call(reference, key)) throw new Error(`Unknown text key "${path}.${key}"`);
+        const expected = reference[key];
+        if (expected && typeof expected === 'object') visit(child, expected, `${path}.${key}`);
+        else if (typeof child !== 'string') throw new Error(`${path}.${key} must be text`);
+      });
+    };
+    Object.entries(texts).forEach(([lang, value]) => {
+      if (!/^[a-z]{2,8}(?:-[a-z0-9]{2,8})*$/.test(lang)) throw new Error(`Invalid language code "${lang}" in texts (use lowercase, for example nl or pt-br)`);
+      visit(value, HFC_I18N.en, `texts.${lang}`);
+    });
   }
 
   setConfig(config) {
@@ -786,6 +844,13 @@ class HeatpumpFlowCard extends HTMLElement {
     if (config.animations !== undefined && config.animations !== null && !HFC_ANIMATIONS.includes(config.animations)) {
       throw new Error(`animations must be one of: ${HFC_ANIMATIONS.join(', ')}`);
     }
+    if (config.theme !== undefined && config.theme !== null && !HFC_THEMES.includes(config.theme)) {
+      throw new Error(`theme must be one of: ${HFC_THEMES.join(', ')}`);
+    }
+    if (config.fullscreen !== undefined && config.fullscreen !== null && typeof config.fullscreen !== 'boolean') {
+      throw new Error('fullscreen must be true or false');
+    }
+    if (config.texts !== undefined && config.texts !== null) HeatpumpFlowCard._validateTexts(config.texts);
     if (config.flow_speed !== undefined && config.flow_speed !== null && config.flow_speed !== '' && !(+config.flow_speed >= 0.2 && +config.flow_speed <= 3)) {
       throw new Error('flow_speed must be a number from 0.2 to 3');
     }
@@ -824,7 +889,9 @@ class HeatpumpFlowCard extends HTMLElement {
       if (s.price !== undefined && s.price !== null && !['number', 'string'].includes(typeof s.price)) throw new Error('price must be a number or an entity');
       HFC_ACTIONS.forEach((a) => { if (s[a] !== undefined && (!s[a] || typeof s[a] !== 'object')) throw new Error(`${a} must be an action, e.g. {action: navigate, navigation_path: /energy}`); });
     });
+    if (config.fullscreen === false && this._fullscreenOpen) this._closeFullscreen(false, false);
     this._config = config;
+    this._textCache = null;
     const preset = HFC_PRESETS[config.preset];
     this._preset = preset;
     this._idx = { hp: 1, dhw: 1, buffer: 1, hc: 1, ...(preset?.index || {}), ...(config.index || {}) };
@@ -841,6 +908,7 @@ class HeatpumpFlowCard extends HTMLElement {
     this._badges = config.badges || [];
     this._layout = HFC_LAYOUTS.includes(config.layout) ? config.layout : 'default';
     this._animations = HFC_ANIMATIONS.includes(config.animations) ? config.animations : 'auto';
+    this._theme = HFC_THEMES.includes(config.theme) ? config.theme : 'auto';
     this._flowSpeed = +config.flow_speed >= 0.2 && +config.flow_speed <= 3 ? +config.flow_speed : 1;
     this._sourceSpread = config.source_spread !== false;
     this._hcType = config.hc_type || preset?.hc_type || 'underfloor';
@@ -899,6 +967,47 @@ class HeatpumpFlowCard extends HTMLElement {
       }));
     }
     return { preset, prefix, ready, idx, fromPreset, entities: e, presetErrors, errors, tiles };
+  }
+
+  // Plain-text support report. It is created locally and contains only the mappings used by this card, never registry
+  // dumps, credentials or network data. Entity ids may still contain personal names, so the report starts with a warning.
+  static _diagnosticReport(config, hass) {
+    config = config || {};
+    const r = HeatpumpFlowCard._resolve(config, hass);
+    const clean = (value) => String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim();
+    const entityLine = (key, id) => {
+      if (!id) return `- ${key}: not mapped`;
+      const st = hass.states[id];
+      if (!st) return `- ${key}: ${id} = unavailable (entity not found)`;
+      const unit = clean(st.attributes?.unit_of_measurement);
+      return `- ${key}: ${id} = ${clean(st.state) || '(empty)'}${unit ? ` ${unit}` : ''}`;
+    };
+    const keys = [...HFC_DIAGNOSTIC_KEYS, ...Object.keys(r.entities).filter((key) => !HFC_DIAGNOSTIC_KEYS.includes(key))];
+    const lines = [
+      'Heat Pump Hydraulic Card diagnostic report',
+      'Privacy: entity ids can contain personal names. Review this text before sharing it.',
+      '',
+      `Card version: ${HFC_VERSION}`,
+      `Home Assistant: ${clean(hass.config?.version) || 'unknown'}`,
+      `Browser language: ${clean(navigator.language) || 'unknown'}`,
+      `Card language: ${HeatpumpFlowCard._language(config, hass)}`,
+      `Preset: ${clean(config.preset) || 'none'}`,
+      `Preset detected: ${r.preset ? (r.ready ? 'yes' : 'no') : 'not used'}`,
+      `Prefix: ${r.prefix || '(none)'}`,
+      `Source type: ${config.source_type || 'air'}`,
+      `Heating circuits: ${Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3)}`,
+      `Layout: ${config.layout || 'default'}`,
+      '',
+      'Entity mappings:',
+      ...keys.map((key) => entityLine(key, r.entities[key])),
+      '',
+      'Error entities:',
+      ...(r.errors?.length ? r.errors.map((id, n) => entityLine(`error_${n + 1}`, id)) : ['- none']),
+      '',
+      'Quick controls:',
+      ...((config.controls || []).length ? (config.controls || []).map((c, n) => entityLine(`control_${n + 1}`, typeof c === 'string' ? c : c?.entity)) : ['- none']),
+    ];
+    return lines.join('\n');
   }
 
   _build() {
@@ -1023,12 +1132,14 @@ class HeatpumpFlowCard extends HTMLElement {
   }
 
   /* ---------- helpers ---------- */
-  get _lang() {
-    const l = this._config?.language && this._config.language !== 'auto'
-      ? this._config.language : (this._hass?.locale?.language || this._hass?.language || 'en');
-    return HFC_I18N[l.slice(0, 2)] ? l.slice(0, 2) : 'en';
+  get _lang() { return HeatpumpFlowCard._language(this._config, this._hass); }
+  get _i() {
+    const lang = this._lang; const texts = this._config?.texts;
+    if (!this._textCache || this._textCache.lang !== lang || this._textCache.texts !== texts) {
+      this._textCache = { lang, texts, value: HeatpumpFlowCard._texts(this._config, this._hass) };
+    }
+    return this._textCache.value;
   }
-  get _i() { return HFC_I18N[this._lang]; }
   _st(key) { const id = this._e[key]; return id && this._hass ? this._hass.states[id] : undefined; }
   _has(key) { return !!this._st(key); }
   _s(key) { return this._st(key)?.state; }
@@ -1084,7 +1195,7 @@ class HeatpumpFlowCard extends HTMLElement {
   }
   _t(v) { return Number.isFinite(v) ? `${this._fmt(v)} °C` : '– °C'; }
   _modeLabel(m, raw) { return this._i.modes[m] || raw || '–'; }
-  _statLabel(key, fallback) { return this._statLabels[key]?.[this._lang] || fallback; }
+  _statLabel(key, fallback) { return this._statLabels[key]?.[this._lang] || this._statLabels[key]?.en || fallback; }
   // Colour scales follow hydraulic convention: flow red/orange, return blue, tanks blue (cold) → red (hot).
   // The end colours are the --hfc-*-cold / --hfc-*-hot variables, mixed in the browser.
   _mix(cold, hot, t, lo, hi) {
@@ -1201,6 +1312,11 @@ class HeatpumpFlowCard extends HTMLElement {
     const e = this._e;
     const i = this._i;
     const T = this._esc(this._config.title ?? i.title);
+    const fullLabel = this._fullscreenOpen ? i.fullscreen_close : i.fullscreen_open;
+    const diagnosticIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM10 7h4M10 11h4M10 15h4"/></svg>';
+    const fullscreenIcon = this._fullscreenOpen
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg>';
     const energyHint = this._config.power_sources !== 'manual' && this._energyMissing?.length
       ? i.energy_missing.replace('{sources}', this._energyMissing.map((type) => ({ solar: i.pv, battery: i.battery, grid: i.grid }[type])).join(', ')) : '';
     const de = (k) => (e[k] ? `data-entity="${this._esc(e[k])}"` : '');
@@ -1214,14 +1330,22 @@ class HeatpumpFlowCard extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>${HeatpumpFlowCard.styles}</style>
-      <ha-card class="layout-${this._layout} motion-${this._animations}">
+      <div class="fullscreen-backdrop" id="fullscreen-backdrop" ${this._fullscreenOpen ? '' : 'hidden'}></div>
+      <ha-card class="layout-${this._layout} motion-${this._animations} theme-${this._theme}${this._fullscreenOpen ? ' fullscreen' : ''}"${this._fullscreenOpen ? ` role="dialog" aria-modal="true" aria-label="${T}"` : ''}>
         <div class="head">
           ${T ? `<div class="title">${T}</div>` : '<div></div>'}
-          <div class="chips">
-            <span class="chip" id="chip-mode" ${de('mode')}></span>
-            <span class="chip program" id="chip-program"></span>
-            ${this._badges.map((b, n) => `<span class="chip badge" id="chip-b${n}" data-badge="${n}" data-entity="${this._esc(b.entity)}">${this._esc(b.label || b.entity)}</span>`).join('')}
-            <span class="chip err" id="chip-err"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20.5h19z" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke-linecap="round"/></svg>${i.error}</span>
+          <div class="head-right">
+            <div class="chips">
+              <span class="chip" id="chip-mode" ${de('mode')}></span>
+              <span class="chip program" id="chip-program"></span>
+              ${this._badges.map((b, n) => `<span class="chip badge" id="chip-b${n}" data-badge="${n}" data-entity="${this._esc(b.entity)}">${this._esc(b.label || b.entity)}</span>`).join('')}
+              <span class="chip err" id="chip-err"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20.5h19z" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke-linecap="round"/></svg>${this._esc(i.error)}</span>
+            </div>
+            <div class="card-tools">
+              <button class="icon-button" id="diagnostic-copy" type="button" title="${this._esc(i.diagnostic_copy)}" aria-label="${this._esc(i.diagnostic_copy)}">${diagnosticIcon}</button>
+              ${this._config.fullscreen === false ? '' : `<button class="icon-button" id="fullscreen-toggle" type="button" title="${this._esc(fullLabel)}" aria-label="${this._esc(fullLabel)}" aria-pressed="${!!this._fullscreenOpen}">${fullscreenIcon}</button>`}
+              <span class="sr-only" id="tool-status" aria-live="polite"></span>
+            </div>
           </div>
         </div>
         ${this._needsBuild && this._preset ? `<div class="hint">${this._esc(i.not_found)}</div>` : ''}
@@ -1257,7 +1381,7 @@ class HeatpumpFlowCard extends HTMLElement {
 
           <g class="tap" ${de('mode')}>
             <rect class="unit" id="hp-box" x="50" y="190" width="240" height="235" rx="20"/>
-            <text class="unit-title" x="170" y="218" text-anchor="middle">${i.heat_pump}</text>
+            <text class="unit-title" x="170" y="218" text-anchor="middle">${this._esc(i.heat_pump)}</text>
             ${U ? `${U.below}${U.fans.map((fn, n) => this._fanSvg(n ? `fan${n + 1}` : 'fan', ...fn)).join('')}${U.above}${U.snows.map((sn, n) => this._snowSvg(n ? `snow${n + 1}` : 'snow', ...sn)).join('')}`
               : `<circle class="fan-ring" cx="170" cy="288" r="50"/>
             <g class="fan" id="fan"><path class="blade" d="M170 254 L184 288 L156 288Z M170 322 L156 288 L184 288Z"/><circle cx="170" cy="288" r="7" class="hub"/></g>
@@ -1276,7 +1400,7 @@ class HeatpumpFlowCard extends HTMLElement {
               <text class="small" id="t-valve" x="446" y="254"></text>
             </g>
             <g class="tap" ${de('dhw_top')}>
-              <text class="tank-title" x="580" y="30" text-anchor="middle">${i.dhw}</text>
+              <text class="tank-title" x="580" y="30" text-anchor="middle">${this._esc(i.dhw)}</text>
               <rect class="tank" x="520" y="40" width="120" height="200" rx="26" fill="url(#g-dhw)"/>
               <path class="coil" id="coil" d="M520 80 H600 L540 100 H600 L540 120 H600 L540 140 H600 L540 160 H600 L540 180 H600 L540 200 H520"/>
               <text class="tank-temp" id="t-dhw-top" x="580" y="112" text-anchor="middle"></text>
@@ -1284,11 +1408,11 @@ class HeatpumpFlowCard extends HTMLElement {
               <text class="small" id="t-dhw-mode" x="580" y="262" text-anchor="middle"></text>
             </g>
             ${this._heaterSvg('dhw_heater', 'dhw', 186)}
-            ${P.circ ? `<g class="tap" ${de('circulation')}><text class="small circ" id="t-circ" x="650" y="60">↻ ${i.circulation}</text></g>` : ''}` : ''}
+            ${P.circ ? `<g class="tap" ${de('circulation')}><text class="small circ" id="t-circ" x="650" y="60">↻ ${this._esc(i.circulation)}</text></g>` : ''}` : ''}
 
           ${P.buffer ? `
             <g class="tap" ${de('buffer_top')}>
-              <text class="tank-title" x="580" y="310" text-anchor="middle">${i.buffer}</text>
+              <text class="tank-title" x="580" y="310" text-anchor="middle">${this._esc(i.buffer)}</text>
               <rect class="tank" x="520" y="320" width="120" height="200" rx="26" fill="url(#g-buf)"/>
               <text class="tank-temp" id="t-buf-top" x="580" y="392" text-anchor="middle"></text>
               <text class="tank-sub" id="t-buf-bottom" x="580" y="502" text-anchor="middle"></text>
@@ -1302,7 +1426,7 @@ class HeatpumpFlowCard extends HTMLElement {
           ${P.house ? `
             <g class="tap" ${de(e.room ? 'room' : 'room_target')}>
               <path class="house" d="M720 130 L830 50 L940 130 V240 H720 Z"/>
-              <text class="tank-title" x="830" y="118" text-anchor="middle">${i.house}</text>
+              <text class="tank-title" x="830" y="118" text-anchor="middle">${this._esc(i.house)}</text>
               <text class="house-temp" id="t-room" x="830" y="172" text-anchor="middle"></text>
               <text class="house-sub" id="t-room-target" x="830" y="202" text-anchor="middle"></text>
               ${this._sourceType === 'air' ? '' : '<text class="small" id="t-outdoor" x="830" y="226" text-anchor="middle"></text>'}
@@ -1318,6 +1442,7 @@ class HeatpumpFlowCard extends HTMLElement {
         </div>
       </ha-card>`;
 
+    this._wireTools();
     if (this._layout === 'wall') {
       const card = this.shadowRoot.querySelector('ha-card');
       ['pointerdown', 'pointermove', 'keydown', 'focusin'].forEach((t) => card.addEventListener(t, () => this._wake(), { passive: true }));
@@ -1429,7 +1554,7 @@ class HeatpumpFlowCard extends HTMLElement {
 
   // Editor: the tiles this installation can fill as select options, the current selection as option values and the default set.
   static _tileOptions(config, r, hass) {
-    const I = HFC_I18N[(hass?.locale?.language || navigator.language || 'en').slice(0, 2)] || HFC_I18N.en;
+    const I = HeatpumpFlowCard._texts(config, hass);
     const probe = Object.assign(Object.create(HeatpumpFlowCard.prototype), { _hass: hass, _e: r.entities, _tileMap: r.tiles, _config: config });
     const options = [];
     const periodsOf = {};
@@ -1765,7 +1890,7 @@ class HeatpumpFlowCard extends HTMLElement {
     if (this._drawerOpen === undefined) this._drawerOpen = !!this._config.details_open;
     const chevron = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
     return `<div class="drawer">
-      <button class="drawer-toggle" id="drawer-toggle" aria-expanded="${this._drawerOpen}">${this._i.details}${chevron}</button>
+      <button class="drawer-toggle" id="drawer-toggle" aria-expanded="${this._drawerOpen}">${this._esc(this._i.details)}${chevron}</button>
       <div class="drawer-body" id="drawer-body" ${this._drawerOpen ? '' : 'hidden'}>${sections.map(([title, rows]) => `<div class="dsec"><div class="dsec-title">${this._esc(title)}</div>
         <div class="dgrid">${rows.map(([id, label, entity]) => `<div class="drow" data-entity="${this._esc(entity)}"><span>${this._esc(label)}</span><b id="d-${id}"></b></div>`).join('')}</div></div>`).join('')}</div>
     </div>`;
@@ -2050,7 +2175,7 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     const kinds = [...new Set(segs.map((s) => s.kind))].filter((k) => k !== 'idle');
     const sel = segs.findIndex((s) => s.from === this._tlSel);
-    box.innerHTML = `<div class="tl-head"><span>${i.timeline_title.replace('{h}', hours)}</span><span class="tl-detail" id="tl-detail" aria-live="polite">${sel >= 0 ? this._esc(this._timelineDetail(segs[sel])) : ''}</span></div>
+    box.innerHTML = `<div class="tl-head"><span>${this._esc(i.timeline_title.replace('{h}', hours))}</span><span class="tl-detail" id="tl-detail" aria-live="polite">${sel >= 0 ? this._esc(this._timelineDetail(segs[sel])) : ''}</span></div>
       <div class="tl-bar" id="tl-bar" tabindex="0" role="group" aria-label="${this._esc(i.timeline_aria.replace('{h}', hours))}">${segs.map((s, n) =>
     `<span class="seg k-${s.kind}${n === sel ? ' sel' : ''}" data-seg="${n}" style="left:${pct(s.from)}%;width:${(pct(s.to) - pct(s.from)).toFixed(3)}%" title="${this._esc(this._timelineDetail(s))}"></span>`).join('')}</div>
       <div class="tl-axis">${ticks.map(([t, l]) => `<span style="left:${pct(t)}%">${l}</span>`).join('')}</div>
@@ -2140,7 +2265,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const has = entity && this._hass.states[entity];
     return `<g class="tap src ${key}${has ? '' : ' absent'}" ${has ? `data-entity="${this._esc(entity)}"` : ''} id="src-${key}">
       <circle cx="${x}" cy="40" r="28" class="src-ring"/>${icons[key]}
-      <text class="small" x="${x}" y="88" text-anchor="middle" id="t-src-${key}">${label}</text>
+      <text class="small" x="${x}" y="88" text-anchor="middle" id="t-src-${key}">${this._esc(label)}</text>
       <text class="small src-val" x="${x}" y="108" text-anchor="middle" id="t-src-${key}-v"></text>
     </g>`;
   }
@@ -2167,6 +2292,71 @@ class HeatpumpFlowCard extends HTMLElement {
 
   _actEvents(box) { this._pointerActions(box, (ev) => this._elementActs(ev)); }
 
+  /* ---------- card tools ---------- */
+  _wireTools() {
+    this._$('diagnostic-copy')?.addEventListener('click', () => this._copyDiagnostic());
+    this._$('fullscreen-toggle')?.addEventListener('click', () => (this._fullscreenOpen ? this._closeFullscreen() : this._openFullscreen()));
+    this._$('fullscreen-backdrop')?.addEventListener('click', () => this._closeFullscreen());
+  }
+
+  async _writeClipboard(text) {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
+    const area = document.createElement('textarea');
+    area.value = text; area.setAttribute('readonly', ''); area.style.cssText = 'position:fixed;left:-9999px;top:0';
+    this.shadowRoot.appendChild(area); area.select();
+    const copied = document.execCommand && document.execCommand('copy'); area.remove();
+    if (!copied) throw new Error('Clipboard API unavailable');
+  }
+
+  async _copyDiagnostic() {
+    const button = this._$('diagnostic-copy'); const status = this._$('tool-status');
+    try {
+      await this._writeClipboard(HeatpumpFlowCard._diagnosticReport(this._config, this._hass));
+      if (status) status.textContent = this._i.diagnostic_copied;
+      if (button) { button.classList.add('done'); button.title = this._i.diagnostic_copied; button.setAttribute('aria-label', this._i.diagnostic_copied); }
+    } catch (err) {
+      if (status) status.textContent = this._i.diagnostic_failed;
+      if (button) { button.title = this._i.diagnostic_failed; button.setAttribute('aria-label', this._i.diagnostic_failed); }
+    }
+    clearTimeout(this._diagnosticTimer);
+    this._diagnosticTimer = setTimeout(() => {
+      const b = this._$('diagnostic-copy'); if (!b) return;
+      b.classList.remove('done'); b.title = this._i.diagnostic_copy; b.setAttribute('aria-label', this._i.diagnostic_copy);
+    }, 1800);
+  }
+
+  _openFullscreen() {
+    if (this._fullscreenOpen || this._config.fullscreen === false) return;
+    this._fullscreenOpen = true;
+    this._bodyOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    this._fullscreenKeyHandler = this._fullscreenKeyHandler || ((ev) => this._fullscreenKey(ev));
+    document.addEventListener('keydown', this._fullscreenKeyHandler);
+    this._render(); this._update();
+    this._$('fullscreen-toggle')?.focus({ preventScroll: true });
+  }
+
+  _closeFullscreen(restoreFocus = true, render = true) {
+    if (!this._fullscreenOpen) return;
+    this._fullscreenOpen = false;
+    document.removeEventListener('keydown', this._fullscreenKeyHandler);
+    if (this._bodyOverflow !== undefined) { document.body.style.overflow = this._bodyOverflow; delete this._bodyOverflow; }
+    if (render && this.shadowRoot && this._hass && this._config) { this._render(); this._update(); }
+    if (restoreFocus) this._$('fullscreen-toggle')?.focus({ preventScroll: true });
+  }
+
+  _fullscreenKey(ev) {
+    if (!this._fullscreenOpen) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); this._closeFullscreen(); return; }
+    if (ev.key !== 'Tab') return;
+    const card = this.shadowRoot.querySelector('ha-card');
+    const focusable = [...card.querySelectorAll('button:not([disabled]), select:not([disabled]), input:not([disabled]), [tabindex="0"]')]
+      .filter((el) => !el.hidden && el.getClientRects().length);
+    if (!focusable.length) return;
+    const current = this.shadowRoot.activeElement; const first = focusable[0]; const last = focusable[focusable.length - 1];
+    if (ev.shiftKey && (current === first || !card.contains(current))) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && current === last) { ev.preventDefault(); first.focus(); }
+  }
+
   // Wall display: the quick controls and the details toggle appear on a touch or mouse move and fade out again.
   _wallSeconds() {
     const t = this._config.wall_timeout;
@@ -2189,7 +2379,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const drawer = this._$('drawer-body');
     if (drawer && !drawer.hidden) { this._drawerOpen = false; drawer.hidden = true; this._$('drawer-toggle')?.setAttribute('aria-expanded', 'false'); }
   }
-  disconnectedCallback() { clearTimeout(this._sleepTimer); }
+  disconnectedCallback() { clearTimeout(this._sleepTimer); clearTimeout(this._diagnosticTimer); this._closeFullscreen(false, false); }
 
   // Tiles: the actions of the tile under the pointer.
   _tileEvents(box) {
@@ -2373,7 +2563,7 @@ class HeatpumpFlowCard extends HTMLElement {
     // Some integrations report "heating" while charging DHW (e.g. ViCare compressor phase); the valve decides.
     const shownMode = toDhw && ['heating', 'idle', ''].includes(hp) ? 'dhw' : hp;
     const modeTxt = this._modeLabel(shownMode, rawMode);
-    const sl = (this._statusLabels[this._lang] || {})[status];
+    const sl = (this._statusLabels[this._lang] || this._statusLabels.en || {})[status];
     this._hpStatus(`${modeTxt}${running && sl ? ` · ${sl}` : ''}`);
     const heatTxt = Number.isFinite(heat) ? `${heatEstimated ? '≈' : ''}${this._fmt(heat, 1)} kW` : '';
     this._txt('t-hp-power', running
@@ -2508,8 +2698,33 @@ class HeatpumpFlowCard extends HTMLElement {
 
 HeatpumpFlowCard.styles = `
   :host { display: block; --hfc-muted: var(--secondary-text-color, #888); }
-  ha-card { padding: 12px 12px 8px; overflow: hidden; }
+  ha-card { padding: 12px 12px 8px; overflow: hidden; background: var(--card-background-color, #fff); }
+  .fullscreen-backdrop { position: fixed; inset: 0; z-index: 2147483645; background: rgba(0,0,0,.62); }
+  ha-card.fullscreen { position: fixed; inset: 0; z-index: 2147483646; box-sizing: border-box; width: 100vw; height: 100dvh; margin: 0;
+    border-radius: 0; overflow: auto; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  @media (min-width: 1640px) and (min-height: 800px) { ha-card.fullscreen { inset: 20px; width: min(1600px, calc(100vw - 40px)); height: calc(100dvh - 40px); margin: auto; border-radius: 14px; } }
+  .theme-night { color-scheme: dark; --card-background-color: #111827; --primary-text-color: #e5e7eb; --secondary-text-color: #94a3b8;
+    --secondary-background-color: #1e293b; --divider-color: #475569; --hfc-muted: #94a3b8; --hfc-heat: #c8783d; --hfc-hot: #c75b5b;
+    --hfc-cool: #5795ad; --hfc-cool-strong: #4387a3; --hfc-defrost: #79aabd; --hfc-pv: #c79336; --hfc-battery: #3f9b78;
+    --hfc-grid: #7f8a9a; --hfc-good: #4f9c5a; --hfc-badge: #9263b5; --hfc-brine: #668fc4; --hfc-ground: #8f6a35;
+    --hfc-flow-cold: #c47742; --hfc-flow-hot: #b64c4c; --hfc-return-cold: #6b9fb4; --hfc-return-hot: #486eaa;
+    --hfc-tank-cold: #486eaa; --hfc-tank-cool: #3e91a4; --hfc-tank-warm: #c8783d; --hfc-tank-hot: #c75b5b; --hfc-flow-dash: rgba(255,255,255,.72); }
+  .theme-contrast { color-scheme: light; --card-background-color: #fff; --primary-text-color: #000; --secondary-text-color: #111;
+    --secondary-background-color: #fff; --divider-color: #000; --hfc-muted: #111; --hfc-heat: #a83a00; --hfc-hot: #a40000;
+    --hfc-cool: #006b8f; --hfc-cool-strong: #00506b; --hfc-defrost: #00749a; --hfc-pv: #8a5b00; --hfc-battery: #006b3c;
+    --hfc-grid: #333; --hfc-good: #006b28; --hfc-badge: #5d2483; --hfc-brine: #0057b8; --hfc-ground: #664000;
+    --hfc-flow-cold: #b84f00; --hfc-flow-hot: #a40000; --hfc-return-cold: #00749a; --hfc-return-hot: #003f9e;
+    --hfc-tank-cold: #003f9e; --hfc-tank-cool: #006b8f; --hfc-tank-warm: #b84f00; --hfc-tank-hot: #a40000; --hfc-flow-dash: #fff; }
+  .theme-contrast .pipe { stroke-width: 11; } .theme-contrast .unit, .theme-contrast .tank, .theme-contrast .house,
+  .theme-contrast .src-ring, .theme-contrast .pump { stroke-width: 3; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0 4px 4px; }
+  .head-right { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+  .card-tools { display: inline-flex; align-items: center; gap: 3px; }
+  .icon-button { width: 30px; height: 30px; padding: 5px; border: 1px solid transparent; border-radius: 7px; color: var(--hfc-muted); background: transparent; cursor: pointer; }
+  .icon-button:hover { border-color: var(--divider-color, rgba(127,127,127,.35)); background: var(--secondary-background-color, rgba(127,127,127,.12)); }
+  .icon-button.done { color: ${hfcVar('good')}; }
+  .icon-button svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   .title { font-size: 1.15em; font-weight: 600; color: var(--primary-text-color); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chip { cursor: pointer; font-size: .82em; padding: 3px 10px; border-radius: 999px; background: var(--secondary-background-color, rgba(127,127,127,.15)); color: var(--primary-text-color); white-space: nowrap; }
@@ -2667,7 +2882,7 @@ HeatpumpFlowCard.styles = `
   /* keyboard focus */
   .focus-ring { fill: none; stroke: var(--primary-color, #03a9f4); stroke-width: 3; pointer-events: none; }
   .tap:focus, .tap:focus-visible, #svg:focus { outline: none; }
-  .chip:focus-visible, .stat:focus-visible, .drow:focus-visible, .drawer-toggle:focus-visible, .ctl:focus-visible { outline: 2px solid var(--primary-color, #03a9f4); outline-offset: 2px; }
+  .chip:focus-visible, .stat:focus-visible, .drow:focus-visible, .drawer-toggle:focus-visible, .ctl:focus-visible, .icon-button:focus-visible { outline: 2px solid var(--primary-color, #03a9f4); outline-offset: 2px; }
   /* narrow schematic (phones, narrow columns): larger type, secondary labels hidden */
   .stage { container-type: inline-size; }
   @container (max-width: 640px) { #svg { --k: 1.2; --ku: 1.1; --kp: 1; --k2: 1; --ks: 1.2; --kt: 1.15; } }
@@ -2787,6 +3002,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       if (s.name === 'errors') return L.errors_help;
       if (s.name === 'error_ok_text') return L.error_ok_help;
       if (['energy_total', 'heat_total'].includes(s.name)) return L.total_cop_help;
+      if (s.name === 'language') return L.language_help;
       if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
       if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;
       return '';
@@ -2796,7 +3012,8 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     const data = { ...this._config, entities: shown, controls,
       errors: this._config.errors !== undefined ? this._config.errors : this._presetErrors,
       error_ok_text: (this._config.error_ok !== undefined ? this._config.error_ok : this._presetErrorOk).join(', '), tiles_custom: custom,
-      animations: this._config.animations || 'auto', flow_speed: this._config.flow_speed ?? 1, source_spread: this._config.source_spread !== false };
+      animations: this._config.animations || 'auto', flow_speed: this._config.flow_speed ?? 1, source_spread: this._config.source_spread !== false,
+      theme: this._config.theme || 'auto', fullscreen: this._config.fullscreen !== false };
     if (this._config.controls === undefined) delete data.controls;
     if (custom && tiles.editable) data.tiles = tiles.value;
     this._priceShown = custom;
@@ -2824,6 +3041,8 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       }
     });
     const config = { ...value };
+    // Nested translations are YAML-only; ha-form does not render them and therefore may omit them from value-changed.
+    if (this._config.texts && value.texts === undefined) config.texts = this._config.texts;
     // The entity picker deals in ids; keep YAML-only metadata of controls that stay selected.
     if (Array.isArray(value.controls)) {
       const old = new Map((this._config.controls || []).filter((c) => c && typeof c === 'object' && c.entity).map((c) => [c.entity, c]));
@@ -2834,6 +3053,8 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     }
     delete config.error_ok_text;
     if (!value.animations || value.animations === 'auto') delete config.animations;
+    if (!value.theme || value.theme === 'auto') delete config.theme;
+    if (value.fullscreen !== false) delete config.fullscreen;
     if (value.flow_speed === undefined || value.flow_speed === null || value.flow_speed === '' || +value.flow_speed === 1) delete config.flow_speed;
     if (value.source_spread !== false) delete config.source_spread;
     const errorOk = String(value.error_ok_text || '').split(',').map((state) => state.trim()).filter(Boolean);

@@ -7,7 +7,7 @@
 
 [![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Sturmi77&repository=heatpump-hydraulic-card&category=plugin)
 
-![Heatpump Flow Card: the animated heat pump schematic in a light and a dark theme](docs/social-preview.png)
+![Heat Pump Hydraulic Card overview with the animated schematic and feature callouts](docs/social-preview.png)
 
 An **animated hydraulic schematic** for air-to-water heat pumps in Home Assistant.
 
@@ -22,11 +22,11 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 | `heishamon` | **Panasonic** Aquarea (H, J, K, L generation; monoblock, split, all-in-one) | [HeishaMon](https://github.com/heishamon/HeishaMon) + [heishamon-homeassistant](https://github.com/kamaradclimber/heishamon-homeassistant) (HACS) | untested |
 
 > [!NOTE]
-> The **Viessmann**, **Vaillant**, **EMS-ESP** and **HeishaMon** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open an issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues) with your entity list if something is missing or wrong. The Lambda preset runs on a real installation.
+> The **Viessmann**, **Vaillant**, **EMS-ESP** and **HeishaMon** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open a preset feedback issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and paste the card's diagnostic report after reviewing its entity ids for private names. The Lambda preset runs on a real installation.
 
 ![Animated demo: heating, hot water and defrost, with the Lambda and Vaillant unit drawings](docs/demo.gif)
 
-**[Try the live demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/)**: every preset in heating, hot water, defrost and standby, light and dark, English and German, with the matching card configuration. Runs in the browser with simulated data, no Home Assistant needed.
+**[Try the live demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/)**: every preset in heating, hot water, defrost and standby, the automatic/night/contrast card themes, English, German and an example custom Dutch translation, with the matching card configuration. Runs in the browser with simulated data, no Home Assistant needed.
 
 ## Features
 
@@ -46,6 +46,10 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 - **Timeline** (`timeline: true`): a slim strip under the schematic with what the heat pump did over the last 24 hours: heating, hot water, defrost, blocked, standby, from the history of the operating mode. A tap or the arrow keys show start, end and duration of a period.
 - **Quick controls** (`controls`): switches and booleans as toggle buttons, buttons and scripts as push buttons, selects, water heater and climate modes as dropdowns, numbers as input fields, directly on the card.
 - **Details drawer:** a collapsible section below the statistics with operating hours, total starts, total electricity and heat (and the total COP from them), the **refrigerant circuit** (compressor speed, evaporation, condensation, suction gas, hot gas, liquid line, pressures, expansion valve, superheat, subcooling) and your own values (`details`). Presets fill it where the integration provides the data.
+- **Local diagnostic report:** the document button copies the resolved preset, entity mappings, states, units, errors and controls to the clipboard. Nothing is uploaded automatically.
+- **Full screen:** the expand button opens the same live card in a keyboard-accessible overlay; Escape, the close button or the backdrop returns to the dashboard.
+- **Languages:** English and German are built in. Additional languages and individual labels can be supplied with `texts`; missing labels fall back to English.
+- **Card themes:** follow the Home Assistant theme (`auto`), or select the fixed `night` or `contrast` theme per card.
 - **Layouts and colours:** `layout: compact` for narrow columns, `layout: wide` puts controls, tiles and details beside the schematic, `layout: wall` adds large type and hides the quick controls until you touch the card (wall tablets). Every colour is a CSS variable (`--hfc-*`) that a theme or card-mod can change.
 - **Keyboard and screen readers:** every clickable part is a button you can reach with Tab, move through with the arrow keys and activate with Enter or Space; a focus frame shows where you are, and the parts of the schematic announce their name and value.
 - **Optional blocks:** whatever you don't have (buffer, DHW tank, power sources, house) is simply not drawn.
@@ -262,7 +266,10 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | `hc_name`, `hc2_name`, `hc3_name` | Circuit titles (default "Heating circuit 1/2/3"). |
 | `source_type` | `air` (default), `brine` (ground loop) or `water` (groundwater wells). |
 | `title` | Card title (default: "Heat pump" / "Wärmepumpe"). |
-| `language` | `auto` (default), `en`, `de`. |
+| `language` | `auto` (default), `en`, `de`, or a lowercase language code defined in `texts`. |
+| `texts` | YAML-only nested language map for custom labels/translations. Missing labels fall back to English; see [Custom texts and languages](#custom-texts-and-languages). |
+| `theme` | `auto` (default, follows Home Assistant), `night` or `contrast`. |
+| `fullscreen` | Show the full-screen button (default `true`). Set to `false` to hide it. |
 | `power_threshold` | Counts as running above this electrical power in W (default 100). |
 | `power_sources` | `auto` (default): PV / battery / grid from the Energy dashboard unless `pv`, `battery` or `grid` are set. `manual`: only your own sensors. |
 | `entities` | Entity overrides (see below). `null` removes a preset entity. |
@@ -357,6 +364,10 @@ What the presets provide:
 
 **Animations.** `animations: auto` (default) respects the operating system's reduced-motion preference. Use `animations: always` to animate anyway or `animations: off` for a static schematic. `flow_speed` scales all movement from `0.2` to `3` (`1` is the default); sensor-driven fan, pump and flow differences are preserved. Both options are in the editor.
 
+**Full screen.** The expand button opens the existing card instance in an overlay, so it does not duplicate entity subscriptions, history requests or control state. Close it with Escape, the close button or a click outside the card; keyboard focus stays inside the overlay and returns to the expand button afterwards. Set `fullscreen: false` to remove the button. The overlay follows viewport changes and safe areas on phones and tablets.
+
+**Card theme.** `theme: auto` keeps the dashboard's Home Assistant theme and all `--hfc-*` overrides. `theme: night` dims fixed colours for dark rooms. `theme: contrast` uses stronger black/white surfaces, role colours, thicker pipes and more visible focus outlines. These are fixed per-card choices; automatic time- or entity-based switching is deliberately outside this option.
+
 For ground and groundwater sources, the loop shows `ΔT` while the compressor runs when both `source_in` and `source_out` are available. Set `source_spread: false` to hide it; the source-spread tile remains available independently.
 
 **Actions on elements.** Every element of the schematic shows an entity, and a tap opens its more-info dialog. To change that, give the entity key of the element (see "Entity keys") its own actions. They accept every Home Assistant action, the same as the tiles: `more-info`, `navigate`, `url`, `toggle`, `perform-action`, `assist`, `none`, with `confirmation`. A hold takes 500 ms.
@@ -415,6 +426,31 @@ card_mod:
     }
 ```
 
+### Custom texts and languages
+
+The built-in English and German text can be overridden or extended in YAML. Select the language with `language`; every omitted key falls back to English, so a translation can start small:
+
+```yaml
+type: custom:heatpump-flow-card
+preset: lambda
+language: nl
+texts:
+  nl:
+    title: Warmtepomp
+    modes:
+      heating: Verwarming
+    tiles:
+      cop_heating: COP verwarming
+```
+
+Language codes must be lowercase (`nl`, `pt-br`). Values are treated as plain text and escaped before they are rendered. The stable key tree and placeholder rules are documented in [`docs/TEXTS.md`](docs/TEXTS.md). The visual editor preserves `texts`, but editing the nested map remains YAML-only.
+
+### Diagnostic report
+
+The document button in the card header copies a plain-text diagnostic report to the clipboard. It includes the card and Home Assistant versions, language, resolved preset and prefix, layout/source choices, every known entity mapping with its current state and unit, unmapped keys, error sensors and quick controls. It does not include a registry or attribute dump and never sends data anywhere.
+
+Entity ids can still contain room, person or installation names. Read the report and remove anything private before sharing it in an issue. The report is the preferred input for preset testing and bug reports because it shows both detected and missing mappings without requiring screenshots of Developer Tools.
+
 ### Keyboard and screen readers
 The card works without a mouse or touch screen.
 - **Tab** goes through the header chips, then the schematic, the quick controls, the tiles and the details toggle. The schematic, the tiles and the details are one tab stop each: inside them the **arrow keys** move to the next or previous part, **Home** and **End** jump to the first and last. A frame (in the theme's primary colour) marks the focused part.
@@ -465,15 +501,15 @@ Presets live in `HFC_PRESETS` in `dist/heatpump-hydraulic-card.js`. A preset con
 Pull requests for other brands are very welcome.
 
 ## Feedback
-- **Your heat pump works (or not) with a preset?** Please use the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) – "works" reports help as much as bug reports.
-- **Another brand?** Use the same form with "Request a new brand" and paste your entity list.
+- **Your heat pump works (or not) with a preset?** Please use the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) – "works" reports help as much as bug reports. Copy the diagnostic report from the document button, review its entity ids for private names, then paste it into the form.
+- **Another brand?** Use the same form with "Request a new brand" and paste the reviewed diagnostic report plus any entities the card has not mapped yet.
 - **Something broken?** [Bug report](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=bug_report.yml).
 - **Questions, ideas, showing off your setup?** Join the [Home Assistant Community thread](https://community.home-assistant.io/t/card-heatpump-flow-card-animated-hydraulic-schematic-for-heat-pumps-lambda-viessmann-vaillant-bosch-buderus-panasonic/1029598).
 
 ## Development
 The prioritized bug-first release and feature plan is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-`demo/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, light/dark, English/German) without Home Assistant. It is published as the [live demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/) via GitHub Pages; locally, open it through any static web server. The simulated installations live in `demo/setups.js`.
+`demo/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, automatic/night/contrast themes, English/German and example custom Dutch text) without Home Assistant. It is published as the [live demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/) via GitHub Pages; locally, open it through any static web server. The simulated installations live in `demo/setups.js`.
 
 `test/selftest.html` runs every installation in every scenario, broken entity states, edge-case configs, preset detection (gas boilers must not be detected as heat pumps) and the computed values. CI runs it in headless Chrome on every push; locally:
 ```bash
@@ -481,7 +517,7 @@ google-chrome --headless=new --allow-file-access-from-files --virtual-time-budge
 ```
 
 ## Deutsch (Kurzfassung)
-Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Nur Lambda ist bisher mit einer echten Anlage getestet, alle anderen Voreinstellungen noch nicht – Rückmeldungen gern als Issue. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Die Kacheln unter dem Schema lassen sich aus einem Katalog mit über 40 Kennzahlen zusammenstellen (COP, Strom und Wärme je Betriebsart, Abtauungen, Laufzeit pro Start …), jeweils für heute, gestern, Woche, Monat, Jahr oder gesamt; fehlende Zeiträume kommen aus der Langzeitstatistik von Home Assistant. Eine Kostenkachel rechnet mit festem Preis oder bei dynamischem Tarif stundengenau ab; jede Kachel und jedes Element des Schemas kann eine eigene Tipp-, Halte- oder Doppeltipp-Aktion haben. Heizprogramme (Eco, Nacht, Party, Urlaub) erscheinen als Chip, die Animation folgt der Verdichterleistung, und eine Solarthermie-Anlage (noch ungetestet) wird als Kollektor am Dach mit Kreis zum Warmwasserspeicher gezeichnet. Das Außengerät wird als Zeichnung dargestellt: die anthrazitfarbene Lambda EU-L oder die Vaillant aroTHERM plus in drei Größen (ein oder zwei Lüfter), andere Hersteller behalten den allgemeinen Lüfter. Die Karte lässt sich per Tastatur bedienen: Tab, Pfeiltasten im Schema, Enter oder Leertaste für die Aktion (Umschalt+Enter halten, Alt+Enter doppelt tippen), mit sichtbarem Fokusrahmen und Beschriftungen für Screenreader. Das Layout gibt es kompakt (schmale Spalten), breit (Kacheln neben dem Schema) und als Wanddisplay (große Schrift, Bedienelemente erscheinen erst nach einer Berührung und blenden wieder aus); alle Farben lassen sich über CSS-Variablen (`--hfc-*`) in einem Theme oder mit card-mod ändern. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/).
+Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Nur Lambda ist bisher mit einer echten Anlage getestet, alle anderen Voreinstellungen noch nicht – Rückmeldungen gern über das Preset-Formular mit dem zuvor geprüften Diagnosebericht. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Die Kacheln unter dem Schema lassen sich aus einem Katalog mit über 40 Kennzahlen zusammenstellen (COP, Strom und Wärme je Betriebsart, Abtauungen, Laufzeit pro Start …), jeweils für heute, gestern, Woche, Monat, Jahr oder gesamt; fehlende Zeiträume kommen aus der Langzeitstatistik von Home Assistant. Eine Kostenkachel rechnet mit festem Preis oder bei dynamischem Tarif stundengenau ab; jede Kachel und jedes Element des Schemas kann eine eigene Tipp-, Halte- oder Doppeltipp-Aktion haben. Heizprogramme (Eco, Nacht, Party, Urlaub) erscheinen als Chip, die Animation folgt der Verdichterleistung, und eine Solarthermie-Anlage (noch ungetestet) wird als Kollektor am Dach mit Kreis zum Warmwasserspeicher gezeichnet. Das Außengerät wird als Zeichnung dargestellt: die anthrazitfarbene Lambda EU-L oder die Vaillant aroTHERM plus in drei Größen (ein oder zwei Lüfter), andere Hersteller behalten den allgemeinen Lüfter. Die Karte lässt sich per Tastatur bedienen: Tab, Pfeiltasten im Schema, Enter oder Leertaste für die Aktion (Umschalt+Enter halten, Alt+Enter doppelt tippen), mit sichtbarem Fokusrahmen und Beschriftungen für Screenreader. Das Layout gibt es kompakt (schmale Spalten), breit (Kacheln neben dem Schema), als Wanddisplay und im Vollbild; die festen Karten-Themes `night` und `contrast` ergänzen das automatische Dashboard-Theme. Eigene Texte oder Sprachen werden über `texts` ergänzt, fehlende Beschriftungen fallen auf Englisch zurück. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/).
 
 ## License
 MIT © 2026 Sturmi77
