@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added an Open3E preset for Viessmann Vitocal heat pumps, using the integration's translation keys for device-independent entity discovery.
 - Added an optional environmental-energy total counter with details and calendar-period tiles. When delivered heat is unavailable, total COP can be derived as `(environmental energy + electricity) / electricity`; all counters must cover the same time range (#26).
 - Refreshed the README, development plan and tester guidance after the 0.10.0 release; completed release issues are now tracked under the 0.10.0 milestone.
 
