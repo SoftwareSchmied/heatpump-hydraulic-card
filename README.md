@@ -52,11 +52,11 @@ The completed release history and the prioritized post-0.10.0 backlog are mainta
 - **Heating program:** a chip for eco, night / setback, party and holiday, from the `program` entity or, without one, from the heating circuit mode (e.g. Lambda `ECO`).
 - **Flow rates:** shown on the heating-side loop, at the circuit pump (`hc_volume`) and at the source (`source_volume`). Units l/h, l/min and m³/h are converted automatically.
 - **Estimated heat output:** without a heat output sensor, the card calculates it from flow rate × spread (≈ marker) and derives the COP from it.
-- **Statistics row:** COP heating/DHW today, energy today with PV share, compressor starts, spread, flow rate, plus your own tiles. With `tiles` you pick the tiles, their order and the period (today, yesterday, week, month, year, total) from a **catalog of more than 40 tiles** that the preset fills in: COP per mode and period, electricity and heat per mode, defrost and standby energy, cycles, runtime per start and more. Integrations that only report totals get today, month and so on from Home Assistant's long-term statistics.
+- **Statistics row:** COP heating/DHW today, energy today with PV share, compressor starts, spread, flow rate, plus your own tiles. With `tiles` you pick the tiles, their order and the period (today, yesterday, week, month, year, total) from a **catalog of more than 40 tiles** that the preset fills in: COP per mode and period, electricity, environmental energy and heat, defrost and standby energy, cycles, runtime per start and more. Integrations that only report totals get today, month and so on from Home Assistant's long-term statistics.
 - **Status chips:** mode, freely defined badges (e.g. "Boost"), error chip when any error code is ≠ 0.
 - **Timeline** (`timeline: true`): a slim strip under the schematic with what the heat pump did over the last 24 hours: heating, hot water, defrost, blocked, standby, from the history of the operating mode. A tap or the arrow keys show start, end and duration of a period.
 - **Quick controls** (`controls`): switches and booleans as toggle buttons, buttons and scripts as push buttons, selects, water heater and climate modes as dropdowns, numbers as input fields, directly on the card.
-- **Details drawer:** a collapsible section below the statistics with operating hours, total starts, total electricity and heat (and the total COP from them), the **refrigerant circuit** (compressor speed, evaporation, condensation, suction gas, hot gas, liquid line, pressures, expansion valve, superheat, subcooling) and your own values (`details`). Presets fill it where the integration provides the data.
+- **Details drawer:** a collapsible section below the statistics with operating hours, total starts, total electricity, environmental energy and heat, the total COP, the **refrigerant circuit** (compressor speed, evaporation, condensation, suction gas, hot gas, liquid line, pressures, expansion valve, superheat, subcooling) and your own values (`details`). Presets fill it where the integration provides the data. Without a delivered-heat counter, total COP can use environmental energy plus electricity.
 - **Local diagnostic report:** the document button copies the resolved preset, entity mappings, states, units, errors and controls to the clipboard. Nothing is uploaded automatically.
 - **Full screen:** the expand button opens the same live card in a keyboard-accessible overlay; Escape, the close button or the backdrop returns to the dashboard.
 - **Languages:** English and German are built in. Additional languages and individual labels can be supplied with `texts`; missing labels fall back to English.
@@ -319,7 +319,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 - **Heaters** (`heater`, `dhw_heater`, `buffer_heater`): binary or on/off, a power value (on above 0) or a stage number (1-3)
 - **Power sources (W):** `pv`, `battery`, `grid` – the heat pump's power from each source. Optional: without them the card uses the Energy dashboard.
 - **Statistics:** `cop_heating_today`, `cop_dhw_today`, `energy_today`, `pv_share_today`, `starts_today`
-- **Details, operation:** `hours`, `starts_total`, `aux_hours`, `energy_total`, `heat_total`
+- **Details, operation:** `hours`, `starts_total`, `aux_hours`, `energy_total`, `env_energy` (heat taken from air, ground or water), `heat_total`
 - **Details, refrigerant circuit:** `compressor_speed`, `evap_temp`, `cond_temp`, `suction_temp`, `hot_gas`, `liquid_temp`, `low_pressure`, `high_pressure`, `eev`, `superheat`, `subcooling`
 
 ### Stat tiles
@@ -332,6 +332,7 @@ tiles:
   - cop_heating:month
   - key: energy
     period: today
+  - env_energy:month          # environmental energy from a total counter's long-term statistics
   - starts
   - defrosts:yesterday
   - cost:month                # electricity × price, currency from the HA settings
@@ -354,12 +355,13 @@ Periods: `now`, `today`, `yesterday`, `week`, `month`, `year`, `total`. A tile i
 1. the preset's own entity for that period (e.g. Lambda `hp1_heating_cop_monthly`)
 2. for the default tiles' entities (`cop_heating_today` …): "today"
 3. the change over the period from Home Assistant's **long-term statistics** of a total counter (needs `state_class: total_increasing`, true for most energy counters). This gives EMS-ESP and others "today", "this month" and so on, although they only report totals.
-4. computed from two other tiles, marked **≈**: COP = heat ÷ electricity of the same period, runtime per start = hours ÷ starts.
+4. computed from other tiles, marked **≈**: COP = heat ÷ electricity, or without heat = (environmental energy + electricity) ÷ electricity; runtime per start = hours ÷ starts.
 
 | Group | Tile keys |
 |---|---|
 | Efficiency | `cop_live`, `cop_heating`, `cop_dhw`, `cop_cooling`, `cop_total`, `spf` (year) |
 | Electricity | `energy`, `energy_heating`, `energy_dhw`, `energy_cooling`, `energy_defrost`, `energy_standby`, `energy_aux` (heater) |
+| Environmental energy | `env_energy` |
 | Heat | `heat`, `heat_heating`, `heat_dhw`, `heat_cooling`, `heat_defrost` |
 | Starts and runtime | `starts`, `cycles_heating`, `cycles_dhw`, `cycles_cooling`, `defrosts`, `hours`, `hours_per_start`, `load_classes`, `aux_hours`, `aux_starts` |
 | Live | `spread`, `volume`, `heat_estimated`, `power`, `heat_live`, `compressor_speed`, `source_spread`, `outdoor`, `dhw_top`, `room`, `brine_pressure`, `hc_pressure`, `pv_share` |
@@ -486,8 +488,9 @@ The card shows what your integration provides and does not invent values. Where 
 | Heating circuit active | Circuit pump, else circuit mode, else "heat pump is heating". |
 | PV / battery / grid flows | Your own `pv` / `battery` / `grid` sensors if set. Otherwise **estimated** from the Energy dashboard and marked with **≈**: the heat pump's power is split by the house's current supply mix (PV used in the house, battery discharge, grid import); PV first covers battery charging and export. Needs the power sensors of the Energy dashboard and the heat pump's `power`. A flow is animated above 10 W. |
 | Superheat, subcooling | The integration's value if there is one. Otherwise superheat = suction gas − evaporation and subcooling = condensation − liquid line. |
-| COP total | Total heat ÷ total electricity (Wh, kWh and MWh are converted), marked with **≈**. Both counters must cover the same time range. If one started later, create a Home Assistant helper that counts both from a shared starting point. A counter for environmental energy (heat taken from air/ground) is not delivered heat; delivered heat is environmental energy plus electricity, so use a template sensor before assigning `heat_total`. The card deliberately does not guess offsets between unrelated counters. |
-| Tiles for a period | The integration's own entity for the period, otherwise the change of a total counter over the calendar period from the long-term statistics (refreshed every 5 minutes). A COP for a period without an own entity is heat ÷ electricity of that period, marked with **≈**. |
+| Environmental energy | The `env_energy` counter is the heat taken from air, ground or water, not the delivered heat. Wh, kWh and MWh are converted. Calendar-period tiles use its long-term-statistics change. |
+| COP total | Total heat ÷ total electricity, marked with **≈**. If `heat_total` is missing but `env_energy` exists, delivered heat is taken as environmental energy + electricity. All counters must cover the same time range. If one started later, create Home Assistant helpers that count them from a shared starting point; the card does not guess offsets. |
+| Tiles for a period | The integration's own entity for the period, otherwise the change of a total counter over the calendar period from the long-term statistics (refreshed every 5 minutes). A COP for a period without an own entity is heat ÷ electricity, or `(environmental energy + electricity) ÷ electricity` when delivered heat is unavailable, and is marked with **≈**. |
 | Cost | Electricity × price. With a dynamic tariff: every hour at its mean price from the long-term statistics, the current hour at the current price; year and total from daily or monthly values (**≈**). |
 | Details drawer | Entities that are unknown or unavailable are left out, so values a model does not report do not show up. |
 | Heater rods | On for a binary on / "On", for power above 0, or for a stage number above 0; stage 2 or higher is drawn red. |

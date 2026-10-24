@@ -164,6 +164,8 @@ const brineStates = (s) => ({
   'sensor.boiler_hpbrinein': [s === 'idle' ? '9.8' : '8.4', '°C'], 'sensor.boiler_hpbrineout': [s === 'idle' ? '9.6' : '5.1', '°C'],
   'sensor.boiler_brine_pressure': [{ heat: '145', dhw: '118', defrost: '82', idle: '54' }[s], 'kPa'],
   'sensor.boiler_heating_pressure': [{ heat: '1.8', dhw: '1.6', defrost: '0.9', idle: '0.6' }[s], 'bar'],
+  'sensor.boiler_nrgconstotal': { state: '2600', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.boiler_environmental_energy_total': { state: '8200', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
   'sensor.boiler_outdoortemp': ['-6.5', '°C'], 'sensor.boiler_dhw_curtemp': ['49.5', '°C'], 'sensor.boiler_dhw_seltemp': ['55', '°C'],
   'binary_sensor.boiler_auxheaterstatus': s === 'defrost' ? 'on' : 'off',
   'binary_sensor.dhw_heater_rod': s === 'dhw' ? 'on' : 'off',
@@ -237,16 +239,21 @@ const setups = [
     config: { preset: 'heishamon', title: 'Aquarea', hc_type: 'radiator' },
   },
   {
-    name: 'Ground source heat pump', sub: 'EMS-ESP, brine loop, two heating circuits, heater rod and backup heater',
+    name: 'Ground source heat pump', sub: 'EMS-ESP, brine loop, environmental energy, two heating circuits and heaters',
     states: brineStates, registry: regOf(brineStates, 'mqtt'),
+    statistics: {
+      'sensor.boiler_nrgconstotal': { today: 6.1, month: 180, year: 1720 },
+      'sensor.boiler_environmental_energy_total': { today: 24.3, month: 690, year: 6520 },
+    },
     scenarioLabels: { defrost: 'Backup heater' },
     config: {
       preset: 'emsesp', title: 'Logatherm WLW', source_type: 'brine',
       hc_count: 2, hc_name: 'Ground floor', hc2_type: 'column', hc2_name: 'Upstairs',
       brine_pressure_min: 0.9, brine_pressure_crit: 0.6, brine_pressure_max: 2.5,
       hc_pressure_min: 1.0, hc_pressure_crit: 0.7, hc_pressure_max: 2.8,
-      entities: { dhw_heater: 'binary_sensor.dhw_heater_rod', brine_pressure: 'sensor.boiler_brine_pressure', hc_pressure: 'sensor.boiler_heating_pressure' },
-      tiles: ['spread', 'volume', 'brine_pressure', 'hc_pressure'],
+      entities: { dhw_heater: 'binary_sensor.dhw_heater_rod', brine_pressure: 'sensor.boiler_brine_pressure', hc_pressure: 'sensor.boiler_heating_pressure',
+        env_energy: 'sensor.boiler_environmental_energy_total' },
+      tiles: ['energy', 'env_energy', 'cop_total', 'env_energy:month', 'spread', 'brine_pressure', 'hc_pressure'],
     },
   },
   {
