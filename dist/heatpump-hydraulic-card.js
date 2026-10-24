@@ -7,7 +7,7 @@
  *
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
-const HFC_VERSION = '0.9.3';
+const HFC_VERSION = '0.9.5';
 
 /* ------------------------------------------------------------------ */
 /* Presets                                                             */
@@ -16,6 +16,7 @@ const HFC_VERSION = '0.9.3';
 //   detect(ctx)                → prefix (string, may be '') or undefined when the integration is not present
 //   entities(prefix, idx, ctx) → { key: entity_id | [candidates…] }  (first existing candidate wins)
 //   errors(prefix, idx, ctx)   → error sensors (numeric ≠ 0 or binary "on" shows the error chip)
+//   error_ok                   → text states that mean "no error"; any other known text shows the chip
 //   tiles(prefix, idx, ctx)    → { tile: { period: entity_id | [candidates…] } } for the stat tile catalog (HFC_TILES);
 //                                a "total" counter with long-term statistics also gives today, yesterday, week, month and year
 //   *_mode_map                 → raw state → normalized mode
@@ -376,6 +377,7 @@ const HFC_I18N = {
     not_found: 'No entities of this preset found. Check the integration and the prefix, or open the card editor.',
     title: 'Heat pump', heat_pump: 'Heat pump', dhw: 'Hot water', buffer: 'Buffer', heating_circuit: 'Heating circuit',
     house: 'Rooms', running: 'running', compressor_off: 'Compressor off', source_in: 'Air inlet', outdoor: 'Outdoor',
+    energy_missing: 'Energy dashboard: no power sensor for {sources}; energy counters alone cannot show live flow.',
     brine_in: 'Brine in', brine_out: 'Brine out', well_in: 'Well in', well_out: 'Well out',
     details: 'Details', sec_operation: 'Operation', sec_refrigerant: 'Refrigerant circuit', sec_more: 'More',
     det: {
@@ -411,6 +413,7 @@ const HFC_I18N = {
     not_found: 'Keine Entitäten dieser Voreinstellung gefunden. Integration und Präfix prüfen oder den Karteneditor öffnen.',
     title: 'Wärmepumpe', heat_pump: 'Wärmepumpe', dhw: 'Warmwasser', buffer: 'Puffer', heating_circuit: 'Heizkreis',
     house: 'Wohnräume', running: 'läuft', compressor_off: 'Verdichter aus', source_in: 'Luft-Eintritt', outdoor: 'Außen',
+    energy_missing: 'Energie-Dashboard: kein Leistungssensor für {sources}; Energiezähler allein zeigen keinen aktuellen Fluss.',
     brine_in: 'Sole ein', brine_out: 'Sole aus', well_in: 'Brunnen ein', well_out: 'Brunnen aus',
     details: 'Details', sec_operation: 'Betrieb', sec_refrigerant: 'Kältekreis', sec_more: 'Weitere',
     det: {
@@ -455,6 +458,8 @@ const HFC_EDITOR = {
     unit_size: 'Vaillant size', size_small: '3.5 / 5.5 kW (1 fan, low)', size_medium: '7.5 kW (1 fan)', size_large: '10.5 / 12.5 kW (2 fans)',
     timeline: 'Timeline of the operating mode', timeline_hours: 'Timeline length (hours)',
     layout: 'Layout', layout_default: 'Default', layout_compact: 'Compact (narrow columns)', layout_wide: 'Wide (tiles beside the schematic)', layout_wall: 'Wall display (large, controls fade out)',
+    animations: 'Animations', animations_auto: 'Automatic (respect reduced motion)', animations_always: 'Always', animations_off: 'Off',
+    flow_speed: 'Animation speed', source_spread: 'Show source spread',
     wall_timeout: 'Hide controls after (seconds, 0 = never)',
     hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit',
@@ -471,10 +476,15 @@ const HFC_EDITOR = {
     warn_title: 'Missing in the card',
     warn_running: 'No operating mode, compressor, status or power: the card cannot tell whether the heat pump runs.',
     warn_power: 'No electrical power: no live COP, and no PV / battery / grid split from the Energy dashboard.',
+    warn_energy_sources: 'Energy dashboard: no power sensor for {sources}; energy counters alone cannot show live flow.',
     warn_temps: 'No flow or return temperature: no spread and no estimated heat output.',
     warn_heat: 'No heat output and no flow rate: no live COP.',
     preset_help: 'Found entities are filled in below. Pick another entity to override one, clear a field to hide it.',
     from_energy: 'Empty: taken from the Energy dashboard',
+    errors: 'Error entities', error_ok_text: 'Text states that mean no error',
+    errors_help: 'Active for a number other than 0 or state on. Text needs the no-error states below; unknown, unavailable, off and empty are ignored.',
+    error_ok_help: 'Comma-separated, case-insensitive; for example: No Error, OK. Any other known text then shows the error chip.',
+    total_cop_help: 'Total heat and electricity must cover the same time range. Environmental energy alone is not heat output.',
     detected: 'Detected', entities_found: 'entities', not_detected: 'Not found in this Home Assistant - check the integration, the prefix or choose another preset',
     program: 'Heating program (eco, night, party, holiday)', solar_collector: 'Solar collector temperature', solar_pump: 'Solar pump running (binary)',
     source_out: 'Source outlet temperature', heater: 'Backup / inline heater active',
@@ -504,6 +514,8 @@ const HFC_EDITOR = {
     unit_size: 'Vaillant-Größe', size_small: '3,5 / 5,5 kW (1 Lüfter, niedrig)', size_medium: '7,5 kW (1 Lüfter)', size_large: '10,5 / 12,5 kW (2 Lüfter)',
     timeline: 'Zeitleiste der Betriebsart', timeline_hours: 'Länge der Zeitleiste (Stunden)',
     layout: 'Layout', layout_default: 'Standard', layout_compact: 'Kompakt (schmale Spalten)', layout_wide: 'Breit (Kacheln neben dem Schema)', layout_wall: 'Wanddisplay (groß, Bedienelemente blenden aus)',
+    animations: 'Animationen', animations_auto: 'Automatisch (reduzierte Bewegung beachten)', animations_always: 'Immer', animations_off: 'Aus',
+    flow_speed: 'Animationsgeschwindigkeit', source_spread: 'Quellenspreizung anzeigen',
     wall_timeout: 'Bedienelemente ausblenden nach (Sekunden, 0 = nie)',
     hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis',
@@ -520,10 +532,15 @@ const HFC_EDITOR = {
     warn_title: 'Fehlt in der Karte',
     warn_running: 'Keine Betriebsart, kein Verdichter, kein Status und keine Leistung: Die Karte kann nicht erkennen, ob die Wärmepumpe läuft.',
     warn_power: 'Keine Leistungsaufnahme: kein Live-COP und keine Aufteilung PV / Akku / Netz aus dem Energie-Dashboard.',
+    warn_energy_sources: 'Energie-Dashboard: kein Leistungssensor für {sources}; Energiezähler allein zeigen keinen aktuellen Fluss.',
     warn_temps: 'Kein Vor- oder Rücklauf: keine Spreizung und keine geschätzte Wärmeleistung.',
     warn_heat: 'Keine Wärmeleistung und kein Volumenstrom: kein Live-COP.',
     preset_help: 'Gefundene Entitäten sind unten eingetragen. Andere Entität wählen zum Überschreiben, Feld leeren zum Ausblenden.',
     from_energy: 'Leer: aus dem Energie-Dashboard',
+    errors: 'Fehler-Entitäten', error_ok_text: 'Textzustände ohne Fehler',
+    errors_help: 'Aktiv bei einer Zahl ungleich 0 oder Zustand on. Text braucht die fehlerfreien Zustände unten; unknown, unavailable, off und leer werden ignoriert.',
+    error_ok_help: 'Kommagetrennt, ohne Beachtung der Groß-/Kleinschreibung; zum Beispiel: No Error, OK. Jeder andere bekannte Text zeigt dann den Fehler-Chip.',
+    total_cop_help: 'Gesamtwärme und Gesamtstrom müssen denselben Zeitraum abdecken. Umweltenergie allein ist keine abgegebene Wärme.',
     detected: 'Erkannt', entities_found: 'Entitäten', not_detected: 'In diesem Home Assistant nicht gefunden - Integration und Präfix prüfen oder andere Voreinstellung wählen',
     program: 'Heizprogramm (Eco, Nacht, Party, Urlaub)', solar_collector: 'Kollektortemperatur Solarthermie', solar_pump: 'Solarpumpe läuft (binär)',
     source_out: 'Quelle Austritt', heater: 'Heizstab / Zusatzheizer aktiv',
@@ -570,6 +587,7 @@ const HFC_STAT_PERIODS = { today: ['day', 0], yesterday: ['day', -1], week: ['we
 // Home Assistant actions a tile can carry (more-info, navigate, url, toggle, perform-action …).
 const HFC_ACTIONS = ['tap_action', 'hold_action', 'double_tap_action'];
 const HFC_LAYOUTS = ['default', 'compact', 'wide', 'wall'];
+const HFC_ANIMATIONS = ['auto', 'always', 'off'];
 // Drawing of the outdoor unit: `auto` takes the style of the preset; `unit_size` picks the Vaillant aroTHERM plus class.
 const HFC_UNIT_STYLES = ['auto', 'generic', 'lambda', 'vaillant'];
 const HFC_UNIT_SIZES = ['small', 'medium', 'large'];
@@ -718,7 +736,12 @@ class HeatpumpFlowCard extends HTMLElement {
               { name: 'device', selector: { device: {} } },
               { name: 'source_type', selector: { select: { mode: 'dropdown', options: ['air', 'brine', 'water'].map((v) => ({ value: v, label: L[`src_${v}`] })) } } },
               { name: 'power_sources', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: L.ps_auto }, { value: 'manual', label: L.ps_manual }] } } },
+              { name: 'errors', selector: { entity: { multiple: true } } },
+              { name: 'error_ok_text', selector: { text: {} } },
               { name: 'power_threshold', selector: { number: { min: 0, max: 2000, step: 10, mode: 'box', unit_of_measurement: 'W' } } },
+              { name: 'animations', selector: { select: { mode: 'dropdown', options: HFC_ANIMATIONS.map((v) => ({ value: v, label: L[`animations_${v}`] })) } } },
+              { name: 'flow_speed', selector: { number: { min: 0.2, max: 3, step: 0.1, mode: 'slider' } } },
+              { name: 'source_spread', selector: { boolean: {} } },
               { name: 'language', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' }] } } },
               ...['hc_name', 'hc2_name', 'hc3_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
               { name: 'unit_style', selector: { select: { mode: 'dropdown', options: HFC_UNIT_STYLES.map((v) => ({ value: v, label: L[`unit_${v}`] })) } } },
@@ -760,6 +783,15 @@ class HeatpumpFlowCard extends HTMLElement {
     if (config.layout !== undefined && config.layout !== null && !HFC_LAYOUTS.includes(config.layout)) {
       throw new Error(`layout must be one of: ${HFC_LAYOUTS.join(', ')}`);
     }
+    if (config.animations !== undefined && config.animations !== null && !HFC_ANIMATIONS.includes(config.animations)) {
+      throw new Error(`animations must be one of: ${HFC_ANIMATIONS.join(', ')}`);
+    }
+    if (config.flow_speed !== undefined && config.flow_speed !== null && config.flow_speed !== '' && !(+config.flow_speed >= 0.2 && +config.flow_speed <= 3)) {
+      throw new Error('flow_speed must be a number from 0.2 to 3');
+    }
+    if (config.source_spread !== undefined && config.source_spread !== null && typeof config.source_spread !== 'boolean') {
+      throw new Error('source_spread must be true or false');
+    }
     if (config.wall_timeout !== undefined && config.wall_timeout !== null && !(+config.wall_timeout >= 0)) {
       throw new Error('wall_timeout must be a number of seconds, 0 or more');
     }
@@ -773,6 +805,12 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     if (config.program_map !== undefined && config.program_map !== null && (typeof config.program_map !== 'object' || Array.isArray(config.program_map))) {
       throw new Error(`program_map must map raw states to ${HFC_PROGRAMS.join(', ')} or none`);
+    }
+    if (config.errors !== undefined && (!Array.isArray(config.errors) || config.errors.some((id) => typeof id !== 'string'))) {
+      throw new Error('errors must be a list of entity ids');
+    }
+    if (config.error_ok !== undefined && (!Array.isArray(config.error_ok) || config.error_ok.some((state) => typeof state !== 'string'))) {
+      throw new Error('error_ok must be a list of text states');
     }
     if (config.compressor_speed_max !== undefined && config.compressor_speed_max !== null && !(+config.compressor_speed_max > 0)) {
       throw new Error('compressor_speed_max must be a number above 0 (the Hz or rpm that count as full speed)');
@@ -799,8 +837,12 @@ class HeatpumpFlowCard extends HTMLElement {
     this._runningStates = config.running_states || preset?.running_states || [];
     this._statusLabels = preset?.status_labels || {};
     this._statLabels = preset?.stat_labels || {};
+    this._errorOk = (config.error_ok || preset?.error_ok || []).map((state) => state.trim().toLowerCase()).filter(Boolean);
     this._badges = config.badges || [];
     this._layout = HFC_LAYOUTS.includes(config.layout) ? config.layout : 'default';
+    this._animations = HFC_ANIMATIONS.includes(config.animations) ? config.animations : 'auto';
+    this._flowSpeed = +config.flow_speed >= 0.2 && +config.flow_speed <= 3 ? +config.flow_speed : 1;
+    this._sourceSpread = config.source_spread !== false;
     this._hcType = config.hc_type || preset?.hc_type || 'underfloor';
     this._hcCount = Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3);
     this._hcTypes = [this._hcType, config.hc2_type || 'underfloor', config.hc3_type || 'underfloor'];
@@ -846,7 +888,8 @@ class HeatpumpFlowCard extends HTMLElement {
       if (v === null || v === 'none') delete e[k];
       else if (v) e[k] = v;
     });
-    const errors = config.errors || (preset && preset.errors ? preset.errors(prefix, idx, ctx) : []);
+    const presetErrors = preset && preset.errors ? preset.errors(prefix, idx, ctx) : [];
+    const errors = config.errors !== undefined ? config.errors : presetErrors;
     // Stat tile entities: { tile: { period: entity } }, only entities that exist.
     const tiles = {};
     if (preset && preset.tiles) {
@@ -855,7 +898,7 @@ class HeatpumpFlowCard extends HTMLElement {
         if (hit) (tiles[k] = tiles[k] || {})[period] = hit;
       }));
     }
-    return { preset, prefix, ready, idx, fromPreset, entities: e, errors, tiles };
+    return { preset, prefix, ready, idx, fromPreset, entities: e, presetErrors, errors, tiles };
   }
 
   _build() {
@@ -872,6 +915,25 @@ class HeatpumpFlowCard extends HTMLElement {
     this._lastTry = Date.now();
   }
 
+  static _energyInfo(prefs) {
+    const sources = prefs?.energy_sources || [];
+    const rate = (src) => {
+      const pc = src.power_config;
+      if (pc && (pc.stat_rate_from || pc.stat_rate_to)) return { from: pc.stat_rate_from, to: pc.stat_rate_to };
+      if (pc && pc.stat_rate) return { id: pc.stat_rate, inv: !!pc.stat_rate_inverted };
+      return src.stat_rate ? { id: src.stat_rate } : null;
+    };
+    const configured = {}; const missing = [];
+    const of = (type) => {
+      const found = sources.filter((s) => s.type === type);
+      const rates = found.map(rate).filter(Boolean);
+      configured[type] = found.length > 0;
+      if (found.length > rates.length) missing.push(type);
+      return rates;
+    };
+    return { energy: { solar: of('solar'), battery: of('battery'), grid: of('grid') }, configured, missing };
+  }
+
   // PV / battery / grid power from the Energy dashboard (its "stat_rate" power sensors), loaded once per page.
   // Conventions of the Energy dashboard: battery positive = discharging, grid positive = import.
   _loadEnergy() {
@@ -879,17 +941,12 @@ class HeatpumpFlowCard extends HTMLElement {
     this._energyReq = true;
     HeatpumpFlowCard._energyPrefs = HeatpumpFlowCard._energyPrefs || this._hass.callWS({ type: 'energy/get_prefs' });
     HeatpumpFlowCard._energyPrefs.then((prefs) => {
-      const rate = (src) => {
-        const pc = src.power_config;
-        if (pc && (pc.stat_rate_from || pc.stat_rate_to)) return { from: pc.stat_rate_from, to: pc.stat_rate_to };
-        if (pc && pc.stat_rate) return { id: pc.stat_rate, inv: !!pc.stat_rate_inverted };
-        return src.stat_rate ? { id: src.stat_rate } : null;
-      };
-      const of = (type) => (prefs?.energy_sources || []).filter((s) => s.type === type).map(rate).filter(Boolean);
-      const energy = { solar: of('solar'), battery: of('battery'), grid: of('grid') };
+      const { energy, configured, missing } = HeatpumpFlowCard._energyInfo(prefs);
       this._energy = energy.solar.length || energy.battery.length || energy.grid.length ? energy : null;
-      if (this._energy && this._hass) { this._rendered = false; this.hass = this._hass; }
-    }).catch(() => { this._energy = null; });
+      this._energyConfigured = configured;
+      this._energyMissing = missing;
+      if (this._hass) { this._rendered = false; this.hass = this._hass; }
+    }).catch(() => { this._energy = null; this._energyConfigured = {}; this._energyMissing = []; });
   }
 
   // Manual pv/battery/grid entities win; otherwise the Energy dashboard is used (needs the heat pump power).
@@ -913,15 +970,28 @@ class HeatpumpFlowCard extends HTMLElement {
   // PV first covers battery charging and export. Returns W per source, or null while a sensor is unavailable.
   _energySplit() {
     const sum = (list) => list.reduce((a, r) => a + this._rateW(r), 0);
-    const pv = sum(this._energy.solar); const bat = sum(this._energy.battery); const grid = sum(this._energy.grid);
-    if (![pv, bat, grid].every(Number.isFinite)) return null;
+    const values = {}; const unknown = [];
+    [['pv', 'solar'], ['battery', 'battery'], ['grid', 'grid']].forEach(([key, type]) => {
+      const value = sum(this._energy[type] || []);
+      const incomplete = this._energyMissing?.includes(type);
+      if (incomplete || (this._energyConfigured?.[type] && !Number.isFinite(value))) unknown.push(key);
+      values[key] = Number.isFinite(value) && !incomplete ? value : 0;
+    });
+    if (unknown.length > 1) return null;
+    const pv = values.pv; const bat = values.battery; const grid = values.grid;
     const charge = Math.max(-bat, 0); const discharge = Math.max(bat, 0);
     const imp = Math.max(grid, 0); const exp = Math.max(-grid, 0);
     const pvHome = Math.max(Math.max(pv, 0) - charge - exp, 0);
-    const total = pvHome + discharge + imp;
     const hp = Math.max(this._w('power'), 0);
+    if (!Number.isFinite(hp) || hp <= 50) return { pv: 0, battery: 0, grid: 0 };
+    const shares = { pv: pvHome, battery: discharge, grid: imp };
+    if (unknown.length === 1) {
+      const known = Object.entries(shares).filter(([key]) => key !== unknown[0]).reduce((total, [, value]) => total + value, 0);
+      shares[unknown[0]] = Math.max(hp - known, 0);
+    }
+    const total = shares.pv + shares.battery + shares.grid;
     if (!(total > 50) || !Number.isFinite(hp)) return { pv: 0, battery: 0, grid: 0 };
-    return { pv: hp * pvHome / total, battery: hp * discharge / total, grid: hp * imp / total };
+    return { pv: hp * shares.pv / total, battery: hp * shares.battery / total, grid: hp * shares.grid / total };
   }
 
   getCardSize() { return 9 + (this._hcCount || 1) * 3 - 3; }
@@ -1077,12 +1147,14 @@ class HeatpumpFlowCard extends HTMLElement {
   // Which optional blocks exist – the SVG is rebuilt only when this changes.
   _layoutSignature() {
     if (!this._hass || !this._e) return '';
+    const buffer = this._has('buffer_top') || this._has('buffer_mode');
     const parts = {
       power: this._powerMode(),
       sources: this._powerMode() === 'energy' ? [this._energy.solar.length, this._energy.battery.length, this._energy.grid.length].join() : '',
       dhw: this._has('dhw_top') || this._has('dhw_mode'),
-      buffer: this._has('buffer_top') || this._has('buffer_mode'),
-      hc: this._has('hc_flow') || this._has('hc_mode') || this._has('hc_pump'),
+      buffer,
+      // A direct system still has a circuit: use the heat-pump flow/return when no circuit-specific sensors exist.
+      hc: this._has('hc_flow') || this._has('hc_mode') || this._has('hc_pump') || (!buffer && (this._has('flow') || this._has('return'))),
       house: this._has('room') || this._has('room_target'),
       circ: this._has('circulation'),
       hcType: this._hcType,
@@ -1129,6 +1201,8 @@ class HeatpumpFlowCard extends HTMLElement {
     const e = this._e;
     const i = this._i;
     const T = this._esc(this._config.title ?? i.title);
+    const energyHint = this._config.power_sources !== 'manual' && this._energyMissing?.length
+      ? i.energy_missing.replace('{sources}', this._energyMissing.map((type) => ({ solar: i.pv, battery: i.battery, grid: i.grid }[type])).join(', ')) : '';
     const de = (k) => (e[k] ? `data-entity="${this._esc(e[k])}"` : '');
     const pipePair = (id, d, show = true) => (show
       ? `<path class="pipe" id="p-${id}" d="${d}"/><path class="flow" id="f-${id}" d="${d}"/>` : '');
@@ -1140,7 +1214,7 @@ class HeatpumpFlowCard extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>${HeatpumpFlowCard.styles}</style>
-      <ha-card class="layout-${this._layout}">
+      <ha-card class="layout-${this._layout} motion-${this._animations}">
         <div class="head">
           ${T ? `<div class="title">${T}</div>` : '<div></div>'}
           <div class="chips">
@@ -1151,6 +1225,7 @@ class HeatpumpFlowCard extends HTMLElement {
           </div>
         </div>
         ${this._needsBuild && this._preset ? `<div class="hint">${this._esc(i.not_found)}</div>` : ''}
+        ${energyHint ? `<div class="hint">${this._esc(energyHint)}</div>` : ''}
         <div class="body">
         <div class="stage">
         <svg viewBox="0 0 1000 ${H}" id="svg" role="group" tabindex="-1" aria-label="${T}">
@@ -1707,7 +1782,8 @@ class HeatpumpFlowCard extends HTMLElement {
     const s = n === 1 ? '' : String(n);
     const dy = (n - 1) * 250;
     const k = (key) => this._hk(n, key);
-    const de = (key) => (e[key] ? `data-entity="${this._esc(e[key])}"` : '');
+    const entity = (key) => e[key] || (n === 1 && !this._parts.buffer && key === k('flow') ? e.flow : '');
+    const de = (key) => (entity(key) ? `data-entity="${this._esc(entity(key))}"` : '');
     const name = this._config[n === 1 ? 'hc_name' : `hc${n}_name`];
     const title = this._esc(name || (this._hcCount > 1 ? `${i.heating_circuit} ${n}` : i.heating_circuit));
     const em = this._emitter(this._hcTypes[n - 1], title);
@@ -2037,6 +2113,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const inn = this._e.source_in ? `data-entity="${this._esc(this._e.source_in)}"` : '';
     const labels = `<g class="tap" ${out}><text class="small" id="t-src-out" x="130" y="462" text-anchor="end"></text></g>
       <g class="tap" ${inn}><text class="small" id="t-src-in" x="210" y="462"></text></g>
+      <g class="tap" ${inn}><text class="small source-spread" id="t-src-spread" x="96" y="512" text-anchor="middle"></text></g>
       <g class="tap" ${this._e.source_volume ? `data-entity="${this._esc(this._e.source_volume)}"` : ''}><text class="vol-label" id="t-src-vol" x="212" y="512"></text></g>`;
     if (this._sourceType === 'brine') {
       return `${ground}${pp('src', 'M140 425 V528 Q140 548 170 548 Q200 548 200 528 V425')}${labels}`;
@@ -2201,11 +2278,19 @@ class HeatpumpFlowCard extends HTMLElement {
     // the flow dashes the flow rate, the fan otherwise the electrical power.
     const mod = this._speedFraction();
     const modOk = Number.isFinite(mod) && mod > 0;
+    const speed = this._flowSpeed;
+    const scaled = (seconds) => `${(seconds / speed).toFixed(2)}s`;
     const dur = Number.isFinite(vol) && vol > 0 ? Math.min(Math.max(3.4 - vol / 1000, 0.8), 3) : (modOk ? 2.6 - mod * 1.8 : 2);
-    this.style.setProperty('--hfc-dur', `${dur.toFixed(2)}s`);
+    this.style.setProperty('--hfc-dur', scaled(dur));
     const fanDur = running ? (modOk ? 2.4 - mod * 1.9 : Math.min(Math.max(2.4 - (power || 0) / 1500, 0.5), 2.4)) : 0;
-    this.style.setProperty('--hfc-fan', `${fanDur.toFixed(2)}s`);
-    this.style.setProperty('--hfc-pump', `${(modOk ? 1.8 - mod * 1.2 : 1.2).toFixed(2)}s`);
+    this.style.setProperty('--hfc-fan', scaled(fanDur));
+    this.style.setProperty('--hfc-pump', scaled(modOk ? 1.8 - mod * 1.2 : 1.2));
+    this.style.setProperty('--hfc-electrical', scaled(1.1));
+    this.style.setProperty('--hfc-coil', scaled(1.4));
+    this.style.setProperty('--hfc-snow', scaled(1.6));
+    this.style.setProperty('--hfc-wave', scaled(2.4));
+    this.style.setProperty('--hfc-wave-delay', scaled(0.8));
+    this.style.setProperty('--hfc-wave-delay2', scaled(1.6));
 
     // pipes
     const cFlow = defrost || cooling ? hfcVar('defrost') : this._vlColor(tFlow);
@@ -2229,7 +2314,7 @@ class HeatpumpFlowCard extends HTMLElement {
         // Circuit pump, else circuit mode, else assume the circuit runs whenever the heat pump heats or cools.
         const hcOn = this._has(k('pump')) ? this._on(k('pump')) : (this._has(k('mode')) ? ['heating', 'cooling'].includes(cMode) : toHeat);
         // Without circuit sensors fall back to the buffer / main loop temperatures.
-        const tHc = pick(this._n(k('flow')), this._n('buffer_top'), toHeat ? tFlow : tRet);
+        const tHc = pick(this._n(k('flow')), this._n('buffer_top'), tFlow);
         const tHcR = pick(this._n(k('return')), this._n('buffer_bottom'), tRet);
         const cHc = cMode === 'cooling' ? hfcVar('defrost') : this._vlColor(tHc);
         stroke(`hc-vl${s}`, cHc); stroke(`hc-body${s}`, cHc); stroke(`hc-rl${s}`, this._rlColor(tHcR));
@@ -2247,7 +2332,8 @@ class HeatpumpFlowCard extends HTMLElement {
         this._cls(`impeller${s}`, hcOn);
         this._cls(`waves${s}`, hcOn && cMode !== 'cooling');
         const set = this._n(k('setpoint'));
-        this._txt(`t-hc${s}`, this._has(k('flow')) ? `${this._t(tHc)}${Number.isFinite(set) ? ` · ${i.target} ${this._fmt(set)}` : ''}` : '');
+        const showFlow = this._has(k('flow')) || (n === 1 && !P.buffer && this._has('flow'));
+        this._txt(`t-hc${s}`, showFlow ? `${this._t(tHc)}${Number.isFinite(set) ? ` · ${i.target} ${this._fmt(set)}` : ''}` : '');
         const hcVol = this._lh(k('volume'));
         this._txt(`t-hc-vol${s}`, this._has(k('volume')) && Number.isFinite(hcVol) ? `${this._fmt(hcVol, 0)} l/h` : '');
         this._txt(`t-hc-mode${s}`, this._has(k('mode')) ? this._modeLabel(cMode, this._s(k('mode'))) : (hcOn ? i.running : ''));
@@ -2304,6 +2390,8 @@ class HeatpumpFlowCard extends HTMLElement {
       const brine = this._sourceType === 'brine';
       this._txt('t-src-in', this._has('source_in') ? `${brine ? i.brine_in : i.well_in} ${this._t(this._n('source_in'))}` : '');
       this._txt('t-src-out', this._has('source_out') ? `${brine ? i.brine_out : i.well_out} ${this._t(this._n('source_out'))}` : '');
+      const sourceSpread = this._n('source_in') - this._n('source_out');
+      this._txt('t-src-spread', this._sourceSpread && running && Number.isFinite(sourceSpread) ? `ΔT ${this._fmt(sourceSpread)} K` : '');
       this._txt('t-src-vol', this._has('source_volume') && srcVol > 0 ? `${this._fmt(srcVol, 0)} l/h` : '');
       ['src', 'src-in', 'src-out'].forEach((id) => pipe(id, running));
     }
@@ -2362,8 +2450,13 @@ class HeatpumpFlowCard extends HTMLElement {
     chip.className = `chip mode-${defrost ? 'defrost' : cooling ? 'cool' : toDhw ? 'dhw' : toHeat ? 'heat' : 'idle'}`;
     this._badges.forEach((b, n) => this._cls(`chip-b${n}`, ['on', 'true', 'home', 'open'].includes(String(this._hass.states[b.entity]?.state).toLowerCase())));
     const errs = this._errors.filter((id) => {
-      const st = this._hass.states[id]?.state; const v = parseFloat(st);
-      return (Number.isFinite(v) && v !== 0) || st === 'on';
+      const state = this._hass.states[id]?.state;
+      if (state === undefined) return false;
+      const raw = String(state).trim(); const normalized = raw.toLowerCase(); const value = Number(raw);
+      if (Number.isFinite(value)) return value !== 0;
+      if (normalized === 'on') return true;
+      if (['unknown', 'unavailable', 'off', ''].includes(normalized)) return false;
+      return this._errorOk.length > 0 && !this._errorOk.includes(normalized);
     });
     const prog = this._program();
     const pc = this._$('chip-program');
@@ -2455,7 +2548,7 @@ HeatpumpFlowCard.styles = `
   .snow { opacity: 0; }
   .snow-bg { fill: var(--card-background-color, #fff); opacity: .85; }
   .snow-flake { fill: none; stroke: ${hfcVar('cool-strong')}; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-  .snow.on { opacity: 1; animation: hfc-pulse 1.6s ease-in-out infinite; }
+  .snow.on { opacity: 1; animation: hfc-pulse var(--hfc-snow, 1.6s) ease-in-out infinite; }
   /* idle pipes are a solid pale tint, not transparent, so round caps that overlap at a junction do not show as dots */
   .pipe { fill: none; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; stroke: color-mix(in srgb, var(--pc, var(--hfc-muted)) 22%, var(--card-background-color, #fff)); transition: stroke .5s; }
   .pipe.on { stroke: var(--pc, var(--hfc-muted)); }
@@ -2465,7 +2558,7 @@ HeatpumpFlowCard.styles = `
   .eline.pv { stroke: ${hfcVar('pv')}; } .eline.bat { stroke: ${hfcVar('battery')}; } .eline.grid { stroke: ${hfcVar('grid')}; }
   .eflow { fill: none; stroke-width: 7; stroke-linecap: round; stroke-dasharray: 0.1 18; opacity: 0; pointer-events: none; }
   .eflow.pv { stroke: ${hfcVar('pv')}; } .eflow.bat { stroke: ${hfcVar('battery')}; } .eflow.grid { stroke: ${hfcVar('grid')}; }
-  .eflow.on { opacity: 1; animation: hfc-dash 1.1s linear infinite; }
+  .eflow.on { opacity: 1; animation: hfc-dash var(--hfc-electrical, 1.1s) linear infinite; }
   .hop { fill: none; stroke: var(--card-background-color, #fff); stroke-width: 15; }
   .src.absent { opacity: .35; }
   .src text { font-size: calc(15px * var(--ks, 1)); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 5px; stroke-linejoin: round; }
@@ -2484,7 +2577,7 @@ HeatpumpFlowCard.styles = `
   .house-temp { font-size: calc(26px * var(--kt, 1)); font-weight: 700; }
   .house-sub { font-size: calc(14px * var(--k2, 1)); }
   .coil { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 3; stroke-linejoin: round; opacity: .25; }
-  .coil.on { opacity: .6; stroke-width: 2.5; stroke-dasharray: 5 9; animation: hfc-dash 1.4s linear infinite; }
+  .coil.on { opacity: .6; stroke-width: 2.5; stroke-dasharray: 5 9; animation: hfc-dash var(--hfc-coil, 1.4s) linear infinite; }
   .circ { opacity: .35; } .circ.on { opacity: 1; fill: ${hfcVar('cool-strong')}; }
   .pump { fill: var(--card-background-color, #fff); stroke: var(--hfc-muted); stroke-width: 3; }
   .imp { fill: var(--hfc-muted); }
@@ -2508,8 +2601,8 @@ HeatpumpFlowCard.styles = `
   .rib { fill: url(#g-rad); stroke: rgba(0,0,0,.08); stroke-width: 1; }
   #p-hc-body, #f-hc-body { display: var(--hfc-body, inline); }
   .wave { fill: none; stroke: ${hfcVar('heat')}; stroke-width: 3; stroke-linecap: round; opacity: 0; }
-  .waves.on .wave { animation: hfc-rise 2.4s ease-in-out infinite; }
-  .waves.on .wave:nth-child(2) { animation-delay: .8s; } .waves.on .wave:nth-child(3) { animation-delay: 1.6s; }
+  .waves.on .wave { animation: hfc-rise var(--hfc-wave, 2.4s) ease-in-out infinite; }
+  .waves.on .wave:nth-child(2) { animation-delay: var(--hfc-wave-delay, .8s); } .waves.on .wave:nth-child(3) { animation-delay: var(--hfc-wave-delay2, 1.6s); }
   .hint { margin: 4px 4px 8px; padding: 8px 12px; border-radius: 8px; background: ${hfcTint('heat', 14)}; color: var(--primary-text-color); font-size: .9em; }
   .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 4px 0; }
   .ctl { font: inherit; font-size: .88em; color: var(--primary-text-color); background: var(--secondary-background-color, rgba(127,127,127,.12));
@@ -2610,19 +2703,33 @@ HeatpumpFlowCard.styles = `
   @keyframes hfc-spin { to { transform: rotate(360deg); } }
   @keyframes hfc-pulse { 50% { opacity: .35; } }
   @keyframes hfc-rise { 0% { opacity: 0; transform: translateY(6px); } 40% { opacity: .9; } 100% { opacity: 0; transform: translateY(-10px); } }
-  @media (prefers-reduced-motion: reduce) { .flow.on, .eflow.on, .fan.on, .impeller.on, .coil.on, .snow.on, .waves.on .wave { animation: none; } .waves.on .wave { opacity: .7; } }
+  .motion-off .flow.on, .motion-off .eflow.on, .motion-off .fan.on, .motion-off .impeller.on, .motion-off .coil.on, .motion-off .snow.on, .motion-off .waves.on .wave { animation: none !important; }
+  .motion-off .waves.on .wave { opacity: .7; }
+  @media (prefers-reduced-motion: reduce) { .motion-auto .flow.on, .motion-auto .eflow.on, .motion-auto .fan.on, .motion-auto .impeller.on, .motion-auto .coil.on, .motion-auto .snow.on, .motion-auto .waves.on .wave { animation: none; } .motion-auto .waves.on .wave { opacity: .7; } }
 `;
 
 // Card editor: the same form as getConfigForm, but entity pickers show what the preset found,
 // only the configured number of circuits is offered, and the preset field reports the detection.
 class HeatpumpFlowCardEditor extends HTMLElement {
-  setConfig(config) { this._config = config; this._resolved = null; this._render(); }
+  setConfig(config) { this._config = config; this._resolved = null; this._loadEnergyInfo(); this._render(); }
 
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
     if (this._form) this._form.hass = hass;
+    this._loadEnergyInfo();
     if (first) this._render();
+  }
+
+  _loadEnergyInfo() {
+    if (!this._config || this._config.power_sources === 'manual') return;
+    if (this._energyReq || typeof this._hass?.callWS !== 'function') return;
+    this._energyReq = true;
+    HeatpumpFlowCard._energyPrefs = HeatpumpFlowCard._energyPrefs || this._hass.callWS({ type: 'energy/get_prefs' });
+    HeatpumpFlowCard._energyPrefs.then((prefs) => {
+      this._energyMissing = HeatpumpFlowCard._energyInfo(prefs).missing;
+      this._render();
+    }).catch(() => { this._energyMissing = []; });
   }
 
   _render() {
@@ -2641,6 +2748,8 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     const r = HeatpumpFlowCard._resolve(this._config, this._hass);
     // Only entities that exist are shown as found by the preset.
     this._fromPreset = Object.fromEntries(Object.entries(r.fromPreset).filter(([, id]) => this._hass.states[id]));
+    this._presetErrors = r.presetErrors || [];
+    this._presetErrorOk = r.preset?.error_ok || [];
     const tiles = HeatpumpFlowCard._tileOptions(this._config, r, this._hass);
     this._tiles = tiles;
     const { schema, computeLabel, L } = HeatpumpFlowCard._formSchema(this._config, tiles);
@@ -2657,6 +2766,10 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       if (!has('flow') || !has('return')) warn.push(L.warn_temps);
       if (!has('heat') && !has('volume')) warn.push(L.warn_heat);
     }
+    if (this._config.power_sources !== 'manual' && this._energyMissing?.length) {
+      const names = this._energyMissing.map((type) => ({ solar: L.pv, battery: L.battery, grid: L.grid }[type])).join(', ');
+      warn.push(L.warn_energy_sources.replace('{sources}', names));
+    }
     const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const html = warn.length ? `<ha-alert alert-type="info" title="${esc(L.warn_title)}"><ul style="margin:0;padding-left:18px">${warn.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></ha-alert>` : '';
     if (this._warn._html !== html) { this._warn.innerHTML = html; this._warn._html = html; this._warn.style.marginBottom = html ? '12px' : '0'; }
@@ -2671,12 +2784,20 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       }
       if (s.name === 'tiles_custom') return tiles.editable ? L.tiles_custom_help : L.tiles_yaml;
       if (s.name === 'price_entity') return L.price_help;
+      if (s.name === 'errors') return L.errors_help;
+      if (s.name === 'error_ok_text') return L.error_ok_help;
+      if (['energy_total', 'heat_total'].includes(s.name)) return L.total_cop_help;
       if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
       if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;
       return '';
     };
     const custom = Array.isArray(this._config.tiles);
-    const data = { ...this._config, entities: shown, tiles_custom: custom };
+    const controls = (this._config.controls || []).map((c) => (typeof c === 'string' ? c : c?.entity)).filter(Boolean);
+    const data = { ...this._config, entities: shown, controls,
+      errors: this._config.errors !== undefined ? this._config.errors : this._presetErrors,
+      error_ok_text: (this._config.error_ok !== undefined ? this._config.error_ok : this._presetErrorOk).join(', '), tiles_custom: custom,
+      animations: this._config.animations || 'auto', flow_speed: this._config.flow_speed ?? 1, source_spread: this._config.source_spread !== false };
+    if (this._config.controls === undefined) delete data.controls;
     if (custom && tiles.editable) data.tiles = tiles.value;
     this._priceShown = custom;
     if (custom) {
@@ -2703,6 +2824,22 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       }
     });
     const config = { ...value };
+    // The entity picker deals in ids; keep YAML-only metadata of controls that stay selected.
+    if (Array.isArray(value.controls)) {
+      const old = new Map((this._config.controls || []).filter((c) => c && typeof c === 'object' && c.entity).map((c) => [c.entity, c]));
+      config.controls = value.controls.map((c) => {
+        const id = typeof c === 'string' ? c : c?.entity;
+        return old.get(id) || id;
+      }).filter(Boolean);
+    }
+    delete config.error_ok_text;
+    if (!value.animations || value.animations === 'auto') delete config.animations;
+    if (value.flow_speed === undefined || value.flow_speed === null || value.flow_speed === '' || +value.flow_speed === 1) delete config.flow_speed;
+    if (value.source_spread !== false) delete config.source_spread;
+    const errorOk = String(value.error_ok_text || '').split(',').map((state) => state.trim()).filter(Boolean);
+    if (JSON.stringify(errorOk) !== JSON.stringify(this._presetErrorOk || [])) config.error_ok = errorOk; else delete config.error_ok;
+    const errors = Array.isArray(value.errors) ? value.errors.filter(Boolean) : [];
+    if (JSON.stringify(errors) !== JSON.stringify(this._presetErrors || [])) config.errors = errors; else delete config.errors;
     if (Object.keys(ents).length) config.entities = ents; else delete config.entities;
     // Tiles: off = default tiles; switched on = start from the default set; tiles with own options stay as in YAML.
     delete config.tiles_custom;
@@ -2716,6 +2853,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     else if (!Array.isArray(this._config.tiles)) config.tiles = this._tiles.defaults;
     else if (!this._tiles.editable) config.tiles = this._config.tiles;
     this._config = config;
+    this._loadEnergyInfo();
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
     this._render();
   }

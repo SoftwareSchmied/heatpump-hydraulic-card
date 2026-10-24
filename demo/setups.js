@@ -67,7 +67,6 @@ const otherStates = (s) => ({
   'sensor.wp_ruecklauf': { heat: '30.4', dhw: '46.5', defrost: '24', idle: '28.5' }[s],
   'sensor.wp_leistung': { heat: '1800', dhw: '2100', defrost: '900', idle: '3' }[s],
   'sensor.ww_temperatur': '47.5', 'sensor.aussen': '-2.4',
-  'binary_sensor.heizkreispumpe': s === 'idle' ? 'off' : 'on',
 });
 
 // ViCare: German entity ids, resolved via translation_key in the entity registry. Values may carry units.
@@ -249,7 +248,7 @@ const setups = [
     config: {
       title: 'Heat pump',
       entities: { mode: 'sensor.wp_betriebsart', flow: 'sensor.wp_vorlauf', return: 'sensor.wp_ruecklauf', power: 'sensor.wp_leistung',
-        dhw_top: 'sensor.ww_temperatur', outdoor: 'sensor.aussen', hc_pump: 'binary_sensor.heizkreispumpe' },
+        dhw_top: 'sensor.ww_temperatur', outdoor: 'sensor.aussen' },
       mode_map: { Heating: 'heating', 'Hot water': 'dhw', Defrost: 'defrost', Standby: 'idle' },
     },
   },

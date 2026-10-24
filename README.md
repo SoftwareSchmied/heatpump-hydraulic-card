@@ -118,7 +118,31 @@ entities:
 badges:
   - entity: input_boolean.heatpump_boost
     label: Boost
+  - entity: binary_sensor.heat_pump_utility_lock
+    label: Utility lock
 ```
+
+Manual power-source sensors use positive values for power flowing **to the heat pump**:
+
+| Key | Positive value means |
+|---|---|
+| `pv` | supplied by PV |
+| `battery` | battery discharging into the house / heat pump |
+| `grid` | imported from the grid |
+
+If an inverter reports battery charging as positive, invert it with a template sensor before assigning it:
+
+```yaml
+template:
+  - sensor:
+      - name: Heat pump battery power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ states('sensor.inverter_battery_power') | float(0) * -1 }}"
+```
+
+For automatic detection, each configured Energy-dashboard source needs a power sensor (`stat_rate`), not only a kWh counter. The card and editor name sources that are missing one. If exactly one configured source has no usable live power, its displayed share is the remainder between heat-pump power and the known sources.
 
 ### Viessmann Vitocal (ViCare) – untested, feedback welcome
 ```yaml
@@ -244,10 +268,14 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | `entities` | Entity overrides (see below). `null` removes a preset entity. |
 | `mode_map`, `dhw_mode_map`, `buffer_mode_map`, `hc_mode_map` | Raw state → normalized mode, merged over the preset. |
 | `running_states` | Raw `status` values that count as compressor running. |
-| `errors` | List of error-code sensors. A value ≠ 0 shows the error chip. |
+| `errors` | List of error-code sensors. A number ≠ 0 or state `on` shows the error chip. `unknown`, `unavailable`, `off`, `0` and empty do not. Other text is ignored unless `error_ok` is set. |
+| `error_ok` | Text states that mean "no error", for example `["No Error", "OK"]` (case-insensitive). With this list, any other known non-numeric text from an error entity shows the chip. Presets may provide this list. |
 | `badges` | `[{entity, label}]` chips shown while the entity is on; each can carry `tap_action`, `hold_action` and `double_tap_action`. |
 | `program_map` | Raw state of the program entity → `eco`, `night`, `party`, `holiday` or `none`, merged over the preset. Without an entry the card recognises common words (eco, reduced, setback, absenk…, party, holiday, urlaub …). |
 | `compressor_speed_max` | Hz or rpm that count as full speed when `compressor_speed` is not a percentage (default: 100 Hz, 6000 rpm). Sets the pace of the animation. |
+| `animations` | `auto` (default, respects reduced motion), `always` or `off`. |
+| `flow_speed` | Multiplier for all animation speeds, from `0.2` to `3` (default `1`). |
+| `source_spread` | Show `source_in − source_out` on a running ground/groundwater loop (default `true`). |
 | `unit_style` | Drawing of the outdoor unit: `auto` (default, the style of the preset: `lambda` for the Lambda preset, `vaillant` for the Vaillant preset, otherwise the generic fan), `generic`, `lambda` or `vaillant`. Ground and groundwater sources keep their loop symbol. |
 | `unit_size` | Vaillant aroTHERM plus class: `small` (3.5 and 5.5 kW, one fan, low), `medium` (7.5 kW, one fan, default) or `large` (10.5 and 12.5 kW, two fans). |
 | `timeline` | `true` shows a strip with the operating mode of the last hours under the schematic (needs the `mode` entity, or the `compressor` and optionally the `valve`, and the Home Assistant history). |
@@ -266,6 +294,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 - **Heat pump:** `mode`, `status`, `compressor` (binary, or frequency/speed > 0), `defrost` (binary), `power` (W or kW), `heat` (kW or W), `flow`, `return`, `volume`, `source_volume`, `source_in`, `source_out`, `outdoor`, `valve` (binary, or a state like `Tank`/`DHW`), `heater` (backup / inline heater)
 - **Storage:** `dhw_top`, `dhw_bottom`, `dhw_target`, `dhw_mode`, `circulation`, `dhw_heater`, `buffer_top`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` (needs the DHW tank)
 - **Heating circuit and house:** `hc_flow`, `hc_return`, `hc_setpoint`, `hc_mode`, `hc_pump`, `hc_volume`, `room`, `room_target`, `program` (eco, night, party, holiday)
+- **Direct systems:** without a buffer and without circuit-specific temperature sensors, circuit 1 uses the heat pump's `flow` and `return` and remains connected in the schematic.
 - **Circuits 2 and 3:** the same keys with `hc2_` / `hc3_` (`hc2_flow`, `hc2_pump`, …)
 - **Heaters** (`heater`, `dhw_heater`, `buffer_heater`): binary or on/off, a power value (on above 0) or a stage number (1-3)
 - **Power sources (W):** `pv`, `battery`, `grid` – the heat pump's power from each source. Optional: without them the card uses the Energy dashboard.
@@ -325,6 +354,10 @@ What the presets provide:
 
 ### Layout, actions and colours
 **Layout.** `layout: compact` reduces padding and type sizes for narrow dashboard columns. `layout: wide` shows the schematic on the left and controls, tiles and the details drawer on the right once the card is at least 760 px wide (below that it falls back to the normal stacked layout), which suits wall tablets. `layout: wall` is the wide layout with about 30 % larger type for reading from a distance. The quick controls and the details toggle are invisible and not clickable until a touch or mouse move wakes the card; after `wall_timeout` seconds (default 10) they fade out again and an open details drawer closes. A control in use, such as an open dropdown, keeps the card awake. All layouts are also in the editor.
+
+**Animations.** `animations: auto` (default) respects the operating system's reduced-motion preference. Use `animations: always` to animate anyway or `animations: off` for a static schematic. `flow_speed` scales all movement from `0.2` to `3` (`1` is the default); sensor-driven fan, pump and flow differences are preserved. Both options are in the editor.
+
+For ground and groundwater sources, the loop shows `ΔT` while the compressor runs when both `source_in` and `source_out` are available. Set `source_spread: false` to hide it; the source-spread tile remains available independently.
 
 **Actions on elements.** Every element of the schematic shows an entity, and a tap opens its more-info dialog. To change that, give the entity key of the element (see "Entity keys") its own actions. They accept every Home Assistant action, the same as the tiles: `more-info`, `navigate`, `url`, `toggle`, `perform-action`, `assist`, `none`, with `confirmation`. A hold takes 500 ms.
 
@@ -404,12 +437,12 @@ The card shows what your integration provides and does not invent values. Where 
 | Heating circuit active | Circuit pump, else circuit mode, else "heat pump is heating". |
 | PV / battery / grid flows | Your own `pv` / `battery` / `grid` sensors if set. Otherwise **estimated** from the Energy dashboard and marked with **≈**: the heat pump's power is split by the house's current supply mix (PV used in the house, battery discharge, grid import); PV first covers battery charging and export. Needs the power sensors of the Energy dashboard and the heat pump's `power`. A flow is animated above 10 W. |
 | Superheat, subcooling | The integration's value if there is one. Otherwise superheat = suction gas − evaporation and subcooling = condensation − liquid line. |
-| COP total | Total heat ÷ total electricity (Wh, kWh and MWh are converted), marked with **≈**. |
+| COP total | Total heat ÷ total electricity (Wh, kWh and MWh are converted), marked with **≈**. Both counters must cover the same time range. If one started later, create a Home Assistant helper that counts both from a shared starting point. A counter for environmental energy (heat taken from air/ground) is not delivered heat; delivered heat is environmental energy plus electricity, so use a template sensor before assigning `heat_total`. The card deliberately does not guess offsets between unrelated counters. |
 | Tiles for a period | The integration's own entity for the period, otherwise the change of a total counter over the calendar period from the long-term statistics (refreshed every 5 minutes). A COP for a period without an own entity is heat ÷ electricity of that period, marked with **≈**. |
 | Cost | Electricity × price. With a dynamic tariff: every hour at its mean price from the long-term statistics, the current hour at the current price; year and total from daily or monthly values (**≈**). |
 | Details drawer | Entities that are unknown or unavailable are left out, so values a model does not report do not show up. |
 | Heater rods | On for a binary on / "On", for power above 0, or for a stage number above 0; stage 2 or higher is drawn red. |
-| Error chip | Any error entity of the preset (or `errors`) with a value ≠ 0 or state on. |
+| Error chip | Any error entity of the preset (or `errors`) with a number ≠ 0 or state `on`. `unknown`, `unavailable`, `off`, `0` and empty are ignored. Set `error_ok` for text sensors; any other known text then counts as an error. |
 
 Each preset section above lists the entities it uses.
 
@@ -422,7 +455,7 @@ The layout is fixed on purpose: one heat pump (air, brine or groundwater), a div
 Presets live in `HFC_PRESETS` in `dist/heatpump-hydraulic-card.js`. A preset consists of:
 - `detect(ctx)`, which returns a prefix, or `undefined` when the integration is missing
 - `entities(prefix, index, ctx)`, which returns the entity map; values may be candidate lists, and the first existing entity wins
-- optional `errors`
+- optional `errors` and `error_ok` for text error sensors
 - the mode maps
 - `running_states`, `status_labels` and `stat_labels`
 - optional `tiles(prefix, index, ctx)`, which returns `{ tile: { period: entity } }` for the stat tile catalog; a `total` counter with long-term statistics also covers today, yesterday, week, month and year
@@ -438,6 +471,8 @@ Pull requests for other brands are very welcome.
 - **Questions, ideas, showing off your setup?** Join the [Home Assistant Community thread](https://community.home-assistant.io/t/card-heatpump-flow-card-animated-hydraulic-schematic-for-heat-pumps-lambda-viessmann-vaillant-bosch-buderus-panasonic/1029598).
 
 ## Development
+The prioritized bug-first release and feature plan is in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 `demo/index.html` renders the card with simulated installations and scenarios (heating, DHW, defrost, standby with error, light/dark, English/German) without Home Assistant. It is published as the [live demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/) via GitHub Pages; locally, open it through any static web server. The simulated installations live in `demo/setups.js`.
 
 `test/selftest.html` runs every installation in every scenario, broken entity states, edge-case configs, preset detection (gas boilers must not be detected as heat pumps) and the computed values. CI runs it in headless Chrome on every push; locally:

@@ -87,7 +87,9 @@
     { layout: 'huge' }, { actions: [] }, { actions: { mode: 'navigate' } }, { actions: { mode: { tap_action: 'navigate' } } },
     { badges: [{ entity: 'sensor.x', hold_action: 'toggle' }] },
     { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' },
-    { timeline: 'yes' }, { timeline_hours: 0 }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' }]) {
+    { errors: 'sensor.error' }, { error_ok: 'No Error' }, { error_ok: ['No Error', 0] },
+    { timeline: 'yes' }, { timeline_hours: 0 }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' },
+    { animations: 'sometimes' }, { flow_speed: 0 }, { flow_speed: 3.1 }, { source_spread: 'yes' }]) {
     let threw = false; try { new C().setConfig(cfg); } catch (e) { threw = true; }
     check(threw, `invalid config rejected ${JSON.stringify(cfg)}`);
   }
@@ -117,6 +119,26 @@
     card.remove();
   }
   {
+    // One configured Energy-dashboard source has only an energy counter: give it the unexplained remainder.
+    const prefs = { energy_sources: [
+      { type: 'solar', stat_rate: 'sensor.pv' }, { type: 'battery', stat_rate: 'sensor.battery' },
+      { type: 'grid', stat_energy_from: 'sensor.grid_energy' },
+    ] };
+    const hass = hassOf(toStates({ 'sensor.hp': ['1200', 'W'], 'sensor.pv': ['400', 'W'], 'sensor.battery': ['100', 'W'] }), {}, prefs);
+    const card = mount({ entities: { power: 'sensor.hp' } }, hass);
+    await wait(20);
+    const split = card._energySplit();
+    check(split.pv === 400 && split.battery === 100 && split.grid === 700, `missing grid power gets the remainder (${JSON.stringify(split)})`);
+    check(/no power sensor for grid/i.test(card.shadowRoot.textContent), 'card explains a missing Energy-dashboard power sensor');
+    card._hass.states['sensor.hp'].state = '40';
+    check(Object.values(card._energySplit()).every((v) => v === 0), 'no source split below 50 W');
+    const ed = document.createElement('heatpump-flow-card-editor');
+    ed.setConfig({ entities: { power: 'sensor.hp' } }); ed.hass = hass; await wait(20);
+    check(ed._energyMissing?.includes('grid') && /Energy dashboard|Energie-Dashboard/.test(ed.textContent),
+      `editor explains a missing Energy-dashboard power sensor (${JSON.stringify(ed._energyMissing)} / ${ed.textContent.trim()})`);
+    card.remove(); ed.remove();
+  }
+  {
     const s = setups[0];
     const card = mount(s.config, hassOf(toStates(s.states('heat'))));
     const rows = Object.fromEntries([...card.shadowRoot.querySelectorAll('.drow')].map((r) => [r.querySelector('span').textContent, r.querySelector('b').textContent]));
@@ -125,6 +147,33 @@
     card._hass.states['sensor.eu08l_hp1_compressor_power_consumption_accumulated'] = { entity_id: 'x', state: '211072', attributes: { unit_of_measurement: 'Wh' } };
     check(card._fmtState('energy_total') === '211 kWh', `Wh shown as kWh (${card._fmtState('energy_total')})`);
     card.remove();
+  }
+
+  // Direct systems use the heat-pump flow/return for their circuit and never leave the bypass pipes open.
+  {
+    const card = mount({ entities: { flow: 'sensor.flow', return: 'sensor.return' } }, hassOf(toStates({ 'sensor.flow': ['35', '°C'], 'sensor.return': ['30', '°C'] })));
+    check(card._parts.hc && !!card.shadowRoot.getElementById('p-byp-vl') && !!card.shadowRoot.getElementById('p-hc-vl')
+      && !!card.shadowRoot.getElementById('p-byp-rl') && !!card.shadowRoot.getElementById('p-hc-rl'), 'minimal direct system has a closed heating circuit');
+    check(/35/.test(card.shadowRoot.getElementById('t-hc').textContent), 'direct circuit falls back to the heat-pump flow temperature');
+    card.remove();
+  }
+
+  // Text errors are opt-in through their known no-error states; numeric and binary behaviour stays compatible.
+  {
+    const states = toStates({ 'sensor.error': 'No Error', 'binary_sensor.error': 'off' });
+    const card = mount({ errors: ['sensor.error', 'binary_sensor.error'], error_ok: ['No Error', 'OK'] }, hassOf(states));
+    const active = () => card.shadowRoot.getElementById('chip-err').classList.contains('on');
+    check(!active(), 'configured no-error text keeps the error chip off');
+    states['sensor.error'].state = 'F13'; card.hass = { ...card._hass };
+    check(active(), 'other known text shows the error chip');
+    states['sensor.error'].state = 'unknown'; card.hass = { ...card._hass };
+    check(!active(), 'unknown text does not show the error chip');
+    states['binary_sensor.error'].state = 'on'; card.hass = { ...card._hass };
+    check(active(), 'binary error behaviour stays unchanged');
+    card.remove();
+    const legacy = mount({ errors: ['sensor.error'] }, hassOf(toStates({ 'sensor.error': 'F13' })));
+    check(!legacy.shadowRoot.getElementById('chip-err').classList.contains('on'), 'text errors remain opt-in without error_ok');
+    legacy.remove();
   }
 
   // 7. an unexpected error shows a message instead of an empty card
@@ -214,6 +263,23 @@
     check(JSON.stringify(out.tiles) === '["spread","cop_heating:month"]', 'editor writes the selection in order');
     ed._changed({ ...out, tiles_custom: false });
     check(!('tiles' in out), 'editor switches back to the default tiles');
+  }
+  {
+    const hass = hassOf(toStates({ 'switch.a': 'off', 'switch.b': 'off', 'switch.c': 'off', 'sensor.error': 'No Error' }));
+    const ed = document.createElement('heatpump-flow-card-editor');
+    let out;
+    ed.addEventListener('config-changed', (ev) => { out = ev.detail.config; });
+    ed.setConfig({ power_sources: 'manual', controls: [{ entity: 'switch.a', name: 'A', icon: 'mdi:alpha-a' }, 'switch.b'], errors: ['sensor.error'], error_ok: ['No Error'] });
+    ed.hass = hass; await wait(10);
+    check(JSON.stringify(ed._form.data.controls) === '["switch.a","switch.b"]', `editor gives object controls to the picker as ids (${JSON.stringify(ed._form.data.controls)})`);
+    check(ed._form.data.error_ok_text === 'No Error', 'editor shows text no-error states');
+    ed._changed({ power_sources: 'manual', controls: ['switch.a', 'switch.c'], errors: ['sensor.error'], error_ok_text: 'No Error, OK' });
+    check(out.controls[0].entity === 'switch.a' && out.controls[0].name === 'A' && out.controls[0].icon === 'mdi:alpha-a'
+      && out.controls[1] === 'switch.c', `editor preserves metadata of controls that remain (${JSON.stringify(out.controls)})`);
+    check(JSON.stringify(out.error_ok) === '["No Error","OK"]', `editor writes no-error text states (${JSON.stringify(out.error_ok)})`);
+    const names = C._formSchema({}).schema.flatMap((x) => (x.schema ? x.schema.flatMap((y) => (y.schema ? y.schema.map((z) => z.name) : [y.name])) : [x.name]));
+    check(names.includes('errors') && names.includes('error_ok_text'), 'editor offers error entities and text no-error states');
+    ed.remove();
   }
 
   // 9. cost tile (fixed price, dynamic tariff billed per hour) and tile actions
@@ -408,6 +474,32 @@
     check(r[0] === '1.57s' && r[1] === '1.20s', `without a modulation value the fan follows the power, the pump keeps its pace (${r})`);
     r = await fanOf({ [rating]: ['60', 'Hz'] }, { compressor_speed_max: 120 });
     check(r[0] === '1.45s', `Hz against compressor_speed_max (${r})`);
+    r = await fanOf({ [rating]: ['50', '%'] }, { flow_speed: 2 });
+    check(r[0] === '0.72s' && r[1] === '0.60s', `flow_speed scales sensor-driven animation durations (${r})`);
+    {
+      const always = mount({ ...s.config, animations: 'always' }, hassWith(s, 'heat')); await wait(10);
+      const css = always.shadowRoot.querySelector('style').textContent;
+      check(always.shadowRoot.querySelector('ha-card').classList.contains('motion-always'), 'animations: always marks the card');
+      check(/\.motion-off \.flow\.on/.test(css) && /prefers-reduced-motion: reduce[^}]*\.motion-auto \.flow\.on/.test(css), 'off is static and only auto respects reduced motion');
+      always.remove();
+    }
+    {
+      const ground = setups[6];
+      const spreadCard = mount(ground.config, hassOf(toStates(ground.states('heat')), ground.registry || {}, null, ground)); await wait(10);
+      check(spreadCard.shadowRoot.getElementById('t-src-spread')?.textContent === 'ΔT 3.3 K', `running source loop shows spread (${spreadCard.shadowRoot.getElementById('t-src-spread')?.textContent})`);
+      spreadCard.remove();
+      const hidden = mount({ ...ground.config, source_spread: false }, hassOf(toStates(ground.states('heat')), ground.registry || {}, null, ground)); await wait(10);
+      check(hidden.shadowRoot.getElementById('t-src-spread')?.textContent === '', 'source_spread: false hides the loop label');
+      hidden.remove();
+      const idleGround = mount(ground.config, hassOf(toStates(ground.states('idle')), ground.registry || {}, null, ground)); await wait(10);
+      check(idleGround.shadowRoot.getElementById('t-src-spread')?.textContent === '', 'idle source loop hides the spread');
+      idleGround.remove();
+    }
+    {
+      const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
+      const formKeys = C._formSchema({}).schema.flatMap(keysOf);
+      check(['animations', 'flow_speed', 'source_spread'].every((k) => formKeys.includes(k)), 'editor offers animation and source-spread controls');
+    }
 
     // heating program chip
     const prog = async (setup, scen, extra, cfg = {}) => {

@@ -1,7 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.9.5 – 2026-10-24
 - The repository is now called `heatpump-hydraulic-card`, the file `dist/heatpump-hydraulic-card.js` and the HACS name "Heat Pump Hydraulic Card". The element names are unchanged: `custom:heatpump-flow-card` keeps working, `custom:heatpump-hydraulic-card` is the unique name.
+- Direct systems without buffer or circuit-specific sensors now draw a closed heating circuit and use the heat pump's flow and return temperatures (#18).
+- The visual editor accepts object-form quick controls without showing `[object Object]` and preserves their `name` and `icon` while the entity remains selected (#17).
+- Energy-dashboard sources without a live power sensor are named in the card and editor. With exactly one missing source, its displayed share is the unexplained remainder of the heat-pump power; manual source sign conventions are documented (#19).
+- Text error sensors can use `error_ok` (for example `["No Error", "OK"]`); any other known text then shows the error chip. Numeric and binary behaviour is unchanged, and the editor explains the rules (#21).
+- Total COP documentation and editor help now warn that heat and electricity counters need the same start time and that environmental energy is not delivered heat (#20).
+- Ground and groundwater loops show `source_in − source_out` while the compressor runs; `source_spread: false` hides the label (#25).
+- `animations: auto | always | off` controls reduced-motion behaviour, and `flow_speed` from 0.2 to 3 scales all movement. Both are available in the editor and the live-demo hint points to the override (#6).
+- Added a utility-lock badge example to the README (#28).
+- Added `docs/ROADMAP.md` with the bug-first release plan, quick wins and impact/effort ordering of feature requests.
+- Self-test: 435 checks.
 
 ## 0.9.3 – 2026-10-24
 Timeline of the operating mode, a fading heating surface, and no more clash with other cards of the same name.
