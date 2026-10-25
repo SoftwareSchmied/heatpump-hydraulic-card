@@ -3,7 +3,7 @@
  * Animated hydraulic schematic for air-to-water heat pumps in Home Assistant:
  * power sources (PV / battery / grid) → heat pump → diverter valve → DHW tank / buffer → heating circuit.
  * Vendor-neutral core with presets: Lambda, Viessmann (ViCare), Vaillant (myPyllant),
- * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …) and Panasonic Aquarea (HeishaMon).
+ * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …), Panasonic Aquarea (HeishaMon) and Vaillant aroTHERM (ebusd).
  *
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
@@ -380,6 +380,84 @@ const HFC_PRESETS = {
         starts: { total: `${m}operations_counter` }, hours: { total: `${m}operations_hours` },
         aux_hours: { total: `${m}room_heater_operations_hours` },
       };
+    },
+  },
+
+  // Vaillant aroTHERM / aroTHERM plus (HMU) on the eBUS via ebusd and its Home Assistant MQTT discovery.
+  // Entity ids are <topic prefix>_<circuit>_<message>[_<field>]; Home Assistant may put the device name in front
+  // (sensor.heating_ebusd_hmu_…), so every lookup accepts a leading part. Circuits: hmu (outdoor unit), vwzio (hydraulic
+  // station), ctlv2 / ctlv3 / ctls2 (sensoCOMFORT / multiMATIC, one message set). The buffer is not mapped: which VR 70/71
+  // sensor sits in it depends on the hydraulic scheme. Status texts from RunDataStatuscode in ebusd-configuration.
+  ebusd: {
+    name: 'ebusd (Vaillant aroTHERM, HMU)',
+    unit_style: 'vaillant',
+    // The controller reports all its circuits, inactive ones included, so the editor stub cannot count them.
+    auto_circuits: false,
+    detect: (ctx) => {
+      const id = ctx.match(/^sensor\.(?:.+_)?[a-z0-9]+_hmu_rundatastatuscode$/, 'mqtt');
+      return id === undefined ? undefined : id.match(/([a-z0-9]+)_hmu_rundatastatuscode$/)[1];
+    },
+    entities: (p, i, ctx) => {
+      const x = p.replace(/[^a-z0-9_]/g, '');
+      const e = (circuit, name) => ctx.match(new RegExp(`^sensor\\.(?:.+_)?${x}_${circuit}_${name}$`), 'mqtt');
+      const h = (n) => e('hmu', n); const c = (n) => e('ctl[sv]\\d', n); const w = (n) => e('vwzio', n);
+      return {
+        mode: h('rundatastatuscode'),
+        compressor: h('rundatacompressorspeed'),
+        valve: w('statusdhw_dhwactive'),
+        power: h('currentconsumedpower'),
+        heat: h('currentyieldpower'),
+        flow: h('rundataflowtemp'),
+        return: h('rundatareturntemp'),
+        volume: h('buildingcircuitflow'),
+        source_in: h('rundataairinlettemp'),
+        outdoor: [e('broadcast', 'outsidetemp'), c('displayedoutsidetemp')],
+        dhw_top: [c('hwcstoragetemp'), w('statusdhw_hwcstoragetemp')],
+        dhw_target: c('hwctempdesired'),
+        hc_flow: c(`hc${i.hc}flowtemp`),
+        hc_setpoint: c(`hc${i.hc}actualflowtempdesired`),
+        hc_pump: c(`hc${i.hc}pumpstatus`),
+        // One system pressure: only for the first circuit, the further ones would copy it as hc2_pressure …
+        hc_pressure: i.hc === 1 ? [h('flowpressure'), c('waterpressure')] : undefined,
+        room: c(`z${i.hc}roomtemp`),
+        room_target: c(`z${i.hc}actualroomtempdesired`),
+        hours: h('runstatscompressorhours'),
+        starts_total: h('runstatscompressorstarts'),
+        aux_hours: w('immersionheaterhours'),
+        energy_total: h('statelectricenergysum'),
+        env_energy: h('statenvironmentenergysum'),
+        compressor_speed: h('rundatacompressorspeed'),
+        evap_temp: h('rundataevaporationtemp'),
+        suction_temp: h('rundatacompressorinlettemp'),
+        hot_gas: h('rundatacompressoroutlettemp'),
+        high_pressure: h('rundatahighpressure'),
+        eev: h('rundataeevpositionabs'),
+        superheat: h('rundataoverheatingactualvalue'),
+      };
+    },
+    // Lifetime counters per mode; today, month … come from their long-term statistics.
+    tiles: (p, i, ctx) => {
+      const x = p.replace(/[^a-z0-9_]/g, '');
+      const t = (name) => ({ total: ctx.match(new RegExp(`^sensor\\.(?:.+_)?${x}_hmu_${name}$`), 'mqtt') });
+      return {
+        energy: t('statelectricenergysum'), energy_heating: t('statelectricenergysumhc'), energy_dhw: t('statelectricenergysumhwc'),
+        energy_cooling: t('statelectricenergysumcool'), env_energy: t('statenvironmentenergysum'),
+        starts: t('runstatscompressorstarts'), hours: t('runstatscompressorhours'),
+      };
+    },
+    errors: (p, i, ctx) => [ctx.match(new RegExp(`^sensor\\.(?:.+_)?${p.replace(/[^a-z0-9_]/g, '')}_hmu_currenterror_error$`), 'mqtt')].filter(Boolean),
+    // Pre-run, overrun and shutdown keep the mode of their phase; the compressor speed tells whether it runs.
+    // Fault codes (fan1_blocked, building_circuit_flow_too_low …) stay unmapped and show as text.
+    mode_map: {
+      standby: 'idle', frost_protect: 'frost', compressor_oil_heating_active: 'idle', air_purging_program_active: 'circulate',
+      deicing_active: 'defrost',
+      heat_prerun: 'heating', heat_compressor_active: 'heating', heat_overrun: 'heating', heat_compressor_shutdown: 'heating',
+      heat_immersion_heater_active: 'heating', heat_immersion_heater_shutdown: 'heating',
+      heat_compressor_blocked: 'blocked', heat_immersion_heater_blocked: 'blocked',
+      hwc_prerun: 'dhw', hwc_compressor_active: 'dhw', hwc_overrun: 'dhw', hwc_immersion_heater_active: 'dhw', hwc_immersion_heater_shutdown: 'dhw',
+      hwc_compressor_blocked: 'blocked', hwc_immersion_heater_blocked: 'blocked',
+      cool_prerun: 'cooling', cool_compressor_active: 'cooling', cool_overrun: 'cooling', cool_compressor_shutdown: 'cooling',
+      cool_compressor_blocked: 'blocked',
     },
   },
 };
