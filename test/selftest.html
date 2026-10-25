@@ -1232,6 +1232,25 @@
     check(!find(C._formSchema({ preset: 'heishamon' }).schema)?.selector?.entity?.multiple, 'editor keeps the single picker without a list');
   }
 
+  // 18f. HeishaMon: refrigerant temperatures and the superheat computed from them
+  {
+    const p = 'panasonic_heat_pump';
+    const st = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.25', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_discharge_temp`]: ['49', '°C'],
+      [`sensor.${p}_main_outside_pipe_temp`]: ['1', '°C'], [`sensor.${p}_main_eva_outlet_temp`]: ['3', '°C'],
+      [`sensor.${p}_main_inside_pipe_temp`]: ['32', '°C'],
+    };
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(toStates(st)));
+    check(r.entities.evap_temp === `sensor.${p}_main_outside_pipe_temp` && r.entities.suction_temp === `sensor.${p}_main_eva_outlet_temp`
+      && r.entities.liquid_temp === `sensor.${p}_main_inside_pipe_temp`, 'HeishaMon refrigerant temperatures');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates(st))); await wait(20);
+    const rows = card._drawerRows().flatMap(([, list]) => list);
+    const sh = rows.find((x) => x[0] === 'superheat');
+    check(sh && sh[3]() === '2.0 K', `HeishaMon superheat from suction gas and evaporation (${sh && sh[3] ? sh[3]() : 'none'})`);
+    card.remove();
+  }
+
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
   {
     const s = setups[0];

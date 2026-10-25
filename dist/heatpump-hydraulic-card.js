@@ -371,6 +371,11 @@ const HFC_PRESETS = {
         heat_total: 'sensor.aquarea_pump_total_production_total',
         compressor_speed: `sensor.${m}compressor_freq`,
         hot_gas: `sensor.${m}discharge_temp`,
+        // Refrigerant sensors in heating mode: the outdoor heat exchanger pipe is the evaporator (evaporation temperature),
+        // the evaporator outlet is the suction gas, the indoor (plate heat exchanger) pipe is the liquid line.
+        evap_temp: `sensor.${m}outside_pipe_temp`,
+        suction_temp: `sensor.${m}eva_outlet_temp`,
+        liquid_temp: `sensor.${m}inside_pipe_temp`,
         high_pressure: `sensor.${m}high_pressure`,
         low_pressure: `sensor.${m}low_pressure`,
         eev: `sensor.${m}expansion_valve`,
