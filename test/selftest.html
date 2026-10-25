@@ -131,6 +131,7 @@
       circuitTarget: add('sensor', 'flow_circuit_1_supply_temp_setpoint', '40'),
       circuitPump: add('binary_sensor', 'circuit_1_pump', 'on'),
       cop: add('sensor', 'cop_heating_today', '4.2'),
+      dhwStatus: add('sensor', 'domestic_hot_water_status', 'active'),
     };
     const hass = hassOf(toStates(states), registry);
     const stubConfig = C.getStubConfig(hass);
@@ -145,6 +146,8 @@
     'Open3E preset maps circuit and daily COP entities');
     const card = mount({ preset: 'open3e' }, hass);
     check(/Hot water/.test(card.shadowRoot.getElementById('chip-mode')?.textContent || ''), 'Open3E hot_water valve state selects DHW mode');
+    check(/Hot water/.test(card.shadowRoot.getElementById('t-dhw-mode')?.textContent || ''), 'Open3E domestic_hot_water_status "active" shows hot water charging');
+    check(card._unitKey() === 'viessmann', `Open3E selects the Viessmann unit drawing (${card._unitKey()})`);
     card.remove();
   }
 
