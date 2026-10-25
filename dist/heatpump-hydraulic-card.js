@@ -3,7 +3,7 @@
  * Animated hydraulic schematic for air-to-water heat pumps in Home Assistant:
  * power sources (PV / battery / grid) → heat pump → diverter valve → DHW tank / buffer → heating circuit.
  * Vendor-neutral core with presets: Lambda, Viessmann (ViCare), Vaillant (myPyllant),
- * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …) and Panasonic Aquarea (HeishaMon).
+ * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …), Bosch/Buderus Home Comfort and Panasonic Aquarea (HeishaMon).
  *
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
@@ -29,7 +29,130 @@ const HFC_SCRIPT_URL = (() => {
 //   *_mode_map                 → raw state → normalized mode
 // ctx.key(platform, domain, translation_key) finds entities via the entity registry (language-independent),
 // ctx.match(regex, platform) finds the first entity id matching a pattern.
+// PointT uses stable resource keys in unique_id; entity ids can be translated or renamed.
+// Keep gateway identifiers inside the resolver, never in the saved preset prefix or diagnostic report.
+function hfcPointT(ctx) {
+  if ('_pointt' in ctx) return ctx._pointt;
+  ctx._pointt = null;
+  const ids = new Set(ctx.ids);
+  const rows = Object.entries(ctx.registry).filter(([id, e]) => e?.platform === 'bosch_buderus_heating'
+    && ids.has(id) && !e.disabled_by && typeof e.unique_id === 'string' && e.unique_id.indexOf(':') > 0)
+    .map(([id, e]) => {
+      const colon = e.unique_id.indexOf(':');
+      return { id, device: e.device_id, gateway: e.unique_id.slice(0, colon), key: e.unique_id.slice(colon + 1) };
+    }).filter((e) => e.gateway && e.key);
+  const selected = new Set(rows.filter((e) => !ctx.device || e.device === ctx.device).map((e) => e.gateway));
+  const gateways = [...new Set(rows.filter((e) => selected.has(e.gateway)
+    && e.key === 'heatSources:compressor:status' && e.id.startsWith('sensor.')).map((e) => e.gateway))];
+  // An explicit device is required when several gateways report a compressor.
+  if (gateways.length !== 1 || ctx.idx.hp !== 1) return null;
+  const own = rows.filter((e) => e.gateway === gateways[0]);
+  // The compressor mode and energy resources are gateway totals. Do not assign those totals
+  // to a particular heat pump in a cascade; that topology needs an explicit manual mapping.
+  const sources = new Set(own.filter((e) => /^heatSources:hs[^:]+:heatPumpType$/.test(e.key)).map((e) => e.key));
+  if (sources.size > 1) return null;
+  const find = (domain, ...keys) => {
+    for (const key of keys) {
+      const hits = own.filter((e) => e.id.startsWith(`${domain}.`) && e.key === key);
+      if (hits.length > 1) return undefined;
+      if (hits.length === 1) return hits[0].id;
+    }
+    return undefined;
+  };
+  return (ctx._pointt = { find });
+}
+
 const HFC_PRESETS = {
+  bosch_buderus_heating: {
+    name: 'Bosch/Buderus Home Comfort (PointT cloud)',
+    unit_style: 'bosch',
+    entity_registry: true,
+    // The compact registry suffices to offer this preset in a new card. Resource mappings
+    // wait for the full local registry, loaded only when this preset is selected.
+    detect: (ctx) => hfcPointT(ctx) || ctx.key('bosch_buderus_heating', 'sensor', 'compressor_status') ? '' : undefined,
+    ready: (ctx) => !!hfcPointT(ctx),
+    auto_circuits: false,
+    entities: (p, i, ctx) => {
+      const pointt = hfcPointT(ctx); if (!pointt) return {};
+      const s = (...keys) => pointt.find('sensor', ...keys);
+      const hc = `heatingCircuits:hc${i.hc}`; const dhw = `dhwCircuits:dhw${i.dhw}`;
+      return {
+        mode: s('heatSources:compressor:status'),
+        flow: s('gateway:supply_temperature', 'heatSources:actualSupplyTemperature'),
+        return: s('gateway:return_temperature', 'heatSources:returnTemperature'),
+        outdoor: s('gateway:outdoor_temperature', 'system:sensors:temperatures:outdoor_t1'),
+        dhw_top: s(...(i.dhw === 1 ? ['gateway:hot_water_temperature'] : []), `${dhw}:actualTemp`),
+        dhw_target: s(`${dhw}:currentSetpoint`),
+        hc_flow: s(`${hc}:actualSupplyTemperature`),
+        hc_pressure: s('gateway:system_pressure', 'heatSources:systemPressure'),
+        room: s(`${hc}:roomtemperature`),
+        room_target: s(`${hc}:currentRoomSetpoint`),
+        compressor_speed: s('gateway:modulation', 'heatSources:actualModulation'),
+        hours: s('heatSources:hs1:workingTime:total'),
+        starts_total: s('heatSources:hs1:numberOfStarts:total'),
+        energy_total: s('gateway:total_electricity', 'heatSources:emon:totalConsumption:total_electricity'),
+        heat_total: s('gateway:total_heat_produced', 'heatSources:emon:totalConsumption:outputProduced'),
+        env_energy: s('gateway:environmental_energy', 'heatSources:emon:totalConsumption:environmental_energy'),
+        program: pointt.find('binary_sensor', 'holiday_active'),
+      };
+    },
+    errors: (p, i, ctx) => [hfcPointT(ctx)?.find('binary_sensor', 'system_fault')].filter(Boolean),
+    tiles: (p, i, ctx) => {
+      const pointt = hfcPointT(ctx); if (!pointt) return {};
+      const t = (...keys) => ({ total: pointt.find('sensor', ...keys) });
+      return {
+        energy: t('gateway:total_electricity', 'heatSources:emon:totalConsumption:total_electricity'),
+        energy_heating: t('gateway:heating_electricity', 'heatSources:emon:chConsumption:total_electricity'),
+        energy_dhw: t('gateway:hot_water_electricity', 'heatSources:emon:dhwConsumption:total_electricity'),
+        energy_cooling: t('heatSources:emon:coolingConsumption:total_electricity'),
+        energy_aux: t('heatSources:emon:totalConsumption:eheater'),
+        env_energy: t('gateway:environmental_energy', 'heatSources:emon:totalConsumption:environmental_energy'),
+        heat: t('gateway:total_heat_produced', 'heatSources:emon:totalConsumption:outputProduced'),
+        heat_heating: t('gateway:heating_heat_produced', 'heatSources:emon:chConsumption:outputProduced'),
+        heat_dhw: t('gateway:hot_water_heat_produced', 'heatSources:emon:dhwConsumption:outputProduced'),
+        heat_cooling: t('heatSources:emon:coolingConsumption:outputProduced'),
+        starts: t('heatSources:hs1:numberOfStarts:total'),
+        cycles_heating: t('heatSources:hs1:numberOfStarts:ch'),
+        cycles_dhw: t('heatSources:hs1:numberOfStarts:dhw'),
+        cycles_cooling: t('heatSources:hs1:numberOfStarts:cooling'),
+        hours: t('heatSources:hs1:workingTime:total'),
+      };
+    },
+    controls: (p, i, ctx) => {
+      const pointt = hfcPointT(ctx); if (!pointt) return [];
+      const hc = `heatingCircuits:hc${i.hc}`; const dhw = `dhwCircuits:dhw${i.dhw}`;
+      return [
+        pointt.find('select', `${hc}:operationMode:control`),
+        ...['manualRoomSetpoint', 'temperatureLevels:comfort2', 'temperatureLevels:eco', 'maxFlowTemp']
+          .map((key) => pointt.find('number', `${hc}:${key}:control`)),
+        pointt.find('select', `${dhw}:operationMode:control`),
+        ...['temperatureLevels:high', 'temperatureLevels:low', 'temperatureLevels:eco', 'chargeDuration', 'singleChargeSetpoint']
+          .map((key) => pointt.find('number', `${dhw}:${key}:control`)),
+        ...['charge', 'reduceTempOnAlarm'].map((key) => pointt.find('switch', `${dhw}:${key}:control`)),
+        pointt.find('select', 'system:silentMode:enabled:control'),
+        pointt.find('select', 'heatSources:additionalHeater:operationMode:control'),
+        pointt.find('select', 'system:seasonOptimizer:mode:control'),
+        pointt.find('switch', 'system:awayMode:enabled:control'),
+      ].filter(Boolean);
+    },
+    details: (p, i, ctx) => {
+      const pointt = hfcPointT(ctx); if (!pointt) return [];
+      const hc = `heatingCircuits:hc${i.hc}`; const dhw = `dhwCircuits:dhw${i.dhw}`;
+      return [
+        'heatSources:actualHeatDemand:values', 'heatSources:emStatus', 'heatSources:Source:eHeater:status',
+        'heatSources:hs1:supplyFlowCondenserTemp', 'heatSources:numberOfStarts', 'heatSources:workingTime:totalSystem',
+        ...['ch', 'dhw', 'cooling', 'pool'].map((mode) => `heatSources:hs1:numberOfStarts:${mode}`),
+        ...['ch', 'dhw', 'cooling'].map((mode) => `heatSources:hs1:workingTime:${mode}`),
+        ...['totalConsumption', 'chConsumption', 'dhwConsumption', 'coolingConsumption']
+          .flatMap((mode) => ['compressor', 'eheater'].map((part) => `heatSources:emon:${mode}:${part}`)),
+        `${hc}:operationMode`, ...(i.hc === 1 ? ['gateway:heating_status'] : []), `${hc}:overallStatus`,
+        `${dhw}:operationMode`, ...(i.dhw === 1 ? ['gateway:hot_water_status'] : []), `${dhw}:overallStatus`,
+        `${dhw}:chargeRemainingTime`, 'active_faults', 'active_notifications', 'system_pressure_status',
+      ].map((key) => pointt.find('sensor', key)).filter(Boolean);
+    },
+    mode_map: { off: 'idle', heating: 'heating', cooling: 'cooling', dhw: 'dhw', defrost: 'defrost', alarm: 'off' },
+    program_map: { on: 'holiday', off: 'none' },
+  },
   lambda: {
     name: 'Lambda (lambda_heat_pumps)',
     tested: true,
@@ -703,14 +826,61 @@ const HFC_TILES = {
 /* Card                                                                */
 /* ------------------------------------------------------------------ */
 class HeatpumpFlowCard extends HTMLElement {
+  static _registries = new WeakMap();
+
+  static _registryKey(hass) { return hass?.connection || hass?.callWS; }
+
+  static _pointtStateIds(hass) {
+    return Object.keys(hass?.states || {}).filter((id) => hass.entities?.[id]?.platform === 'bosch_buderus_heating').join('|');
+  }
+
+  static _registry(hass) {
+    const cache = this._registries.get(this._registryKey(hass));
+    return cache && cache.display === hass?.entities && cache.entries ? cache.entries : (hass?.entities || {});
+  }
+
+  // Only presets using stable unique ids request the full local HA registry. Share one request
+  // per connection and compact-registry revision, including between the card and its editor.
+  // A denied/failed request is not retried on every state update; manual mappings still work.
+  static _loadPresetRegistry(host, update) {
+    const hass = host._hass;
+    if (!HFC_PRESETS[host._config?.preset]?.entity_registry || typeof hass?.callWS !== 'function') return;
+    const key = this._registryKey(hass);
+    let cache = this._registries.get(key);
+    if (!cache || cache.display !== hass.entities) {
+      cache = { display: hass.entities };
+      this._registries.set(key, cache);
+      const pointt = Object.entries(hass.entities || {}).filter(([, e]) => e.platform === 'bosch_buderus_heating');
+      // The demo and tests may already provide the full registry.
+      const full = pointt.length && pointt.every(([, e]) => typeof e.unique_id === 'string');
+      cache.promise = Promise.resolve().then(() => full ? pointt.map(([entity_id, e]) => ({ ...e, entity_id }))
+        : hass.callWS({ type: 'config/entity_registry/list' })).then((entries) => {
+        if (!Array.isArray(entries)) throw new Error('Invalid entity registry response');
+        cache.entries = { ...cache.display };
+        // Do not retain unrelated registry data, options, user names or credentials.
+        entries.filter((e) => e?.platform === 'bosch_buderus_heating' && typeof e.entity_id === 'string')
+          .forEach(({ entity_id, platform, unique_id, device_id, disabled_by, translation_key }) => {
+            cache.entries[entity_id] = { platform, unique_id, device_id, disabled_by, translation_key };
+          });
+      }).catch(() => { cache.entries = null; });
+    }
+    if (host._registryRequest === cache.promise) return;
+    host._registryRequest = cache.promise;
+    cache.promise.then(() => {
+      if (host._registryRequest === cache.promise && host._hass?.entities === cache.display) update();
+    });
+  }
+
   static _ctx(hass, device, idx) {
     const states = hass?.states || {};
-    const reg = hass?.entities || {};
+    const reg = HeatpumpFlowCard._registry(hass);
     const ids = Object.keys(states);
     const onDevice = (e) => !device || reg[e]?.device_id === device;
     return {
       ids,
       idx,
+      registry: reg,
+      device,
       key: (platform, domain, tk) => ids.find((e) => e.startsWith(`${domain}.`) && reg[e]?.platform === platform
         && reg[e]?.translation_key === tk && onDevice(e)),
       // Without a registry entry (YAML entities) the platform cannot be checked; accept the pattern match.
@@ -943,6 +1113,9 @@ class HeatpumpFlowCard extends HTMLElement {
     this._textCache = null;
     const preset = HFC_PRESETS[config.preset];
     this._preset = preset;
+    HeatpumpFlowCard._loadPresetRegistry(this, () => {
+      this._needsBuild = true; this._rendered = false; this.hass = this._hass;
+    });
     this._idx = { hp: 1, dhw: 1, buffer: 1, hc: 1, ...(preset?.index || {}), ...(config.index || {}) };
     this._maps = {
       mode: { ...(preset?.mode_map || {}), ...(config.mode_map || {}) },
@@ -987,6 +1160,7 @@ class HeatpumpFlowCard extends HTMLElement {
       prefix = preset.detect ? preset.detect(ctx) : '';
       if (prefix === undefined) { prefix = ''; ready = false; }
     }
+    if (preset?.ready && !preset.ready(ctx)) ready = false;
     prefix = String(prefix || '').trim().toLowerCase();
     const fromPreset = {};
     const take = (k, v) => {
@@ -1019,7 +1193,12 @@ class HeatpumpFlowCard extends HTMLElement {
     [['energy_total', 'energy'], ['env_energy', 'env_energy'], ['heat_total', 'heat']].forEach(([entityKey, tileKey]) => {
       if (e[entityKey] && hass.states[e[entityKey]]) (tiles[tileKey] = tiles[tileKey] || {}).total = e[entityKey];
     });
-    return { preset, prefix, ready, idx, fromPreset, entities: e, presetErrors, errors, tiles };
+    const presetControls = preset?.controls ? preset.controls(prefix, idx, ctx) : [];
+    const presetDetails = preset?.details ? preset.details(prefix, idx, ctx) : [];
+    const controls = config.controls !== undefined ? config.controls : presetControls;
+    const details = config.details !== undefined ? config.details : presetDetails;
+    return { preset, prefix, ready, idx, fromPreset, entities: e, presetErrors, errors, tiles,
+      presetControls, controls, details };
   }
 
   // Plain-text support report. It is created locally and contains only the mappings used by this card, never registry
@@ -1059,7 +1238,7 @@ class HeatpumpFlowCard extends HTMLElement {
       ...(r.errors?.length ? r.errors.map((id, n) => entityLine(`error_${n + 1}`, id)) : ['- none']),
       '',
       'Quick controls:',
-      ...((config.controls || []).length ? (config.controls || []).map((c, n) => entityLine(`control_${n + 1}`, typeof c === 'string' ? c : c?.entity)) : ['- none']),
+      ...(r.controls.length ? r.controls.map((c, n) => entityLine(`control_${n + 1}`, typeof c === 'string' ? c : c?.entity)) : ['- none']),
     ];
     return lines.join('\n');
   }
@@ -1069,6 +1248,8 @@ class HeatpumpFlowCard extends HTMLElement {
     this._e = r.entities;
     this._errors = r.errors;
     this._tileMap = r.tiles;
+    this._presetControls = r.presetControls;
+    this._details = r.details;
     // An action for a key without an entity does nothing; say so once instead of failing silently.
     if (r.ready && this._config.actions) {
       const lost = Object.keys(this._config.actions).filter((k) => !this._e[k] && !(this._warned || (this._warned = {}))[k]);
@@ -1164,10 +1345,19 @@ class HeatpumpFlowCard extends HTMLElement {
     this._hass = hass;
     if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
     if (!this._config) return;
+    HeatpumpFlowCard._loadPresetRegistry(this, () => {
+      this._needsBuild = true; this._rendered = false; this.hass = this._hass;
+    });
     try { this._apply(); } catch (err) { this._fail(err); }
   }
 
   _apply() {
+    if (this._preset?.entity_registry) {
+      const ids = HeatpumpFlowCard._pointtStateIds(this._hass);
+      if (ids !== this._pointtStateIds) {
+        this._pointtStateIds = ids; this._needsBuild = true; this._lastTry = 0;
+      }
+    }
     // Retry detection at most every 30 s while the integration's entities are not there yet.
     if (this._needsBuild && (!this._rendered || Date.now() - this._lastTry > 30000)) { this._build(); this._rendered = false; }
     this._loadEnergy();
@@ -1574,7 +1764,7 @@ class HeatpumpFlowCard extends HTMLElement {
 
   /* ---------- quick controls ---------- */
   _controlList() {
-    return (this._config.controls || []).map((c) => (typeof c === 'string' ? { entity: c } : c))
+    return (this._config.controls ?? this._presetControls ?? []).map((c) => (typeof c === 'string' ? { entity: c } : c))
       .filter((c) => c && c.entity && this._hass.states[c.entity]);
   }
 
@@ -1987,7 +2177,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const diff = (a, b) => { const v = this._n(a) - this._n(b); return Number.isFinite(v) ? `${this._fmt(v, 1)} K` : '–'; };
     rf.push(row('superheat') || (ok('suction_temp') && ok('evap_temp') ? ['superheat', D.superheat, this._e.suction_temp, () => diff('suction_temp', 'evap_temp')] : null));
     rf.push(row('subcooling') || (ok('cond_temp') && ok('liquid_temp') ? ['subcooling', D.subcooling, this._e.liquid_temp, () => diff('cond_temp', 'liquid_temp')] : null));
-    const more = (this._config.details || []).map((d, n) => (typeof d === 'string' ? { entity: d } : d)).filter((d) => d && this._hass.states[d.entity])
+    const more = (this._details || []).map((d, n) => (typeof d === 'string' ? { entity: d } : d)).filter((d) => d && this._hass.states[d.entity])
       .map((d, n) => [`x${n}`, d.name || this._hass.states[d.entity].attributes.friendly_name || d.entity, d.entity, () => this._fmtState(null, d)]);
     return [[i.sec_operation, op.filter(Boolean)], [i.sec_hydraulic, hydraulic], [i.sec_refrigerant, rf.filter(Boolean)], [i.sec_cutouts, cutouts], [i.sec_more, more]].filter(([, r]) => r.length);
   }
@@ -3201,14 +3391,20 @@ HeatpumpFlowCard.styles = `
 // Card editor: the same form as getConfigForm, but entity pickers show what the preset found,
 // only the configured number of circuits is offered, and the preset field reports the detection.
 class HeatpumpFlowCardEditor extends HTMLElement {
-  setConfig(config) { this._config = config; this._resolved = null; this._loadEnergyInfo(); this._render(); }
+  setConfig(config) { this._config = config; this._resolved = null; this._loadEnergyInfo(); this._loadRegistry(); this._render(); }
+
+  _loadRegistry() { HeatpumpFlowCard._loadPresetRegistry(this, () => this._render()); }
 
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
     if (this._form) this._form.hass = hass;
     this._loadEnergyInfo();
-    if (first) this._render();
+    this._loadRegistry();
+    const ids = HFC_PRESETS[this._config?.preset]?.entity_registry ? HeatpumpFlowCard._pointtStateIds(hass) : '';
+    const changed = ids !== this._pointtStateIds;
+    this._pointtStateIds = ids;
+    if (first || changed) this._render();
   }
 
   _loadEnergyInfo() {
@@ -3239,6 +3435,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     // Only entities that exist are shown as found by the preset.
     this._fromPreset = Object.fromEntries(Object.entries(r.fromPreset).filter(([, id]) => this._hass.states[id]));
     this._presetErrors = r.presetErrors || [];
+    this._presetControls = r.presetControls;
     this._presetErrorOk = r.preset?.error_ok || [];
     const tiles = HeatpumpFlowCard._tileOptions(this._config, r, this._hass);
     this._tiles = tiles;
@@ -3283,13 +3480,13 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       return '';
     };
     const custom = Array.isArray(this._config.tiles);
-    const controls = (this._config.controls || []).map((c) => (typeof c === 'string' ? c : c?.entity)).filter(Boolean);
+    const controls = r.controls.map((c) => (typeof c === 'string' ? c : c?.entity)).filter(Boolean);
     const data = { ...this._config, entities: shown, controls, timeline_marks: !!this._config.timeline_marks,
       errors: this._config.errors !== undefined ? this._config.errors : this._presetErrors,
       error_ok_text: (this._config.error_ok !== undefined ? this._config.error_ok : this._presetErrorOk).join(', '), tiles_custom: custom,
       animations: this._config.animations || 'auto', flow_speed: this._config.flow_speed ?? 1, source_spread: this._config.source_spread !== false,
       theme: this._config.theme || 'auto', fullscreen: this._config.fullscreen !== false };
-    if (this._config.controls === undefined) delete data.controls;
+    if (this._config.controls === undefined && !r.presetControls.length) delete data.controls;
     if (custom && tiles.editable) data.tiles = tiles.value;
     this._priceShown = custom;
     if (custom) {
@@ -3325,6 +3522,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
         const id = typeof c === 'string' ? c : c?.entity;
         return old.get(id) || id;
       }).filter(Boolean);
+      if (this._config.controls === undefined && JSON.stringify(config.controls) === JSON.stringify(this._presetControls)) delete config.controls;
     }
     delete config.error_ok_text;
     // The switch only knows on and off; a YAML list of marks stays as it is while the switch stays on.
@@ -3353,6 +3551,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     else if (!this._tiles.editable) config.tiles = this._config.tiles;
     this._config = config;
     this._loadEnergyInfo();
+    this._loadRegistry();
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
     this._render();
   }
@@ -3383,7 +3582,7 @@ if (!window.customCards.some((c) => c.type === hfcType)) {
   window.customCards.push({
     type: hfcType,
     name: hfcGeneric ? 'Heatpump Flow Card' : 'Heatpump Hydraulic Card',
-    description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann, Vaillant, EMS-ESP (Bosch/Buderus/Junkers/Nefit), Panasonic Aquarea (HeishaMon).',
+    description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann, Vaillant, EMS-ESP, Bosch/Buderus Home Comfort, Panasonic Aquarea (HeishaMon).',
     preview: true,
     documentationURL: 'https://github.com/Sturmi77/heatpump-hydraulic-card',
   });

@@ -25,6 +25,7 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 | `vicare` | **Viessmann** (Vitocal) | [ViCare](https://www.home-assistant.io/integrations/vicare/) (core) | Viessmann Vitocal 250-A | untested |
 | `vaillant` | **Vaillant** (aroTHERM, aroTHERM plus), **Saunier Duval**, **Bulex**, **Glow-worm**, **DemirDöküm** | [myPyllant](https://github.com/signalkraft/mypyllant-component) (HACS) | Vaillant aroTHERM plus by default; Saunier Duval GeniaAir Mono by manual override | untested |
 | `emsesp` | **Bosch**, **Buderus**, **Junkers**, **Nefit**, **Worcester**, **Sieger**, **elm.leblanc**, **iVT** – EMS/EMS+ heat pumps such as Buderus Logatherm WLW, Bosch Compress, Nefit EnviLine | [EMS-ESP](https://github.com/emsesp/EMS-ESP32) gateway (MQTT discovery) | Bosch Compress 5800i/6800i AW | untested |
+| `bosch_buderus_heating` *(unreleased)* | **Bosch**, **Buderus** via PointT cloud | [Bosch/Buderus Home Comfort](https://github.com/SoftwareSchmied/ha-bosch-buderus-heating) (HACS) | Bosch family drawing | automatic preset untested; [mapping and test scope](docs/presets/bosch-buderus-home-comfort.md) |
 | `samsung` *(in preparation)* | **Samsung EHS** (Mono, Split, TDM) | [esphome-samsung-nasa](https://github.com/Beormund/esphome-samsung-nasa) via ESPHome | Samsung EHS Mono HT Quiet; manual until the preset ships | untested; pending [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16), not included in the current release |
 
 Additional real-installation reports with manual entity mappings are tracked separately from preset validation:
@@ -243,6 +244,19 @@ What you get:
 
 The Vaillant cloud API has no return temperature and no compressor state, and values update every few minutes. Use `index: {hc: 1, dhw: 1}` for a second circuit or DHW system.
 
+### Bosch/Buderus Home Comfort (PointT cloud, unreleased)
+
+```yaml
+type: custom:heatpump-hydraulic-card
+preset: bosch_buderus_heating
+```
+
+For the [Bosch/Buderus Home Comfort integration](https://github.com/SoftwareSchmied/ha-bosch-buderus-heating), domain `bosch_buderus_heating`. This uses the PointT cloud API; the separate EMS-ESP preset below uses MQTT.
+
+The preset finds renamed and translated entities by their stable registry identities. It maps temperatures, compressor status/modulation, heating pressure, total and per-mode energy counters, compressor starts/runtime, holiday/fault indicators, available controls and additional detail values. Select `device` when several gateways are present. Existing manual mappings remain supported.
+
+I checked the manual configuration's display with live data on my Buderus installation through an MX400 gateway. The new automatic preset still needs its own installation test and stays marked untested. See the [preset guide](docs/presets/bosch-buderus-home-comfort.md) for source evidence, circuit selection, registry access, controls and deliberate gaps. This preset is not included in release 0.11.0.
+
 ### Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP) – untested, feedback welcome
 ```yaml
 type: custom:heatpump-flow-card
@@ -322,7 +336,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 
 | Option | Description |
 |---|---|
-| `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon` or omit. Fills entities, mode maps and error sensors. |
+| `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon`, `bosch_buderus_heating` (unreleased) or omit. Fills entities, mode maps and error sensors. |
 | `prefix` | Preset prefix (Lambda device name, Vaillant home slug, EMS-ESP instance prefix, HeishaMon MQTT prefix). Omit for auto-detection, `""` for unprefixed Lambda ids. |
 | `device` | Device id: restricts preset detection to one device (several heat pumps of the same brand). |
 | `index` | Unit numbers for presets: `{hp, dhw, buffer, hc}` (default 1; Vaillant counts from 0). |
@@ -568,8 +582,12 @@ Presets live in `HFC_PRESETS` in `dist/heatpump-hydraulic-card.js`. A preset con
 - the mode maps
 - `running_states`, `status_labels` and `stat_labels`
 - optional `tiles(prefix, index, ctx)`, which returns `{ tile: { period: entity } }` for the stat tile catalog; a `total` counter with long-term statistics also covers today, yesterday, week, month and year
+- optional `controls(prefix, index, ctx)` and `details(prefix, index, ctx)` return default lists; an explicit card list, including `[]`, replaces the preset list
+- `entity_registry: true` requests stable registry identities from Home Assistant when this preset is selected; `ready(ctx)` can defer automatic mappings until those identities provide an unambiguous installation
 
 `ctx.key(platform, domain, translation_key)` looks entities up in the entity registry, independent of language and entity ids. `ctx.match(regex, platform)` matches entity ids by pattern.
+
+`ctx.registry` exposes registry records to presets that need stable resource identities. Treat unique ids as private lookup data and keep them out of diagnostic reports and saved prefixes. The PointT preset demonstrates device-scoped resolution and tests for failed registry access.
 
 Pull requests for other brands are very welcome.
 
