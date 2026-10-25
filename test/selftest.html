@@ -88,7 +88,7 @@
     { badges: [{ entity: 'sensor.x', hold_action: 'toggle' }] },
     { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' },
     { errors: 'sensor.error' }, { error_ok: 'No Error' }, { error_ok: ['No Error', 0] },
-    { timeline: 'yes' }, { timeline_hours: 0 }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' },
+    { timeline: 'yes' }, { timeline_hours: 0 }, { timeline_marks: 'yes' }, { timeline_marks: [{ label: 'x' }] }, { timeline_marks: [7] }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' },
     { animations: 'sometimes' }, { flow_speed: 0 }, { flow_speed: 3.1 }, { source_spread: 'yes' }, { theme: 'sepia' }, { fullscreen: 'yes' },
     { texts: [] }, { texts: { NL: { title: 'x' } } }, { texts: { nl: { title: 7 } } }, { texts: { nl: { missing_key: 'x' } } },
     { brine_pressure_min: -0.1 }, { hc_pressure_crit: 1.2, hc_pressure_min: 1.0 }, { hc_pressure_min: 3, hc_pressure_max: 2 }]) {
@@ -915,6 +915,39 @@
     c.remove();
     const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
     check(C._formSchema({}).schema.flatMap(keysOf).includes('timeline') && !C._formSchema({}).schema.flatMap(keysOf).includes('timeline_hours') && C._formSchema({ timeline: true }).schema.flatMap(keysOf).includes('timeline_hours'), 'editor offers the timeline and its length');
+    // marks: badges (or a list of entities) as extra lanes under the bar
+    c = await tl(s);
+    const lane = c.shadowRoot.querySelectorAll('#timeline .tl-mark');
+    const ms = [...c.shadowRoot.querySelectorAll('#timeline .mseg')];
+    check(lane.length === 1 && ms.length === 2, `the Boost badge gets a lane with its two periods (${lane.length} lane, ${ms.length} periods)`);
+    check(/Boost/.test(c.shadowRoot.querySelector('#timeline .tl-legend').textContent) && /Boost: \d\d:\d\d–\d\d:\d\d, \d\d:\d\d–/.test(lane[0].getAttribute('aria-label')), `legend and screen reader text name the lane (${lane[0].getAttribute('aria-label')})`);
+    check(parseFloat(ms[0].style.left) > 0 && parseFloat(ms[0].style.left) + parseFloat(ms[0].style.width) < parseFloat(ms[1].style.left), 'the periods sit in time order inside the bar');
+    ms[0].dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    const md = () => c.shadowRoot.getElementById('tl-detail').textContent;
+    check(/^Boost · \d\d:\d\d–\d\d:\d\d · 4 h 00 min$/.test(md()), `a tap on a period shows start, end and duration (${md()})`);
+    c.shadowRoot.querySelector('#timeline .mseg').dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    check(md() === '', 'a second tap clears it');
+    c.shadowRoot.querySelectorAll('#timeline .seg')[1].dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    check(/Heating/.test(md()) && !c.shadowRoot.querySelector('#timeline .mseg.sel'), 'selecting a mode period leaves the lane unselected');
+    c.remove();
+    c = await tl(s, { timeline_marks: false });
+    check(!c.shadowRoot.querySelector('#timeline .tl-mark'), 'timeline_marks: false draws no lane');
+    c.remove();
+    c = await tl(s, { timeline_marks: [{ entity: 'input_boolean.heatpump_boost', label: 'Boost run' }, 'sensor.nothing_here'] });
+    check(c.shadowRoot.querySelectorAll('#timeline .tl-mark').length === 1 && /Boost run/.test(c.shadowRoot.querySelector('#timeline .tl-legend').textContent), 'a list of entities with a label; an entity without a period draws no lane');
+    c.remove();
+    {
+      const ed = document.createElement('heatpump-flow-card-editor'); let out;
+      ed.addEventListener('config-changed', (ev) => { out = ev.detail.config; });
+      const marks = [{ entity: 'input_boolean.heatpump_boost', label: 'Boost' }];
+      ed.setConfig({ timeline: true, timeline_marks: marks }); ed.hass = hassOf(toStates({})); await wait(10);
+      check(ed._form.data.timeline_marks === true && C._formSchema({ timeline: true }).schema.flatMap(keysOf).includes('timeline_marks') && !C._formSchema({}).schema.flatMap(keysOf).includes('timeline_marks'), 'editor shows the lanes as a switch, only with the timeline on');
+      ed._changed({ timeline: true, timeline_marks: true });
+      check(JSON.stringify(out.timeline_marks) === JSON.stringify(marks), 'the editor keeps a YAML list while the switch stays on');
+      ed._changed({ timeline: true, timeline_marks: false });
+      check(!('timeline_marks' in out), 'switching off removes the option');
+      ed.remove();
+    }
   }
 
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes

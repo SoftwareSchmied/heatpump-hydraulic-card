@@ -476,7 +476,7 @@ const HFC_EDITOR = {
     hc_count: 'Heating circuits', hc2_type: 'Circuit 2 emitter', hc3_type: 'Circuit 3 emitter',
     unit_style: 'Unit drawing', unit_auto: 'Automatic (from the preset)', unit_generic: 'Generic (fan)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus', unit_panasonic: 'Panasonic Aquarea', unit_viessmann: 'Viessmann Vitocal', unit_bosch: 'Bosch / Buderus', unit_saunier: 'Saunier Duval GeniaAir', unit_samsung: 'Samsung EHS Mono',
     unit_size: 'Vaillant size', size_small: '3.5 / 5.5 kW (1 fan, low)', size_medium: '7.5 kW (1 fan)', size_large: '10.5 / 12.5 kW (2 fans)',
-    timeline: 'Timeline of the operating mode', timeline_hours: 'Timeline length (hours)',
+    timeline: 'Timeline of the operating mode', timeline_hours: 'Timeline length (hours)', timeline_marks: 'Show the badges (e.g. Boost) as extra lanes',
     layout: 'Layout', layout_default: 'Default', layout_compact: 'Compact (narrow columns)', layout_wide: 'Wide (tiles beside the schematic)', layout_wall: 'Wall display (large, controls fade out)',
     animations: 'Animations', animations_auto: 'Automatic (respect reduced motion)', animations_always: 'Always', animations_off: 'Off',
     flow_speed: 'Animation speed', source_spread: 'Show source spread',
@@ -536,7 +536,7 @@ const HFC_EDITOR = {
     hc_count: 'Heizkreise', hc2_type: 'Wärmeabgabe Heizkreis 2', hc3_type: 'Wärmeabgabe Heizkreis 3',
     unit_style: 'Geräte-Zeichnung', unit_auto: 'Automatisch (aus der Voreinstellung)', unit_generic: 'Allgemein (Lüfter)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus', unit_panasonic: 'Panasonic Aquarea', unit_viessmann: 'Viessmann Vitocal', unit_bosch: 'Bosch / Buderus', unit_saunier: 'Saunier Duval GeniaAir', unit_samsung: 'Samsung EHS Mono',
     unit_size: 'Vaillant-Größe', size_small: '3,5 / 5,5 kW (1 Lüfter, niedrig)', size_medium: '7,5 kW (1 Lüfter)', size_large: '10,5 / 12,5 kW (2 Lüfter)',
-    timeline: 'Zeitleiste der Betriebsart', timeline_hours: 'Länge der Zeitleiste (Stunden)',
+    timeline: 'Zeitleiste der Betriebsart', timeline_hours: 'Länge der Zeitleiste (Stunden)', timeline_marks: 'Badges (z. B. Boost) als zusätzliche Spuren zeigen',
     layout: 'Layout', layout_default: 'Standard', layout_compact: 'Kompakt (schmale Spalten)', layout_wide: 'Breit (Kacheln neben dem Schema)', layout_wall: 'Wanddisplay (groß, Bedienelemente blenden aus)',
     animations: 'Animationen', animations_auto: 'Automatisch (reduzierte Bewegung beachten)', animations_always: 'Immer', animations_off: 'Aus',
     flow_speed: 'Animationsgeschwindigkeit', source_spread: 'Quellenspreizung anzeigen',
@@ -787,7 +787,7 @@ class HeatpumpFlowCard extends HTMLElement {
               ...(config && (config.unit_style === 'vaillant' || ((!config.unit_style || config.unit_style === 'auto') && config.preset === 'vaillant'))
                 ? [{ name: 'unit_size', selector: { select: { mode: 'dropdown', options: HFC_UNIT_SIZES.map((v) => ({ value: v, label: L[`size_${v}`] })) } } }] : []),
               { name: 'timeline', selector: { boolean: {} } },
-              ...(config && config.timeline ? [{ name: 'timeline_hours', selector: { number: { min: 3, max: 72, step: 1, mode: 'box', unit_of_measurement: 'h' } } }] : []),
+              ...(config && config.timeline ? [{ name: 'timeline_hours', selector: { number: { min: 3, max: 72, step: 1, mode: 'box', unit_of_measurement: 'h' } } }, { name: 'timeline_marks', selector: { boolean: {} } }] : []),
               { name: 'details_open', selector: { boolean: {} } },
               ...(config && config.layout === 'wall' ? [{ name: 'wall_timeout', selector: { number: { min: 0, max: 600, step: 1, mode: 'box', unit_of_measurement: 's' } } }] : []),
             ],
@@ -883,6 +883,10 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     if (config.timeline !== undefined && config.timeline !== null && typeof config.timeline !== 'boolean') throw new Error('timeline must be true or false');
     if (config.timeline_hours !== undefined && config.timeline_hours !== null && !(+config.timeline_hours > 0)) throw new Error('timeline_hours must be a number of hours above 0 (3 to 72)');
+    if (config.timeline_marks !== undefined && config.timeline_marks !== null && typeof config.timeline_marks !== 'boolean') {
+      if (!Array.isArray(config.timeline_marks)) throw new Error('timeline_marks must be true or a list of entities');
+      config.timeline_marks.forEach((m) => { if (!(typeof m === 'string' ? m : m && m.entity)) throw new Error('timeline_marks: every entry needs an entity'); });
+    }
     if (config.unit_style !== undefined && config.unit_style !== null && !HFC_UNIT_STYLES.includes(config.unit_style)) {
       throw new Error(`unit_style must be one of: ${HFC_UNIT_STYLES.join(', ')}`);
     }
@@ -2270,6 +2274,30 @@ class HeatpumpFlowCard extends HTMLElement {
     return segs;
   }
 
+  // Entities shown as extra lanes under the bar: timeline_marks true = the badges, or a list of entities / { entity, label }.
+  _timelineMarks() {
+    const m = this._config.timeline_marks;
+    if (!m) return [];
+    const list = m === true ? this._badges : (Array.isArray(m) ? m : []);
+    const seen = new Set();
+    return list.map((x) => (typeof x === 'string' ? { entity: x } : x)).filter((x) => x && x.entity && !seen.has(x.entity) && seen.add(x.entity))
+      .map((x) => ({ entity: x.entity, label: x.label || this._hass.states[x.entity]?.attributes?.friendly_name || x.entity }));
+  }
+
+  // Periods in which a mark entity was on (same on-states as the badge chips), merged, between start and end.
+  _timelineMarkSegments(hist, mark, start, end) {
+    const list = hist[mark.entity] || [];
+    const segs = [];
+    list.forEach((e, n) => {
+      if (!['on', 'true', 'home', 'open'].includes(String(e.s).toLowerCase())) return;
+      const from = Math.max(e.t, start); const to = Math.min(list[n + 1] ? list[n + 1].t : end, end);
+      if (to <= from) return;
+      const last = segs[segs.length - 1];
+      if (last && last.to === from) last.to = to; else segs.push({ from, to });
+    });
+    return segs;
+  }
+
   _timelineTime(ms) {
     let tz; try { tz = this._hass.config?.time_zone; new Intl.DateTimeFormat('en', { timeZone: tz }); } catch (err) { tz = undefined; }
     return new Intl.DateTimeFormat(this._lang, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz }).format(ms);
@@ -2298,19 +2326,22 @@ class HeatpumpFlowCard extends HTMLElement {
     const idList = ids ? Object.values(ids).filter(Boolean) : [];
     if (!idList.length) { box.hidden = true; return; }
     const now = Date.now(); const start = now - hours * 3600000;
-    const hist = this._wsCached(`timeline|${idList.join(',')}|${hours}`, {
-      type: 'history/history_during_period', start_time: new Date(start).toISOString(), entity_ids: idList,
+    const marks = this._timelineMarks();
+    const allIds = [...new Set([...idList, ...marks.map((m) => m.entity)])];
+    const hist = this._wsCached(`timeline|${allIds.join(',')}|${hours}`, {
+      type: 'history/history_during_period', start_time: new Date(start).toISOString(), entity_ids: allIds,
       minimal_response: true, no_attributes: true, significant_changes_only: false,
-    }, (res) => this._timelineHistory(res, idList));
+    }, (res) => this._timelineHistory(res, allIds));
     if (!hist) { box.hidden = true; return; }
     // The window is cached for five minutes; the bar always ends at "now".
     const segs = this._timelineSegments(hist, ids, start, now);
     if (!segs.length) { box.hidden = true; return; }
+    const lanes = marks.map((m, n) => ({ ...m, n, segs: this._timelineMarkSegments(hist, m, start, now) })).filter((l) => l.segs.length);
     const minute = Math.floor(now / 60000);
-    const key = `${minute}|${segs.map((s) => `${s.kind}${s.from}${s.to}`).join(',')}|${this._lang}|${this._tlSel ?? ''}`;
+    const key = `${minute}|${segs.map((s) => `${s.kind}${s.from}${s.to}`).join(',')}|${lanes.map((l) => `${l.n}${l.label}${l.segs.map((s) => `${s.from}-${s.to}`).join(',')}`).join(';')}|${this._lang}|${this._tlSel ?? ''}|${this._tlMarkSel ?? ''}`;
     if (box._k === key) return;
     box._k = key; box.hidden = false;
-    this._tl = { segs, start, now };
+    this._tl = { segs, start, now, lanes };
     const pct = (t) => (((t - start) / (now - start)) * 100).toFixed(3);
     const i = this._i;
     // Hour ticks at clock times (every 6 h for a day), found in the Home Assistant time zone.
@@ -2324,11 +2355,16 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     const kinds = [...new Set(segs.map((s) => s.kind))].filter((k) => k !== 'idle');
     const sel = segs.findIndex((s) => s.from === this._tlSel);
-    box.innerHTML = `<div class="tl-head"><span>${this._esc(i.timeline_title.replace('{h}', hours))}</span><span class="tl-detail" id="tl-detail" aria-live="polite">${sel >= 0 ? this._esc(this._timelineDetail(segs[sel])) : ''}</span></div>
+    const markDetail = (l, s) => `${l.label} · ${this._timelineTime(s.from)}–${this._timelineTime(s.to)} · ${this._timelineDuration(s.to - s.from)}`;
+    let detail = sel >= 0 ? this._timelineDetail(segs[sel]) : '';
+    lanes.forEach((l) => l.segs.forEach((s) => { if (`${l.n}:${s.from}` === this._tlMarkSel) detail = markDetail(l, s); }));
+    box.innerHTML = `<div class="tl-head"><span>${this._esc(i.timeline_title.replace('{h}', hours))}</span><span class="tl-detail" id="tl-detail" aria-live="polite">${this._esc(detail)}</span></div>
       <div class="tl-bar" id="tl-bar" tabindex="0" role="group" aria-label="${this._esc(i.timeline_aria.replace('{h}', hours))}">${segs.map((s, n) =>
     `<span class="seg k-${s.kind}${n === sel ? ' sel' : ''}" data-seg="${n}" style="left:${pct(s.from)}%;width:${(pct(s.to) - pct(s.from)).toFixed(3)}%" title="${this._esc(this._timelineDetail(s))}"></span>`).join('')}</div>
+      ${lanes.map((l) => `<div class="tl-mark" role="img" aria-label="${this._esc(`${l.label}: ${l.segs.map((s) => `${this._timelineTime(s.from)}–${this._timelineTime(s.to)}`).join(', ')}`)}">${l.segs.map((s) =>
+    `<span class="mseg${`${l.n}:${s.from}` === this._tlMarkSel ? ' sel' : ''}" data-mseg="${l.n}:${s.from}" style="left:${pct(s.from)}%;width:${(pct(s.to) - pct(s.from)).toFixed(3)}%" title="${this._esc(markDetail(l, s))}"></span>`).join('')}</div>`).join('')}
       <div class="tl-axis">${ticks.map(([t, l]) => `<span style="left:${pct(t)}%">${l}</span>`).join('')}</div>
-      <div class="tl-legend">${kinds.map((k) => `<span><i class="k-${k}"></i>${this._esc(this._timelineLabel({ kind: k }))}</span>`).join('')}</div>`;
+      <div class="tl-legend">${kinds.map((k) => `<span><i class="k-${k}"></i>${this._esc(this._timelineLabel({ kind: k }))}</span>`).join('')}${lanes.map((l) => `<span><i class="k-mark"></i>${this._esc(l.label)}</span>`).join('')}</div>`;
   }
 
   // Tap or arrow keys select a period and show its start, end and duration.
@@ -2336,11 +2372,16 @@ class HeatpumpFlowCard extends HTMLElement {
     const select = (n) => {
       const seg = this._tl?.segs[n];
       if (!seg) return;
-      this._tlSel = seg.from;
+      this._tlSel = seg.from; this._tlMarkSel = null;
       box._k = null; this._updateTimeline();
       this._$('tl-bar')?.focus({ preventScroll: true });
     };
-    box.addEventListener('click', (ev) => { const el = ev.target.closest('[data-seg]'); if (el) select(+el.dataset.seg); });
+    box.addEventListener('click', (ev) => {
+      const el = ev.target.closest('[data-seg]'); if (el) { select(+el.dataset.seg); return; }
+      // A tap on a lane shows that period; a second tap on the same one clears it.
+      const m = ev.target.closest('[data-mseg]');
+      if (m) { this._tlMarkSel = this._tlMarkSel === m.dataset.mseg ? null : m.dataset.mseg; this._tlSel = null; box._k = null; this._updateTimeline(); }
+    });
     box.addEventListener('keydown', (ev) => {
       if (ev.target.id !== 'tl-bar' || !this._tl) return;
       const segs = this._tl.segs; const cur = segs.findIndex((s) => s.from === this._tlSel);
@@ -3066,6 +3107,11 @@ HeatpumpFlowCard.styles = `
   .seg.k-blocked, .tl-legend i.k-blocked { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--hfc-muted) 55%, transparent) 0 3px, transparent 3px 6px); }
   .seg.k-gap, .tl-legend i.k-gap { background: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--hfc-muted) 30%, transparent) 3px 4px); }
   .seg.sel { box-shadow: inset 0 0 0 2px var(--primary-text-color); }
+  .tl-mark { position: relative; height: 7px; margin-top: 4px; border-radius: 4px; background: color-mix(in srgb, var(--hfc-muted) 10%, transparent); }
+  .tl-mark .mseg { position: absolute; top: 0; bottom: 0; min-width: 3px; border-radius: 4px; cursor: pointer; background: ${hfcVar('badge')}; }
+  .tl-mark .mseg::before { content: ''; position: absolute; inset: -6px 0; }
+  .tl-mark .mseg.sel { box-shadow: 0 0 0 2px var(--primary-text-color); }
+  .tl-legend i.k-mark { background: ${hfcVar('badge')}; }
   .tl-bar:focus-visible { outline: 2px solid var(--primary-color, #03a9f4); outline-offset: 2px; }
   .tl-axis { position: relative; height: 1.2em; font-size: .72em; color: var(--hfc-muted); }
   .tl-axis span { position: absolute; top: 2px; transform: translateX(-50%); }
@@ -3203,7 +3249,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     };
     const custom = Array.isArray(this._config.tiles);
     const controls = (this._config.controls || []).map((c) => (typeof c === 'string' ? c : c?.entity)).filter(Boolean);
-    const data = { ...this._config, entities: shown, controls,
+    const data = { ...this._config, entities: shown, controls, timeline_marks: !!this._config.timeline_marks,
       errors: this._config.errors !== undefined ? this._config.errors : this._presetErrors,
       error_ok_text: (this._config.error_ok !== undefined ? this._config.error_ok : this._presetErrorOk).join(', '), tiles_custom: custom,
       animations: this._config.animations || 'auto', flow_speed: this._config.flow_speed ?? 1, source_spread: this._config.source_spread !== false,
@@ -3246,6 +3292,9 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       }).filter(Boolean);
     }
     delete config.error_ok_text;
+    // The switch only knows on and off; a YAML list of marks stays as it is while the switch stays on.
+    if (!value.timeline_marks) delete config.timeline_marks;
+    else if (Array.isArray(this._config.timeline_marks)) config.timeline_marks = this._config.timeline_marks;
     if (!value.animations || value.animations === 'auto') delete config.animations;
     if (!value.theme || value.theme === 'auto') delete config.theme;
     if (value.fullscreen !== false) delete config.fullscreen;
