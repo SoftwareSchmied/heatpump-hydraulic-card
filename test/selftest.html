@@ -993,6 +993,45 @@
     check(['cutout_high_pressure', 'cutout_low_pressure', 'cutout_temperature'].every((k) => /\(count of events, not a |\(Anzahl der Ereignisse, kein/.test(lab({ name: k }))), `editor labels name the counters as events (${lab({ name: 'cutout_high_pressure' })})`);
   }
 
+  // 18c. up to six heating circuits (#33)
+  {
+    const states = { 'sensor.hp_flow': ['35', '°C'], 'sensor.hp_return': ['30', '°C'], 'sensor.hp_power': ['1200', 'W'], 'sensor.room': ['21', '°C'] };
+    const keys = {};
+    for (let n = 1; n <= 6; n++) {
+      const p = n === 1 ? 'hc' : `hc${n}`;
+      states[`sensor.c${n}_flow`] = [String(30 + n), '°C']; states[`sensor.c${n}_return`] = [String(25 + n), '°C']; states[`binary_sensor.c${n}_pump`] = 'on';
+      keys[`${p}_flow`] = `sensor.c${n}_flow`; keys[`${p}_return`] = `sensor.c${n}_return`; keys[`${p}_pump`] = `binary_sensor.c${n}_pump`;
+    }
+    const cfg = { entities: { power: 'sensor.hp_power', flow: 'sensor.hp_flow', return: 'sensor.hp_return', room: 'sensor.room', ...keys }, hc_count: 6, hc4_type: 'column', hc5_type: 'radiator', hc6_name: 'Attic' };
+    const c = mount(cfg, hassOf(toStates(states))); await wait(25);
+    const root = c.shadowRoot;
+    check(ok(c) && c._hcCount === 6, 'six circuits render without a failure');
+    check([1, 2, 3, 4, 5, 6].every((n) => root.getElementById(`p-hc-vl${n === 1 ? '' : n}`)), 'every circuit has its own flow pipe');
+    check([...root.querySelectorAll('.tank-title')].some((t) => t.textContent === 'Attic') && [...root.querySelectorAll('.tank-title')].some((t) => t.textContent === 'Heating circuit 5'), 'circuit 6 uses its name, circuit 5 the numbered default');
+    check([1, 2, 3, 4, 5, 6].every((n) => new RegExp(`${30 + n}`).test(root.getElementById(`t-hc${n === 1 ? '' : n}`).textContent)), 'each circuit shows its own flow temperature');
+    check(/viewBox="0 0 1000 1810"/.test(root.getElementById('svg').outerHTML), 'the schematic grows by one row per circuit');
+    check(c.getCardSize() > 20, `card size grows with the circuits (${c.getCardSize()})`);
+    c.remove();
+    // the count is limited to six, a bad emitter of circuit 6 is rejected
+    const big = mount({ ...cfg, hc_count: 9 }, hassOf(toStates(states))); await wait(25);
+    check(big._hcCount === 6, 'hc_count above 6 is limited to 6');
+    big.remove();
+    let err = '';
+    try { document.createElement('heatpump-flow-card').setConfig({ hc6_type: 'bogus' }); } catch (e) { err = e.message; }
+    check(/hc6_type must be one of/.test(err), 'an unknown emitter of circuit 6 is rejected');
+    // editor: fields and groups follow hc_count
+    const names = (config) => C._formSchema(config).schema.flatMap((x) => (x.schema ? x.schema.flatMap((y) => (y.schema ? y.schema.map((z) => z.name) : [y.name])) : [x.name]));
+    const groupNames = (config) => C._formSchema(config).schema.flatMap((x) => (x.schema ? x.schema.map((y) => y.name) : [])).join();
+    check(['hc6_type', 'hc6_name', 'hc6_flow'].every((k) => names({ hc_count: 6 }).includes(k)), 'editor offers circuit 6 with six circuits');
+    check(!names({ hc_count: 3 }).some((k) => /^hc[456]_/.test(k)), 'editor hides circuits 4 to 6 with three circuits');
+    check(C._formSchema({ hc_count: 6 }).schema.flatMap((x) => (x.schema ? x.schema : [x])).find((x) => x.name === 'hc_count').selector.number.max === 6, 'hc_count accepts up to 6');
+    check(C._formSchema({}).computeLabel({ name: 'hc6_flow' }) === C._formSchema({}).computeLabel({ name: 'hc_flow' }), 'circuit 6 keys reuse the labels of circuit 1');
+    // presets fill circuits beyond the third with the next circuit numbers
+    const lam = C._resolve({ preset: 'lambda', hc_count: 6 }, hassOf(toStates(setups[0].states('heat')), setups[0].registry || {}));
+    check(/hc6_/.test(lam.fromPreset.hc6_flow || '') && lam.fromPreset.hc6_flow !== lam.fromPreset.hc5_flow, `the Lambda preset maps circuit 6 (${lam.fromPreset.hc6_flow})`);
+    check(/Heating circuits: 6/.test(C._diagnosticReport({ ...cfg }, hassOf(toStates(states)))), 'diagnostic report names six circuits');
+  }
+
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
   {
     const s = setups[0];

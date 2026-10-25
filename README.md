@@ -60,7 +60,7 @@ The completed release history and the prioritized post-0.11.0 backlog are mainta
 - **Heat source:** air (the outdoor temperature is shown under the unit; default), **ground** with a brine loop or **groundwater** with two wells (`source_type`), with source inlet and outlet temperatures and the source flow rate. Optional brine and heating-circuit pressures are normalized to bar and can show warning/critical thresholds with text symbols as well as colour.
 - **Diverter valve:** shows DHW or heating; the active circuit is animated.
 - **Tanks:** DHW tank and buffer with a top/bottom temperature gradient, optionally refined by a middle sensor (`dhw_middle`, `buffer_middle`; blue = cold, then cyan and orange, red = hot), target, mode, a heat-exchanger coil while charging, and the circulation pump. **Heater rods** (`dhw_heater`, `buffer_heater`) glow orange while on, red at stage 2 or higher.
-- **Heating circuits:** up to **three circuits** (`hc_count`), each with a pump and an **underfloor loop**, **panel radiator** or **column radiator** with rising heat waves (`hc_type`, `hc2_type`, `hc3_type`), flow and target, plus a house with room temperature, target and outdoor temperature. The heating surface fades from the flow colour to the return colour, so you see the water cooling down.
+- **Heating circuits:** up to **six circuits** (`hc_count`), each with a pump and an **underfloor loop**, **panel radiator** or **column radiator** with rising heat waves (`hc_type`, `hc2_type` to `hc6_type`), flow and target, plus a house with room temperature, target and outdoor temperature. The heating surface fades from the flow colour to the return colour, so you see the water cooling down.
 - **Solar thermal:** with `solar_collector` and `solar_pump` a collector sits on the roof edge of the house and feeds a loop into the DHW tank; the loop runs while the solar pump runs. ViCare preset only, **not yet tested on a real installation**.
 - **Heating program:** a chip for eco, night / setback, party and holiday, from the `program` entity or, without one, from the heating circuit mode (e.g. Lambda `ECO`).
 - **Flow rates:** shown on the heating-side loop, at the circuit pump (`hc_volume`) and at the source (`source_volume`). Units l/h, l/min and m³/h are converted automatically.
@@ -263,7 +263,7 @@ What you get:
 - thermostat room temperature and target
 - details: compressor operating time and starts, total energy consumed and supplied, compressor speed, refrigerant temperatures (PL1, PH1, TR3, TR5, TR6)
 
-Without a heat output sensor, the heat output is estimated from flow rate × spread. With `hc_count: 2` (or 3) the mixer and thermostat entities of circuits 2 and 3 are added; `index: {hc: 2}` starts at circuit 2 instead.
+Without a heat output sensor, the heat output is estimated from flow rate × spread. With `hc_count: 2` (up to 6) the mixer and thermostat entities of the further circuits are added; `index: {hc: 2}` starts at circuit 2 instead.
 
 ### Panasonic Aquarea (HeishaMon) – confirmed on a real installation; more feedback welcome
 ```yaml
@@ -321,9 +321,9 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | `device` | Device id: restricts preset detection to one device (several heat pumps of the same brand). |
 | `index` | Unit numbers for presets: `{hp, dhw, buffer, hc}` (default 1; Vaillant counts from 0). |
 | `hc_type` | Circuit 1: `underfloor` (default), `radiator` (panel radiator) or `column` (column radiator). |
-| `hc_count` | Number of heating circuits, 1 (default) to 3. Presets fill circuits 2 and 3 with the next circuit numbers. |
-| `hc2_type`, `hc3_type` | Emitter of circuits 2 and 3 (default `underfloor`). |
-| `hc_name`, `hc2_name`, `hc3_name` | Circuit titles (default "Heating circuit 1/2/3"). |
+| `hc_count` | Number of heating circuits, 1 (default) to 6. Presets fill the further circuits with the next circuit numbers. The schematic grows by one row per circuit. |
+| `hc2_type` to `hc6_type` | Emitter of circuits 2 to 6 (default `underfloor`). |
+| `hc_name`, `hc2_name` to `hc6_name` | Circuit titles (default "Heating circuit 1", "Heating circuit 2", …). |
 | `source_type` | `air` (default), `brine` (ground loop) or `water` (groundwater wells). |
 | `title` | Card title (default: "Heat pump" / "Wärmepumpe"). |
 | `language` | `auto` (default), `en`, `de`, or a lowercase language code defined in `texts`. |
@@ -365,7 +365,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 - **Storage:** `dhw_top`, `dhw_middle`, `dhw_bottom`, `dhw_target`, `dhw_mode`, `circulation`, `dhw_heater`, `buffer_top`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` (needs the DHW tank)
 - **Heating circuit and house:** `hc_flow`, `hc_return`, `hc_setpoint`, `hc_mode`, `hc_pump`, `hc_volume`, `hc_pressure` (bar, kPa, Pa, hPa, MPa or psi), `room`, `room_target`, `program` (eco, night, party, holiday)
 - **Direct systems:** without a buffer and without circuit-specific temperature sensors, circuit 1 uses the heat pump's `flow` and `return` and remains connected in the schematic.
-- **Circuits 2 and 3:** the same keys with `hc2_` / `hc3_` (`hc2_flow`, `hc2_pump`, …)
+- **Circuits 2 to 6:** the same keys with `hc2_` to `hc6_` (`hc2_flow`, `hc6_pump`, …)
 - **Heaters** (`heater`, `dhw_heater`, `buffer_heater`): binary or on/off, a power value (on above 0) or a stage number (1-3)
 - **Power sources (W):** `pv`, `battery`, `grid` – the heat pump's power from each source. Optional: without them the card uses the Energy dashboard.
 - **Statistics:** `cop_heating_today`, `cop_dhw_today`, `energy_today`, `pv_share_today`, `starts_today`
@@ -552,7 +552,7 @@ Each preset section above lists the entities it uses.
 ![UI editor](docs/editor.jpg)
 
 ## Topology
-The layout is fixed on purpose: one heat pump (air, brine or groundwater), a diverter valve, an optional DHW tank, an optional buffer and up to three heating circuits (underfloor, panel or column radiators). That covers most single-family installations. Combined/layered storage is not drawn (yet).
+The layout is fixed on purpose: one heat pump (air, brine or groundwater), a diverter valve, an optional DHW tank, an optional buffer and up to six heating circuits (underfloor, panel or column radiators). That covers most single-family installations. Combined/layered storage is not drawn (yet).
 
 ## Adding a preset
 Presets live in `HFC_PRESETS` in `dist/heatpump-hydraulic-card.js`. A preset consists of:

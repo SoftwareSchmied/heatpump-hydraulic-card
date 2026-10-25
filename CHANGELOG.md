@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Up to six heating circuits (#33): `hc_count` accepts 1 to 6, with `hc4_` to `hc6_` entity keys, `hc4_type` to `hc6_type`, `hc4_name` to `hc6_name`, their editor fields and groups, English and German labels and the diagnostic report. Presets fill circuits 4 to 6 with the next circuit numbers, and the automatic circuit detection of the editor stub counts up to six. The schematic stacks the circuits as before and grows by one row per circuit. Existing configurations with one to three circuits are unchanged.
 - Diagnostic report: new line "Loaded from" with the address of the card file, so an outdated dashboard resource is visible at once. The bug report template now names the browser console or the diagnostic report as the source of the card version instead of HACS, which can list a newer version than the one the browser runs (#47).
 - Logo: a small schematic of the card (PV, heat pump, diverter valve, hot water tank, radiator) as SVG and PNG in `docs/logo/`, used in the README (light and dark variant) and as favicon, touch icon and header of the live demo. The demo title now uses the current name.
 - HeishaMon preset: marked as confirmed on a real installation after feedback that the default MQTT mapping is detected correctly. The combined/layered store in that installation remains outside the supported topology and was mapped manually.
