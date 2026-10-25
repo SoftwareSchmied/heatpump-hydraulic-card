@@ -366,7 +366,8 @@ const HFC_PRESETS = {
         hours: `sensor.${m}operations_hours`,
         starts_total: `sensor.${m}operations_counter`,
         aux_hours: `sensor.${m}room_heater_operations_hours`,
-        // kWh counters of the integration (Riemann sums of the power sensors, ids from their names); long-term statistics give the periods.
+        // kWh totals that the integration integrates from its W sensors (left Riemann sum, ids from their names). They are no
+        // counters of the heat pump: they start with the integration and stop without data. Long-term statistics give the periods.
         energy_total: 'sensor.aquarea_pump_total_consumption_total',
         heat_total: 'sensor.aquarea_pump_total_production_total',
         compressor_speed: `sensor.${m}compressor_freq`,

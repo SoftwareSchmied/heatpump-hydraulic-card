@@ -292,6 +292,7 @@ What you get:
 Notes from real installations:
 - The integration reads the Power and the Energy topic of each value, depending on the firmware, so the entity ids contain either `…_heat_power_consumption` or `…_heat_energy_consumption`. The preset accepts both. The schematic prefers the total sensors `sensor.<prefix>_consumption` and `sensor.<prefix>_production`, then `sensor.aquarea_energy_consumption` and `sensor.aquarea_energy_production` (all including hot water); the period tiles use the heating, hot water and cooling sensors.
 - `sensor.<prefix>_main_z1_temp` is the zone *water* temperature when the zone sensor setting is "Water Temperature", and reads −128 °C without a room sensor. The preset then prefers `…_main_room_thermostat_temp`; if that value is not a room temperature either, remove it with `entities: {room: null}`.
+- The kWh totals `sensor.aquarea_*_total` are not counters of the heat pump. The integration integrates its W sensors over time (left Riemann sum). So they start when the integration was set up, they stop while HeishaMon gets no data, and they keep the 200 W steps of the reported power. The total COP is the COP since the integration was set up. For measured electricity, set `energy_total` to an S0 meter, but only if `heat_total` covers the same time range.
 - Some models report a low pressure of 0.0 permanently; hide it with `entities: {low_pressure: null}`.
 - The heating setpoint is the zone target temperature. The outlet target (`main_target_temp`) follows the hot-water target while the 3-way valve is on the tank and is only used when no zone target exists.
 
@@ -469,7 +470,7 @@ What the presets provide:
 - **Lambda:** COP heating/DHW/cooling per day, month, year and in total; electricity and heat per mode including defrost and standby; starts, heating/DHW/cooling cycles and defrosts per day and yesterday.
 - **ViCare:** COP and SPF, electricity per day, week, month and year (total, heating, DHW, cooling), compressor hours, starts and load classes, heater rod hours and starts, PV and solar thermal yield.
 - **EMS-ESP:** totals for electricity, heat, starts and hours per mode; other periods from long-term statistics.
-- **HeishaMon:** heat and electricity per mode as current power ("now") and from the integration's kWh counters (`sensor.aquarea_*_total`), so today, week, month, year and total come from the long-term statistics; COP per mode and in total; operating hours and starts.
+- **HeishaMon:** heat and electricity per mode as current power ("now") and from the integration's kWh totals (`sensor.aquarea_*_total`, integrated from the power sensors), so today, week, month, year and total come from the long-term statistics; COP per mode and in total; operating hours and starts.
 - **Vaillant:** daily electricity and heat for heating and DHW.
 
 ### Layout, actions and colours
