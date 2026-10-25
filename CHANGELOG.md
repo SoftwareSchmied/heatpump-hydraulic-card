@@ -1,8 +1,8 @@
 # Changelog
 
 ## Unreleased
-
 - Added an Open3E preset for Viessmann Vitocal heat pumps, using the integration's translation keys for device-independent entity discovery.
+- Diagnostic report: new line "Loaded from" with the address of the card file, so an outdated dashboard resource is visible at once. The bug report template now names the browser console or the diagnostic report as the source of the card version instead of HACS, which can list a newer version than the one the browser runs (#47).
 - Logo: a small schematic of the card (PV, heat pump, diverter valve, hot water tank, radiator) as SVG and PNG in `docs/logo/`, used in the README (light and dark variant) and as favicon, touch icon and header of the live demo. The demo title now uses the current name.
 - HeishaMon preset: marked as confirmed on a real installation after feedback that the default MQTT mapping is detected correctly. The combined/layered store in that installation remains outside the supported topology and was mapped manually.
 - README: the preset table now puts confirmed presets first and names each automatic outdoor-unit schematic. The animated demo keeps one Lambda unit while showing heating, hot water, defrost, standby, the timeline, quick controls and statistics at the card's real animation speed.

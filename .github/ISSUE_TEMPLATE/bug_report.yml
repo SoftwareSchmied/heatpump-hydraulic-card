@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Card version
-      description: Shown in the browser console as "HEATPUMP-FLOW-CARD x.y.z" or in HACS.
+      description: The version the browser actually runs, shown in the browser console as "HEATPUMP-FLOW-CARD x.y.z" or in the diagnostic report. The version HACS lists can differ if the dashboard resource still points to an old file.
       placeholder: 0.9.6
     validations:
       required: true

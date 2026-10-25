@@ -1037,6 +1037,7 @@
     h.config = { version: '2026.10.1', time_zone: 'Europe/Vienna' };
     const report = C._diagnosticReport(s.config, h);
     check(/Privacy: entity ids can contain personal names/.test(report) && /Card version: \d+\.\d+\.\d+/.test(report) && /Home Assistant: 2026\.10\.1/.test(report), 'diagnostic report identifies itself and starts with the privacy warning');
+    check(/Loaded from: \S+/.test(report), 'diagnostic report names the file the card was loaded from');
     check(/- flow: sensor\.eu08l_hp1_flow_line_temperature = 32\.4/.test(report) && /- hc3_flow: not mapped/.test(report), 'diagnostic report contains mapped states and missing keys');
     check(/Preset: lambda/.test(report) && /Preset detected: yes/.test(report) && /Quick controls:/.test(report) && !/friendly_name/.test(report), 'diagnostic report contains detection and controls but no attribute dump');
     const card = mount(s.config, h); await wait(20);
