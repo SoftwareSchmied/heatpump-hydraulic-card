@@ -1284,10 +1284,10 @@ class HeatpumpFlowCard extends HTMLElement {
   _n(key) { const v = parseFloat(this._s(key)); return Number.isFinite(v) ? v : NaN; }
   _unit(key) { return String(this._st(key)?.attributes?.unit_of_measurement || '').toLowerCase(); }
   // Unit-aware readings: power in W, heat in kW, flow rates in l/h. A list of entities gives the sum of the members that report a number.
-  _w(key) { return this._sum(key, 'kw', 1000); }
-  _kw(key) { return this._sum(key, 'w', 0.001); }
-  _sum(key, unit, factor) {
-    const read = (st) => { const v = parseFloat(st?.state); return String(st?.attributes?.unit_of_measurement || '').toLowerCase() === unit ? v * factor : v; };
+  _w(key) { return this._sum(key, 'kw', (v) => v * 1000); }
+  _kw(key) { return this._sum(key, 'w', (v) => v / 1000); }
+  _sum(key, unit, convert) {
+    const read = (st) => { const v = parseFloat(st?.state); return String(st?.attributes?.unit_of_measurement || '').toLowerCase() === unit ? convert(v) : v; };
     if (!this._sums?.[key]) { const v = read(this._st(key)); return Number.isFinite(v) ? v : NaN; }
     const values = this._sums[key].map((id) => read(this._hass?.states[id])).filter(Number.isFinite);
     return values.length ? values.reduce((a, b) => a + b, 0) : NaN;

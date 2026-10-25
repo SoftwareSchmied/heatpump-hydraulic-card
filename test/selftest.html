@@ -1190,6 +1190,9 @@
     card.hass = hassOf(toStates({ ...states, [s0[0]]: 'unavailable', [s0[1]]: 'unknown' })); await wait(5);
     check(Number.isNaN(card._w('power')), 'entity list without any number gives no value');
     card.remove();
+    const kw = mount({ preset: 'heishamon' }, hassOf(toStates({ ...states, [`sensor.${p}_main_heat_power_production`]: ['3800', 'W'] }))); await wait(20);
+    check(kw._kw('heat') === 3.8, `W to kW conversion stays exact (${kw._kw('heat')} kW)`);
+    kw.remove();
     const report = C._diagnosticReport(cfg, hassOf(toStates(states)));
     check(report.includes(`- power (sum 1): ${s0[0]} = 581 W`) && report.includes(`- power (sum 2): ${s0[1]} = 1.5 kW`), 'diagnostic report lists every member of the sum');
     const flat = (list) => list.flatMap((x) => (x.schema ? flat(x.schema) : [x]));
