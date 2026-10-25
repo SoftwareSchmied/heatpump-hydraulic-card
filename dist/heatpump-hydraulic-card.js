@@ -8,6 +8,13 @@
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
 const HFC_VERSION = '0.11.0';
+// Address this file was loaded from: shows at once when a dashboard resource still points to an old file.
+const HFC_SCRIPT_URL = (() => {
+  try {
+    if (document.currentScript?.src) return document.currentScript.src;
+    return performance.getEntriesByType('resource').map((r) => r.name).find((n) => /heatpump-(flow|hydraulic)-card[^/?]*\.js/.test(n)) || '';
+  } catch (e) { return ''; }
+})();
 
 /* ------------------------------------------------------------------ */
 /* Presets                                                             */
@@ -1023,6 +1030,7 @@ class HeatpumpFlowCard extends HTMLElement {
       'Privacy: entity ids can contain personal names. Review this text before sharing it.',
       '',
       `Card version: ${HFC_VERSION}`,
+      `Loaded from: ${clean(HFC_SCRIPT_URL.replace(/[?#].*$/, '')) || 'unknown'}`,
       `Home Assistant: ${clean(hass.config?.version) || 'unknown'}`,
       `Browser language: ${clean(navigator.language) || 'unknown'}`,
       `Card language: ${HeatpumpFlowCard._language(config, hass)}`,
