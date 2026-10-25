@@ -342,8 +342,9 @@ const HFC_PRESETS = {
         valve: `sensor.${m}threeway_valve_state`,
         defrost: [`binary_sensor.${m}defrosting_state`, `switch.${m}defrosting_state`],
         heater: [`binary_sensor.${m}internal_heater_state`, `sensor.${m}internal_heater_state`],
-        power: `sensor.${m}heat_power_consumption`,
-        heat: `sensor.${m}heat_power_production`,
+        // The integration reads Power and Energy topics (firmware dependent), so the id has either spelling. The totals include hot water.
+        power: ['sensor.aquarea_energy_consumption', `sensor.${m}heat_power_consumption`, `sensor.${m}heat_energy_consumption`],
+        heat: ['sensor.aquarea_energy_production', `sensor.${m}heat_power_production`, `sensor.${m}heat_energy_production`],
         flow: `sensor.${m}main_outlet_temp`,
         return: `sensor.${m}main_inlet_temp`,
         volume: `sensor.${m}pump_flow`,
@@ -351,9 +352,10 @@ const HFC_PRESETS = {
         dhw_top: `sensor.${m}dhw_temp`,
         dhw_target: [`number.${m}dhw_target_temp`, `sensor.${m}dhw_target_temp`],
         hc_flow: `sensor.${m}${z}_water_temp`,
-        hc_setpoint: i.hc === 1 ? `sensor.${m}main_target_temp` : undefined,
+        // main_target_temp follows the hot-water target while the valve is on the tank, so the zone target comes first.
+        hc_setpoint: [`sensor.${m}${z}_water_target_temp`, i.hc === 1 ? `sensor.${m}main_target_temp` : undefined],
         room: `sensor.${m}z1_temp`,
-        program: `sensor.${m}holiday_mode_state`,
+        program: [`sensor.${m}holiday_mode_state`, `switch.${m}holiday_mode_state`],
         hours: `sensor.${m}operations_hours`,
         starts_total: `sensor.${m}operations_counter`,
         aux_hours: `sensor.${m}room_heater_operations_hours`,
@@ -364,15 +366,17 @@ const HFC_PRESETS = {
         eev: `sensor.${m}expansion_valve`,
       };
     },
-    // Holiday mode reports Off / Scheduled / Active.
-    program_map: { Active: 'holiday', Scheduled: 'none', Off: 'none' },
+    // Holiday mode reports Off / Scheduled / Active as a sensor, or on / off as a switch.
+    program_map: { Active: 'holiday', Scheduled: 'none', Off: 'none', on: 'holiday' },
     // No energy counters: heat and electricity per mode as current power, so the COP tiles work for "now".
     tiles: (p) => {
       const m = `sensor.${p}_main_`;
+      const both = (topic) => [`${m}${topic}_power_`, `${m}${topic}_energy_`];
+      const now = (topic, kind) => ({ now: both(topic).map((x) => x + kind) });
       return {
-        energy_heating: { now: `${m}heat_power_consumption` }, heat_heating: { now: `${m}heat_power_production` },
-        energy_dhw: { now: `${m}dhw_power_consumption` }, heat_dhw: { now: `${m}dhw_power_production` },
-        energy_cooling: { now: `${m}cool_power_consumption` }, heat_cooling: { now: `${m}cool_power_production` },
+        energy_heating: now('heat', 'consumption'), heat_heating: now('heat', 'production'),
+        energy_dhw: now('dhw', 'consumption'), heat_dhw: now('dhw', 'production'),
+        energy_cooling: now('cool', 'consumption'), heat_cooling: now('cool', 'production'),
         starts: { total: `${m}operations_counter` }, hours: { total: `${m}operations_hours` },
         aux_hours: { total: `${m}room_heater_operations_hours` },
       };
