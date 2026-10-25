@@ -320,6 +320,7 @@ const HFC_PRESETS = {
   // Entity ids are slugs of the MQTT topics: sensor.<prefix>_main_<topic>, prefix default panasonic_heat_pump.
   heishamon: {
     name: 'Panasonic Aquarea (HeishaMon)',
+    tested: true,
     unit_style: 'panasonic',
     auto_circuits: false,
     detect: (ctx) => {

@@ -97,6 +97,7 @@
   }
 
   // 5. detection: the right preset for each installation, nothing for gas boilers or foreign entities
+  check(HFC_PRESETS.heishamon.tested === true, 'HeishaMon preset is marked real-installation tested');
   const stub = (states, registry) => C.getStubConfig(hassOf(toStates(states), registry));
   const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp' };
   for (const [i, p] of Object.entries(expect)) {

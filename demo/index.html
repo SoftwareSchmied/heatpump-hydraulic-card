@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Heatpump Flow Card – live demo</title>
+<title>Heat Pump Hydraulic Card – live demo</title>
+<link rel="icon" type="image/svg+xml" href="../docs/logo/icon-small.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="../docs/logo/favicon-64.png">
+<link rel="apple-touch-icon" href="../docs/logo/apple-touch-icon.png">
 <meta name="description" content="Animated hydraulic schematic card for heat pumps in Home Assistant – try every preset with simulated data.">
 <style>
   :root {
@@ -22,7 +25,8 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 Roboto, "Segoe UI", system-ui, sans-serif; }
   main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
-  header h1 { margin: 0 0 4px; font-size: 26px; }
+  header h1 { margin: 0 0 4px; font-size: 26px; display: flex; align-items: center; gap: 12px; }
+  header h1 img { width: 44px; height: 44px; flex: none; }
   header p { margin: 0; color: var(--muted); }
   .links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
   a { color: var(--accent); }
@@ -58,7 +62,7 @@
 <body>
 <main>
   <header>
-    <h1>Heatpump Flow Card</h1>
+    <h1><img src="../docs/logo/logo-dark.svg" alt="" width="44" height="44">Heat Pump Hydraulic Card</h1>
     <p>Live demo with simulated heat pumps – no Home Assistant needed. Pick a heat pump and an operating state.</p>
     <div class="links">
       <a href="https://github.com/Sturmi77/heatpump-hydraulic-card">GitHub repository and docs</a>
@@ -75,7 +79,7 @@
     </section>
     <aside>
       <div class="panel"><h2>Heat pump</h2><div class="opts" id="setups"></div>
-        <p class="note">Only the Lambda preset is tested on a real installation. The others are built from the integrations' source code – feedback welcome.</p></div>
+        <p class="note">Lambda and HeishaMon are confirmed on real installations. ViCare, myPyllant and EMS-ESP are built from the integrations' source code – feedback welcome.</p></div>
       <div class="panel"><h2>Operating state</h2><div class="opts row" id="states"></div></div>
       <div class="panel"><h2>Display</h2><div class="opts row" id="display"></div></div>
       <div class="panel"><h2>Layout</h2><div class="opts row" id="layouts"></div>
