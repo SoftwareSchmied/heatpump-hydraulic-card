@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Cut-out counters (#35): optional entities `cutout_high_pressure`, `cutout_low_pressure` and `cutout_temperature` in the details drawer, in their own section "Cut-outs (number of events)". They show event counts as whole numbers with a times sign, never with a pressure or temperature unit. Also in the editor, the diagnostic report and the demo. No preset mappings until the entity meaning is verified.
 - Timeline marks (`timeline_marks`): a thin lane under the timeline for every badge, for example a Boost switch, with the periods in which it was on, listed in the legend and selectable by tap. A list of entities or `{ entity, label }` entries works as well. Also in the editor.
 - Updated installation guidance for the HACS default listing: search and download through HACS first, with the custom-repository flow retained only as a fallback.
 - Added an optional environmental-energy total counter with details and calendar-period tiles. When delivered heat is unavailable, total COP can be derived as `(environmental energy + electricity) / electricity`; all counters must cover the same time range (#26).

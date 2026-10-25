@@ -56,6 +56,10 @@ const extras = (s) => ({
   'number.heatpump_dhw_target': { state: '50', attributes: { friendly_name: 'DHW target', min: 40, max: 60, step: 1, unit_of_measurement: '°C' } },
   'button.heatpump_dhw_boost': { state: 'unknown', attributes: { friendly_name: 'DHW boost once' } },
   'sensor.heating_curve_flow': ['33.5', '°C'],
+  // Cut-out counters: events since the counter started, no unit.
+  'sensor.heatpump_cutouts_high_pressure': { state: '3', attributes: { state_class: 'total_increasing' } },
+  'sensor.heatpump_cutouts_low_pressure': { state: '0', attributes: { state_class: 'total_increasing' } },
+  'sensor.heatpump_cutouts_temperature': { state: '12', attributes: { state_class: 'total_increasing' } },
   'sensor.heatpump_dhw_middle': ['42.3', '°C'], 'sensor.heatpump_buffer_middle': ['29.4', '°C'],
   // Heating program and a solar thermal collector (pump runs while the collector is hotter than the tank).
   'select.heatpump_heating_program': { state: { heat: 'Eco', dhw: 'Party', defrost: 'Night', idle: 'Holiday' }[s], attributes: { friendly_name: 'Heating program' } },
@@ -202,6 +206,7 @@ const setups = [
         grid: 'sensor.heatpump_power_from_grid', energy_today: 'sensor.heatpump_energy_today', pv_share_today: 'sensor.heatpump_pv_share_today',
         program: 'select.heatpump_heating_program', solar_collector: 'sensor.heatpump_solar_collector', solar_pump: 'binary_sensor.heatpump_solar_pump',
         dhw_middle: 'sensor.heatpump_dhw_middle', buffer_middle: 'sensor.heatpump_buffer_middle',
+        cutout_high_pressure: 'sensor.heatpump_cutouts_high_pressure', cutout_low_pressure: 'sensor.heatpump_cutouts_low_pressure', cutout_temperature: 'sensor.heatpump_cutouts_temperature',
       },
       badges: [{ entity: 'input_boolean.heatpump_boost', label: 'Boost' }],
       controls: ['input_boolean.heatpump_boost', 'button.heatpump_dhw_boost', 'select.heatpump_operating_mode', 'number.heatpump_dhw_target'],
