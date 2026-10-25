@@ -25,6 +25,7 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 | `vicare` | **Viessmann** (Vitocal) | [ViCare](https://www.home-assistant.io/integrations/vicare/) (core) | Viessmann Vitocal 250-A | untested |
 | `vaillant` | **Vaillant** (aroTHERM, aroTHERM plus), **Saunier Duval**, **Bulex**, **Glow-worm**, **DemirDöküm** | [myPyllant](https://github.com/signalkraft/mypyllant-component) (HACS) | Vaillant aroTHERM plus by default; Saunier Duval GeniaAir Mono by manual override | untested |
 | `emsesp` | **Bosch**, **Buderus**, **Junkers**, **Nefit**, **Worcester**, **Sieger**, **elm.leblanc**, **iVT** – EMS/EMS+ heat pumps such as Buderus Logatherm WLW, Bosch Compress, Nefit EnviLine | [EMS-ESP](https://github.com/emsesp/EMS-ESP32) gateway (MQTT discovery) | Bosch Compress 5800i/6800i AW | untested |
+| `wolf` | **Wolf** air/water heat pumps (CHA monoblock) with a WOLF Link gateway | [Wolf SmartSet Service](https://www.home-assistant.io/integrations/wolflink/) (core, `wolflink`) | generic fan | untested |
 | `samsung` *(in preparation)* | **Samsung EHS** (Mono, Split, TDM) | [esphome-samsung-nasa](https://github.com/Beormund/esphome-samsung-nasa) via ESPHome | Samsung EHS Mono HT Quiet; manual until the preset ships | untested; pending [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16), not included in the current release |
 
 Additional real-installation reports with manual entity mappings are tracked separately from preset validation:
@@ -35,7 +36,7 @@ Additional real-installation reports with manual entity mappings are tracked sep
 | Viessmann Vitocal 333-G NC brine-to-water | Optisplitter (ViCare as backup) | Manual mapping offered in the [community discussion (2026-10-25)](https://community.home-assistant.io/t/card-heatpump-flow-card-animated-hydraulic-schematic-for-heat-pumps-lambda-viessmann-vaillant-bosch-buderus-panasonic/1029598/9); not yet validated with this card | Please test `source_type: brine` with the buffer entities cleared. This should show the ground loop without an air-source fan or defrost effects and keep the direct heating path connected. |
 
 > [!NOTE]
-> The **Viessmann**, **Vaillant** and **EMS-ESP** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open a preset feedback issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and paste the card's diagnostic report after reviewing its entity ids for private names. The Lambda and HeishaMon presets have been confirmed on real installations.
+> The **Viessmann**, **Vaillant**, **EMS-ESP** and **Wolf** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations (Wolf also from the entity states of one CHA installation) and checked with simulated data. Feedback is very welcome: please [open a preset feedback issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and paste the card's diagnostic report after reviewing its entity ids for private names. The Lambda and HeishaMon presets have been confirmed on real installations.
 > Manual mappings reported above confirm that the vendor-neutral configuration can cover those systems; they do not validate any zero-config preset.
 >
 > **Samsung EHS support is in preparation in [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16).** It remains marked untested until the contributor changes have been reviewed, merged and validated; `preset: samsung` is not available in the current release yet.
@@ -99,7 +100,7 @@ The completed release history and the prioritized post-0.11.0 backlog are mainta
 
 | `unit_style` | Schematic based on | Brands / families covered | Automatic selection |
 |---|---|---|---|
-| `generic` | Neutral fan symbol | Any air-source heat pump | Fallback without a known style |
+| `generic` | Neutral fan symbol | Any air-source heat pump | Fallback without a known style, also `preset: wolf` |
 | `lambda` | Lambda EU-L | Lambda | `preset: lambda` |
 | `viessmann` | Viessmann Vitocal 250-A | Viessmann Vitocal | `preset: vicare` |
 | `vaillant` | Vaillant aroTHERM plus | Vaillant; default fallback for the shared myPyllant brands | `preset: vaillant` |
@@ -289,6 +290,35 @@ What you get:
 
 HeishaMon has no "current activity" value: the card shows heating while the compressor runs, hot water when the valve is on "Tank", and defrost from the defrost state. If you use HeishaMon with your own MQTT YAML instead of the integration, map the entities manually (see below).
 
+### Wolf (wolflink) – untested, feedback welcome
+```yaml
+type: custom:heatpump-flow-card
+preset: wolf
+```
+For Wolf air/water heat pumps such as the CHA monoblock with a WOLF Link home gateway and the core [Wolf SmartSet Service](https://www.home-assistant.io/integrations/wolflink/) integration. Entity ids are `sensor.<device>_<parameter name>`; the device slug is detected from `sensor.<device>_compressor_status`. Wolf gas and oil boilers use the same integration but have no compressor status, so they are not taken for a heat pump. With several Wolf devices, set `prefix:` (the device slug, e.g. `zuhause`) or pick one with `device:`. The parameter names follow the language of the Wolf portal; the preset expects English names. With another language the entity ids differ, so map them manually.
+
+What you get:
+- operating mode (heating, hot water, run-on, defrost, standby; cooling and frost protection where the unit reports them) and compressor status
+- compressor frequency as "running", compressor capacity (%) for the animation speed
+- electrical power (heat pump and electric heater) and heat output in kW, giving a live COP
+- heat pump flow and return, flow rate (L/min, converted)
+- diverter valve heating / hot water and the electric booster heater
+- outdoor temperature, DHW temperature and effective DHW target
+- mixer circuit flow, pump and status; room temperature and day target; holiday mode as the program chip
+- system pressure, sub fault code as error
+- tiles: heat for heating, hot water and cooling (totals, so today, week, month and year come from the long-term statistics), heat yesterday / this month / this year, compressor and heater hours
+
+Not mapped on purpose:
+- **Buffer:** the header sensor (`header_temperature`, "Sammler") sits in the buffer on some installations and in a hydraulic separator without a buffer on others. If yours is in the buffer, add it:
+  ```yaml
+  entities:
+    buffer_top: sensor.<device>_header_temperature
+  ```
+- **Electricity counters and DPF/MPF/SPF:** Wolf reports 0 for them without an energy meter at the heat pump, which would give 0 kWh tiles and no COP. With a meter, add them as free entity tiles (see [Stat tiles](#stat-tiles)).
+- **Repeated parameter names** (`…_2`, `…_3`, e.g. `day_temperature_2`, `prog_select_2`): their order is not fixed, so the preset never uses them.
+
+On/off parameters report `ein` / `aus`; the card understands `ein` as on for pumps, heaters and badges. The integration polls the Wolf cloud once a minute, and all its entities can be `unavailable` for a minute or two at a time; the card then shows dashes until the next update.
+
 ### Any other heat pump
 Map your entities and translate your mode states to the card's normalized modes:
 ```yaml
@@ -316,8 +346,8 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 
 | Option | Description |
 |---|---|
-| `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon` or omit. Fills entities, mode maps and error sensors. |
-| `prefix` | Preset prefix (Lambda device name, Vaillant home slug, EMS-ESP instance prefix, HeishaMon MQTT prefix). Omit for auto-detection, `""` for unprefixed Lambda ids. |
+| `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon`, `wolf` or omit. Fills entities, mode maps and error sensors. |
+| `prefix` | Preset prefix (Lambda device name, Vaillant home slug, EMS-ESP instance prefix, HeishaMon MQTT prefix, Wolf device slug). Omit for auto-detection, `""` for unprefixed Lambda ids. |
 | `device` | Device id: restricts preset detection to one device (several heat pumps of the same brand). |
 | `index` | Unit numbers for presets: `{hp, dhw, buffer, hc}` (default 1; Vaillant counts from 0). |
 | `hc_type` | Circuit 1: `underfloor` (default), `radiator` (panel radiator) or `column` (column radiator). |
@@ -588,7 +618,7 @@ npm run dev
 `test/selftest.html` runs every installation in every scenario, broken entity states, edge-case configs, preset detection (gas boilers must not be detected as heat pumps) and the computed values. `npm run check` runs syntax and release-contract checks plus the self-test in Chromium and Firefox. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for focused and interactive commands and failure diagnostics.
 
 ## Deutsch (Kurzfassung)
-Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Samsung EHS über esphome-samsung-nasa ist in PR #16 in Vorbereitung, noch nicht im aktuellen Release enthalten und bleibt bis zur abgeschlossenen Prüfung als ungetestet markiert. Lambda und HeishaMon sind inzwischen mit echten Anlagen bestätigt; Viessmann, Vaillant und EMS-ESP warten noch auf diesen Praxistest – Rückmeldungen gern über das Preset-Formular mit dem zuvor geprüften Diagnosebericht. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Die Kacheln unter dem Schema lassen sich aus einem Katalog mit über 40 Kennzahlen zusammenstellen (COP, Strom und Wärme je Betriebsart, Abtauungen, Laufzeit pro Start …), jeweils für heute, gestern, Woche, Monat, Jahr oder gesamt; fehlende Zeiträume kommen aus der Langzeitstatistik von Home Assistant. Eine Kostenkachel rechnet mit festem Preis oder bei dynamischem Tarif stundengenau ab; jede Kachel und jedes Element des Schemas kann eine eigene Tipp-, Halte- oder Doppeltipp-Aktion haben. Heizprogramme (Eco, Nacht, Party, Urlaub) erscheinen als Chip, die Animation folgt der Verdichterleistung, und eine Solarthermie-Anlage (noch ungetestet) wird als Kollektor am Dach mit Kreis zum Warmwasserspeicher gezeichnet. Das Außengerät wird als vereinfachte, logofreie Zeichnung für Lambda, Viessmann, Vaillant, Bosch/Buderus, Panasonic, Saunier Duval oder Samsung dargestellt; bekannte Presets wählen die passende Familie automatisch, alle Stile lassen sich manuell auswählen. Die Karte lässt sich per Tastatur bedienen: Tab, Pfeiltasten im Schema, Enter oder Leertaste für die Aktion (Umschalt+Enter halten, Alt+Enter doppelt tippen), mit sichtbarem Fokusrahmen und Beschriftungen für Screenreader. Das Layout gibt es kompakt (schmale Spalten), breit (Kacheln neben dem Schema), als Wanddisplay und im Vollbild; die festen Karten-Themes `night` und `contrast` ergänzen das automatische Dashboard-Theme. Eigene Texte oder Sprachen werden über `texts` ergänzt, fehlende Beschriftungen fallen auf Englisch zurück. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/).
+Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon); Wolf-Wärmepumpen wie CHA (wolflink). Samsung EHS über esphome-samsung-nasa ist in PR #16 in Vorbereitung, noch nicht im aktuellen Release enthalten und bleibt bis zur abgeschlossenen Prüfung als ungetestet markiert. Lambda und HeishaMon sind inzwischen mit echten Anlagen bestätigt; Viessmann, Vaillant, EMS-ESP und Wolf warten noch auf diesen Praxistest – Rückmeldungen gern über das Preset-Formular mit dem zuvor geprüften Diagnosebericht. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Die Kacheln unter dem Schema lassen sich aus einem Katalog mit über 40 Kennzahlen zusammenstellen (COP, Strom und Wärme je Betriebsart, Abtauungen, Laufzeit pro Start …), jeweils für heute, gestern, Woche, Monat, Jahr oder gesamt; fehlende Zeiträume kommen aus der Langzeitstatistik von Home Assistant. Eine Kostenkachel rechnet mit festem Preis oder bei dynamischem Tarif stundengenau ab; jede Kachel und jedes Element des Schemas kann eine eigene Tipp-, Halte- oder Doppeltipp-Aktion haben. Heizprogramme (Eco, Nacht, Party, Urlaub) erscheinen als Chip, die Animation folgt der Verdichterleistung, und eine Solarthermie-Anlage (noch ungetestet) wird als Kollektor am Dach mit Kreis zum Warmwasserspeicher gezeichnet. Das Außengerät wird als vereinfachte, logofreie Zeichnung für Lambda, Viessmann, Vaillant, Bosch/Buderus, Panasonic, Saunier Duval oder Samsung dargestellt; bekannte Presets wählen die passende Familie automatisch, alle Stile lassen sich manuell auswählen. Die Karte lässt sich per Tastatur bedienen: Tab, Pfeiltasten im Schema, Enter oder Leertaste für die Aktion (Umschalt+Enter halten, Alt+Enter doppelt tippen), mit sichtbarem Fokusrahmen und Beschriftungen für Screenreader. Das Layout gibt es kompakt (schmale Spalten), breit (Kacheln neben dem Schema), als Wanddisplay und im Vollbild; die festen Karten-Themes `night` und `contrast` ergänzen das automatische Dashboard-Theme. Eigene Texte oder Sprachen werden über `texts` ergänzt, fehlende Beschriftungen fallen auf Englisch zurück. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/).
 
 ## License
 MIT © 2026 Sturmi77
