@@ -99,7 +99,7 @@
   // 5. detection: the right preset for each installation, nothing for gas boilers or foreign entities
   check(HFC_PRESETS.heishamon.tested === true, 'HeishaMon preset is marked real-installation tested');
   const stub = (states, registry) => C.getStubConfig(hassOf(toStates(states), registry));
-  const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp' };
+  const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp', 8: 'wolf' };
   for (const [i, p] of Object.entries(expect)) {
     const s = setups[i]; const st = stub(s.states('heat'), s.registry || {});
     check(st.preset === p, `stub preset ${i} = ${p} (got ${st.preset})`);
@@ -110,6 +110,22 @@
   check(!detects('vicare', { 'sensor.vitodens_outside_temperature': '5', 'sensor.vitodens_boiler_temperature': '60' },
     { 'sensor.vitodens_outside_temperature': { platform: 'vicare', translation_key: 'outside_temperature' } }), 'ViCare gas boiler is not a heat pump');
   check(!detects('lambda', { 'sensor.other_hp1_operating_state': 'x' }, { 'sensor.other_hp1_operating_state': { platform: 'something_else' } }), 'foreign hp1_operating_state is not Lambda');
+
+  // Wolf (wolflink): heat pumps only, prefix = device slug; gas boilers and other platforms with the same names are not detected.
+  {
+    const wolfPrefix = (states, registry) => HFC_PRESETS.wolf.detect(C._ctx(hassOf(toStates(states), registry), undefined, { hp: 1, dhw: 1, buffer: 1, hc: 1 }));
+    const w = setups[8].states('heat');
+    check(HFC_PRESETS.wolf.tested !== true, 'Wolf preset stays marked untested');
+    check(wolfPrefix(w, setups[8].registry) === 'zuhause', `Wolf prefix zuhause (got ${wolfPrefix(w, setups[8].registry)})`);
+    const renamed = Object.fromEntries(Object.entries(w).map(([k, v]) => [k.replace('sensor.zuhause_', 'sensor.wolf_cha_07_'), v]));
+    const renamedReg = Object.fromEntries(Object.keys(renamed).map((id) => [id, { platform: 'wolflink' }]));
+    check(wolfPrefix(renamed, renamedReg) === 'wolf_cha_07', `Wolf prefix of another device slug (got ${wolfPrefix(renamed, renamedReg)})`);
+    const gas = { 'sensor.heizung_boiler_temperature': '62', 'sensor.heizung_return_temperature': '48', 'sensor.heizung_outside_temperature': '5',
+      'sensor.heizung_burner_status': 'Betrieb', 'sensor.heizung_burner': 'ein', 'sensor.heizung_3_way_valve': 'Heizung',
+      'sensor.heizung_operating_mode': 'heizbetrieb', 'sensor.heizung_dhw_temperature': '50', 'sensor.heizung_system_pressure': '1.8' };
+    check(!detects('wolf', gas, Object.fromEntries(Object.keys(gas).map((id) => [id, { platform: 'wolflink' }]))), 'Wolf gas boiler is not a heat pump');
+    check(!detects('wolf', w, Object.fromEntries(Object.keys(w).map((id) => [id, { platform: 'mqtt' }]))), 'same entity names on another platform are not Wolf');
+  }
 
   // 6. computed values
   {
@@ -161,6 +177,47 @@
     check(card._e.env_energy === 'sensor.boiler_environmental_energy_total', `environmental energy mapping (${card._e.env_energy})`);
     check(/- env_energy: sensor\.boiler_environmental_energy_total = 8200 kWh/.test(C._diagnosticReport(s.config, card._hass)), 'diagnostic report contains environmental energy');
     card.remove();
+  }
+
+  // Wolf: German list states, ein/aus switches, the numeric mixer circuit pump, heat-only tiles, never a _2/_3 duplicate.
+  {
+    const s = setups[8];
+    const states = toStates(s.states('heat'));
+    const hass = hassOf(states, s.registry, null, s);
+    const card = mount({ ...s.config, badges: [{ entity: 'sensor.zuhause_1x_dhw', label: '1x DHW' }] }, hass);
+    await wait(20);
+    const $ = (id) => card.shadowRoot.getElementById(id);
+    const set = (id, state) => { states[`sensor.zuhause_${id}`].state = state; card.hass = { ...card._hass }; };
+    const modes = { heizbetrieb: 'heating', warmwasser: 'dhw', 'WW-Nachlauf': 'circulate', 'HZ-Nachlauf': 'circulate', Abtaubetrieb: 'defrost', standby: 'idle' };
+    Object.entries(modes).forEach(([raw, m]) => check(card._norm(card._maps.mode, raw) === m, `Wolf mode ${raw} = ${m} (got ${card._norm(card._maps.mode, raw)})`));
+    check(/1,200 W → 4\.1 kW/.test($('t-hp-power').textContent) && /COP 3\.4/.test($('t-hp-cop').textContent), `Wolf kW power and heat (${$('t-hp-power').textContent} / ${$('t-hp-cop').textContent})`);
+    check($('t-vol').textContent === '1,056 l/h', `Wolf L/min flow rate (${$('t-vol').textContent})`);
+    check($('chip-mode').classList.contains('mode-heat') && $('t-valve').textContent === 'Heating', `Wolf valve Heizen = heating (${$('t-valve').textContent})`);
+    set('3_way_diverter_valve_htg_dhw', 'warmwasser');
+    check($('chip-mode').classList.contains('mode-dhw') && $('t-valve').textContent === 'DHW', `Wolf valve warmwasser = DHW (${$('t-valve').textContent})`);
+    set('3_way_diverter_valve_htg_dhw', 'Heizen');
+    check($('impeller').classList.contains('on'), 'Wolf mkp_mixer_circuit_pump 1 = circuit active');
+    set('mkp_mixer_circuit_pump', '0');
+    check(!$('impeller').classList.contains('on'), 'Wolf mkp_mixer_circuit_pump 0 = circuit off');
+    check($('heater-inline') && !$('heater-inline').classList.contains('on') && !$('chip-b0').classList.contains('on'), 'Wolf heater and badge "aus" = off');
+    set('electric_booster_heater', 'ein'); set('1x_dhw', 'ein');
+    check($('heater-inline')?.classList.contains('on') && $('chip-b0').classList.contains('on'), 'Wolf heater and badge "ein" = on');
+    check(card._e.dhw_target === 'sensor.zuhause_set_dhw_temperature_adjusted' && card._e.room_target === 'sensor.zuhause_day_temperature', 'Wolf DHW and room targets');
+    const used = [...Object.values(card._e), ...card._errors, ...Object.values(card._tileMap).flatMap(Object.values)];
+    check(used.length > 20 && !used.some((id) => /_[23]$/.test(id)), `Wolf never maps a _2/_3 duplicate (${used.filter((id) => /_[23]$/.test(id)).join(', ')})`);
+    check(/Preset detected: yes/.test(C._diagnosticReport(s.config, hass)) && /Prefix: zuhause/.test(C._diagnosticReport(s.config, hass)), 'Wolf in the diagnostic report');
+    card.remove();
+    const pump = mount({ ...s.config, entities: { hc_pump: 'sensor.zuhause_mixer_circuit_pump' } }, hassOf(toStates(s.states('heat')), s.registry));
+    await wait(20);
+    check(pump.shadowRoot.getElementById('impeller').classList.contains('on'), 'text pump "ein" = circuit active');
+    pump._hass.states['sensor.zuhause_mixer_circuit_pump'].state = 'aus'; pump.hass = { ...pump._hass };
+    check(!pump.shadowRoot.getElementById('impeller').classList.contains('on'), 'text pump "aus" = circuit off');
+    pump.remove();
+    const options = C._tileOptions(s.config, C._resolve(s.config, hass), hass).options.map((x) => x.value);
+    check(options.includes('heat_heating:total') && options.includes('heat:month') && !options.some((v) => /^(cop_(heating|dhw|cooling|total)|spf)/.test(v)),
+      `Wolf heat tiles without COP tiles (${options.join(',')})`);
+    const preset = C._formSchema({}).schema[0].selector.select.options.find((o) => o.value === 'wolf');
+    check(preset && /untested/.test(preset.label), `Wolf in the preset dropdown, marked untested (${preset && preset.label})`);
   }
 
   // Direct systems use the heat-pump flow/return for their circuit and never leave the bypass pipes open.
@@ -259,6 +316,8 @@
   {
     const hm = (await tilesOf(setups[5], ['cop_heating', 'energy_heating'])).t;
     check(hm['COP heating · now'] === '≈4.32' && hm['Electricity heating · now'] === '1,250 W', `HeishaMon COP now (${JSON.stringify(hm)})`);
+    const wolf = (await tilesOf(setups[8], setups[8].config.tiles)).t;
+    check(wolf['Heat heating · today'] === '38.6 kWh' && wolf['Heat · yesterday'] === '51.0 kWh' && wolf['Heat · month'] === '732 kWh' && wolf['Compressor hours · total'] === '7,500 h', `Wolf heat tiles (${JSON.stringify(wolf)})`);
     const vi = (await tilesOf(setups[2], ['cop_heating', 'starts', 'energy'])).t;
     check(vi['COP heating · total'] === '3.90' && vi['Compressor starts · total'] === '4,123' && vi['Electricity · today'] === '8.4 kWh', `ViCare periods (${JSON.stringify(vi)})`);
     const card = mount({ ...setups[0].config, tiles: [] }, hassOf(toStates(setups[0].states('heat'))));

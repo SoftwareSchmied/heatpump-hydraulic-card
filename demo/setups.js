@@ -179,6 +179,47 @@ const brineStates = (s) => ({
   'sensor.mixer_hc2_flowtemphc': ['45.5', '°C'], 'binary_sensor.mixer_hc2_pumpstatus': s === 'heat' || s === 'defrost' ? 'on' : 'off',
   'sensor.thermostat_hc1_currtemp': ['21.2', '°C'], 'sensor.thermostat_hc1_seltemp': ['21.5', '°C'],
 });
+// Wolf CHA via wolflink: English parameter names, German list states, ein/aus switches, kW, L/min, repeated names with _2/_3.
+const wolfStates = (s) => {
+  const x = 'sensor.zuhause_';
+  const on = s !== 'idle';
+  const v = {
+    operating_mode_heater: { heat: 'heizbetrieb', dhw: 'warmwasser', defrost: 'Abtaubetrieb', idle: 'standby' }[s],
+    compressor_status: on ? 'Betrieb' : 'standby',
+    compressor_frequency: [{ heat: '38', dhw: '50', defrost: '45', idle: '0' }[s], 'Hz'],
+    current_capacity_specification_compressor: [{ heat: '46', dhw: '70', defrost: '60', idle: '0' }[s], '%'],
+    power_consumption_wp_ehz: [{ heat: '1.2', dhw: '1.7', defrost: '0.9', idle: '0' }[s], 'kW'],
+    current_secondary_power: [{ heat: '4.1', dhw: '4.9', defrost: '0', idle: '0' }[s], 'kW'],
+    boiler_water_temperature: [{ heat: '31.4', dhw: '49.0', defrost: '22.0', idle: '28.8' }[s], '°C'],
+    return_temperature: [{ heat: '26.9', dhw: '44.2', defrost: '25.0', idle: '24.6' }[s], '°C'],
+    header_temperature: [{ heat: '30.8', dhw: '29.6', defrost: '29.8', idle: '29.4' }[s], '°C'],
+    set_boiler_temperature: ['31.0', '°C'],
+    hc_flow_rate: [on ? '17.6' : '0', 'L/min'],
+    outside_temperature: ['4.5', '°C'], average_outside_temperature: ['5.2', '°C'],
+    '3_way_diverter_valve_htg_dhw': s === 'dhw' ? 'warmwasser' : 'Heizen', '3_way_diverter_valve_htg_clg': 'Heizen',
+    electric_booster_heater: 'aus',
+    dhw_temperature: [s === 'dhw' ? '44' : '47', '°C'], set_dhw_temperature_adjusted: ['48', '°C'], set_dhw_temperature_adjusted_2: ['10', '°C'],
+    set_dhw_temperature: ['10', '°C'], dhw_status: s === 'dhw' ? 'ein' : 'bereit_keine_ladung', '1x_dhw': 'aus',
+    flow_temperature: ['30.1', '°C'], vf_mixer_circuit_flow_sensor: '30',
+    mixer_circuit_status: 'heizbetrieb', mixer_circuit_demand: 'automatik_ein', mixer_circuit_pump: 'ein', mkp_mixer_circuit_pump: '1',
+    heating_circuit_pump: 'aus', feed_heating_circuit_pump: 'aus', mixer_motor_mm: '0',
+    room_temperature: { state: 'unknown', attributes: { unit_of_measurement: '°C' } },
+    day_temperature: ['20', '°C'], day_temperature_2: ['21', '°C'], day_temperature_3: ['22', '°C'],
+    prog_select: 'auto', prog_select_2: 'auto',
+    party_mode: 'deaktiviert', holiday_mode: 'deaktiviert',
+    system_pressure: ['1.65', 'bar'], sub_fault_code: '0',
+    compressor_operating_hours: { state: '7500', attributes: { unit_of_measurement: 'h', state_class: 'total_increasing' } },
+    e_heating_operating_hours: { state: '3', attributes: { unit_of_measurement: 'h', state_class: 'total_increasing' } },
+    energy_amount_htg: { state: '28534', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+    energy_amount_dhw: { state: '11218', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+    clg_energy_amount: { state: '0', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+    heat_generated_previous_day: ['51', 'kWh'], heat_generated_current_month: ['732', 'kWh'],
+    heat_generated_current_year: ['11865', 'kWh'], heat_generated_previous_year: ['19258', 'kWh'],
+    consumption_previous_day: ['0', 'kWh'], consumption_current_month: ['0', 'kWh'], consumption_current_year: ['0', 'kWh'], consumption_previous_year: ['0', 'kWh'],
+    dpf_previous_day: '0', mpf_current_month: '0', spf_current_year: '0', spf_previous_year: '0',
+  };
+  return Object.fromEntries(Object.entries(v).map(([k, val]) => [`${x}${k}`, val]));
+};
 const regOf = (fn, platform) => Object.fromEntries(Object.keys(fn('heat')).map((id) => [id, { platform }]));
 
 // Energy dashboard of the simulated house: power sensors (stat_rate) for PV, battery (+ = discharging) and grid (+ = import).
@@ -272,6 +313,16 @@ const setups = [
       entities: { mode: 'sensor.wp_betriebsart', flow: 'sensor.wp_vorlauf', return: 'sensor.wp_ruecklauf', power: 'sensor.wp_leistung',
         dhw_top: 'sensor.ww_temperatur', outdoor: 'sensor.aussen' },
       mode_map: { Heating: 'heating', 'Hot water': 'dhw', Defrost: 'defrost', Standby: 'idle' },
+    },
+  },
+  {
+    name: 'Wolf CHA', sub: 'wolflink, buffer from the header sensor, mixer circuit, heat counters',
+    states: wolfStates, registry: regOf(wolfStates, 'wolflink'),
+    statistics: { 'sensor.zuhause_energy_amount_htg': { today: 38.6, month: 612 }, 'sensor.zuhause_energy_amount_dhw': { today: 7.9, month: 120 } },
+    config: {
+      preset: 'wolf', title: 'Wolf CHA',
+      entities: { buffer_top: 'sensor.zuhause_header_temperature' },
+      tiles: ['heat_heating', 'heat_dhw', 'heat:yesterday', 'heat:month', 'hours:total', 'spread', 'hc_pressure'],
     },
   },
 ];
