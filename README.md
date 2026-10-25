@@ -294,6 +294,15 @@ Notes from real installations:
 - Some models report a low pressure of 0.0 permanently; hide it with `entities: {low_pressure: null}`.
 - The heating setpoint is the zone target temperature. The outlet target (`main_target_temp`) follows the hot-water target while the 3-way valve is on the tank and is only used when no zone target exists.
 
+S0 kWh meters on the HeishaMon board measure the real electrical power, which is more exact than the value the heat pump reports. The integration creates `sensor.<prefix>_s0_watt_<port>`; which port measures what depends on the wiring, so the preset does not use them. Set them as `power`, as one entity or as a list for several meters (for example heat pump and internal heater):
+
+```yaml
+entities:
+  power:
+    - sensor.panasonic_heat_pump_s0_watt_1
+    - sensor.panasonic_heat_pump_s0_watt_2
+```
+
 HeishaMon has no "current activity" value: the card shows heating while the compressor runs, hot water when the valve is on "Tank", and defrost from the defrost state. If you use HeishaMon with your own MQTT YAML instead of the integration, map the entities manually (see below).
 
 ### Wolf (wolflink) – untested, feedback welcome
@@ -368,7 +377,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | `fullscreen` | Show the full-screen button (default `true`). Set to `false` to hide it. |
 | `power_threshold` | Counts as running above this electrical power in W (default 100). |
 | `power_sources` | `auto` (default): PV / battery / grid from the Energy dashboard unless `pv`, `battery` or `grid` are set. `manual`: only your own sensors. |
-| `entities` | Entity overrides (see below). `null` removes a preset entity. |
+| `entities` | Entity overrides (see below). `null` removes a preset entity. A list of entities for `power`, `heat`, `pv`, `battery` or `grid` shows the sum of their values. |
 | `mode_map`, `dhw_mode_map`, `buffer_mode_map`, `hc_mode_map` | Raw state → normalized mode, merged over the preset. |
 | `running_states` | Raw `status` values that count as compressor running. |
 | `errors` | List of error-code sensors. A number ≠ 0 or state `on` shows the error chip. `unknown`, `unavailable`, `off`, `0` and empty do not. Other text is ignored unless `error_ok` is set. |
@@ -404,6 +413,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 - **Circuits 2 to 6:** the same keys with `hc2_` to `hc6_` (`hc2_flow`, `hc6_pump`, …)
 - **Heaters** (`heater`, `dhw_heater`, `buffer_heater`): binary or on/off, a power value (on above 0) or a stage number (1-3)
 - **Power sources (W):** `pv`, `battery`, `grid` – the heat pump's power from each source. Optional: without them the card uses the Energy dashboard.
+- **Sums:** `power`, `heat`, `pv`, `battery` and `grid` also accept a list of entities. The card adds the values of the members that report a number (W and kW mixed); the first entity opens on tap and stands for the key in the editor warnings. Example: two meters for compressor and heater rod, `power: [sensor.heat_pump_meter_power, sensor.heater_meter_power]`.
 - **Statistics:** `cop_heating_today`, `cop_dhw_today`, `energy_today`, `pv_share_today`, `starts_today`
 - **Details, operation:** `hours`, `starts_total`, `aux_hours`, `energy_total`, `env_energy` (heat taken from air, ground or water), `heat_total`
 - **Details, refrigerant circuit:** `compressor_speed`, `evap_temp`, `cond_temp`, `suction_temp`, `hot_gas`, `liquid_temp`, `low_pressure`, `high_pressure`, `eev`, `superheat`, `subcooling`
