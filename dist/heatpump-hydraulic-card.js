@@ -403,6 +403,7 @@ const HFC_PRESETS = {
         volume: s('hc_flow_rate'),
         outdoor: s('outside_temperature'),
         valve: s('3_way_diverter_valve_htg_dhw'),
+        heater: s('electric_booster_heater'),
         dhw_top: s('dhw_temperature'),
         dhw_target: s('set_dhw_temperature_adjusted'),
         hc_flow: s('flow_temperature'),
@@ -1298,7 +1299,7 @@ class HeatpumpFlowCard extends HTMLElement {
     this._txt(textId, `${glyph}${label} ${this._pressureText(key)}`);
     group.dataset.a11y = `${label}: ${this._pressureText(key)}, ${this._i[`pressure_${state}`]}`;
   }
-  _on(key) { return ['on', 'true', 'open', '1'].includes(String(this._s(key)).toLowerCase()); }
+  _on(key) { return ['on', 'true', 'open', '1', 'ein'].includes(String(this._s(key)).toLowerCase()); }
   // Compressor modulation 0..1 from `compressor_speed` (percent; Hz or rpm against `compressor_speed_max`), NaN without a usable value.
   _speedFraction() {
     const v = this._n('compressor_speed');
@@ -1326,7 +1327,7 @@ class HeatpumpFlowCard extends HTMLElement {
   _level(key) {
     if (!this._has(key)) return 0;
     const s = String(this._s(key)).toLowerCase();
-    if (['on', 'true', 'open'].includes(s)) return 1;
+    if (['on', 'true', 'open', 'ein'].includes(s)) return 1;
     const v = parseFloat(s);
     if (!Number.isFinite(v) || v <= 0) return 0;
     return ['w', 'kw', '%'].includes(this._unit(key)) ? 1 : Math.min(Math.round(v), 3);
@@ -2386,7 +2387,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const list = hist[mark.entity] || [];
     const segs = [];
     list.forEach((e, n) => {
-      if (!['on', 'true', 'home', 'open'].includes(String(e.s).toLowerCase())) return;
+      if (!['on', 'true', 'home', 'open', 'ein'].includes(String(e.s).toLowerCase())) return;
       const from = Math.max(e.t, start); const to = Math.min(list[n + 1] ? list[n + 1].t : end, end);
       if (to <= from) return;
       const last = segs[segs.length - 1];
@@ -2933,7 +2934,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const chip = this._$('chip-mode');
     chip.textContent = `${modeTxt}${running ? ` · ${i.running}` : ''}`;
     chip.className = `chip mode-${defrost ? 'defrost' : cooling ? 'cool' : toDhw ? 'dhw' : toHeat ? 'heat' : 'idle'}`;
-    this._badges.forEach((b, n) => this._cls(`chip-b${n}`, ['on', 'true', 'home', 'open'].includes(String(this._hass.states[b.entity]?.state).toLowerCase())));
+    this._badges.forEach((b, n) => this._cls(`chip-b${n}`, ['on', 'true', 'home', 'open', 'ein'].includes(String(this._hass.states[b.entity]?.state).toLowerCase())));
     const errs = this._errors.filter((id) => {
       const state = this._hass.states[id]?.state;
       if (state === undefined) return false;
