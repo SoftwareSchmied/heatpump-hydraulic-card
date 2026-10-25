@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- README: explicit steps for installations made before the rename. HACS keeps the old folder and the old dashboard resource, so the update was not loaded; the new section lists remove, resource cleanup, download and check.
 
 ## 0.11.0 – 2026-10-25
 - Cut-out counters (#35): optional entities `cutout_high_pressure`, `cutout_low_pressure` and `cutout_temperature` in the details drawer, in their own section "Cut-outs (number of events)". They show event counts as whole numbers with a times sign, never with a pressure or temperature unit. Also in the editor, the diagnostic report and the demo. No preset mappings until the entity meaning is verified.
