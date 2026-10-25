@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0a1220"/><stop offset="1" stop-color="#173250"/></linearGradient>
+    <path id="blade" d="M0 0 C6 -22 30 -42 62 -38 C60 -13 34 5 0 0 Z"/>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- circulation ring: flow orange (top), return blue (bottom) with arrow heads -->
+  <path d="M110 256 A146 146 0 0 1 382 182" fill="none" stroke="#f97316" stroke-width="36" stroke-linecap="round"/>
+  <path d="M402 256 A146 146 0 0 1 130 330" fill="none" stroke="#38bdf8" stroke-width="36" stroke-linecap="round"/>
+  <path d="M352 138 L408 190 L330 206 Z" fill="#f97316" stroke="#f97316" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M160 374 L104 322 L182 306 Z" fill="#38bdf8" stroke="#38bdf8" stroke-width="10" stroke-linejoin="round"/>
+  <!-- fan disc -->
+  <circle cx="256" cy="256" r="96" fill="#e6e9ec"/>
+  <circle cx="256" cy="256" r="84" fill="#3b4148"/>
+  <g transform="translate(256 256)" fill="#7dd3fc"><use href="#blade"/><use href="#blade" transform="rotate(90)"/><use href="#blade" transform="rotate(180)"/><use href="#blade" transform="rotate(270)"/></g>
+  <circle cx="256" cy="256" r="12" fill="#e6e9ec"/>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#171a1f"/><stop offset="1" stop-color="#2b3138"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- feed into the diverter valve -->
+  <path d="M40 256 H170" stroke="#f97316" stroke-width="32" stroke-linecap="round" fill="none"/>
+  <!-- outputs: hot water (red) and heating (orange) -->
+  <path d="M342 226 Q404 226 404 160 V96" stroke="#dc2626" stroke-width="32" stroke-linecap="round" fill="none"/>
+  <path d="M342 286 Q404 286 404 352 V416" stroke="#fb923c" stroke-width="32" stroke-linecap="round" fill="none"/>
+  <path d="M40 256 H170 M342 226 Q404 226 404 160 V96 M342 286 Q404 286 404 352 V416" stroke="#fff" stroke-opacity=".85" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 20" fill="none"/>
+  <!-- valve -->
+  <circle cx="256" cy="256" r="96" fill="#1c1c1c" stroke="#e1e1e1" stroke-width="14"/>
+  <path d="M256 204 V306 M222 276 L256 310 L290 276" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-90 256 256) translate(0 0)"/>
+</svg>

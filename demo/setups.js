@@ -56,6 +56,10 @@ const extras = (s) => ({
   'number.heatpump_dhw_target': { state: '50', attributes: { friendly_name: 'DHW target', min: 40, max: 60, step: 1, unit_of_measurement: '°C' } },
   'button.heatpump_dhw_boost': { state: 'unknown', attributes: { friendly_name: 'DHW boost once' } },
   'sensor.heating_curve_flow': ['33.5', '°C'],
+  // Cut-out counters: events since the counter started, no unit.
+  'sensor.heatpump_cutouts_high_pressure': { state: '3', attributes: { state_class: 'total_increasing' } },
+  'sensor.heatpump_cutouts_low_pressure': { state: '0', attributes: { state_class: 'total_increasing' } },
+  'sensor.heatpump_cutouts_temperature': { state: '12', attributes: { state_class: 'total_increasing' } },
   'sensor.heatpump_dhw_middle': ['42.3', '°C'], 'sensor.heatpump_buffer_middle': ['29.4', '°C'],
   // Heating program and a solar thermal collector (pump runs while the collector is hotter than the tank).
   'select.heatpump_heating_program': { state: { heat: 'Eco', dhw: 'Party', defrost: 'Night', idle: 'Holiday' }[s], attributes: { friendly_name: 'Heating program' } },
@@ -135,6 +139,8 @@ const historySim = (setup, msg) => {
   const now = Date.now(); const out = {};
   const plan = [[24, 'idle'], [22.5, 'heat'], [20, 'defrost'], [19.6, 'heat'], [17, 'dhw'], [16.3, 'idle'], [12, 'heat'], [8.5, 'defrost'], [8.1, 'heat'], [7, 'dhw'], [6.2, 'heat'], [3, 'defrost'], [2.9, 'heat']];
   for (const id of msg.entity_ids) {
+    // A setup can bring its own history for switches and helpers: [hours ago, state].
+    if (setup.history?.[id]) { out[id] = setup.history[id].map(([h, st]) => ({ s: st, lu: (now - h * 3600000) / 1000 })); continue; }
     out[id] = plan.map(([h, k]) => { const v = setup.states(k)[id]; const st = Array.isArray(v) ? v[0] : (v && typeof v === 'object' ? v.state : v); return { s: String(st), lu: (now - h * 3600000) / 1000 }; });
   }
   return Promise.resolve(out);
@@ -192,13 +198,15 @@ const setups = [
     name: 'Lambda', sub: 'legacy naming, PV/battery split, quick controls, own tile selection, details with refrigerant circuit',
     states: (s) => ({ ...lambdaStates('eu08l_', s), ...extras(s) }),
     statistics: { 'sensor.eu08l_hp1_heating_energy_total': { yesterday: 12.9, week: 61.3 } },
+    history: { 'input_boolean.heatpump_boost': [[24, 'off'], [14, 'on'], [10, 'off'], [5.5, 'on'], [3.2, 'off']] },
     config: {
-      preset: 'lambda', title: 'Lambda', hc_type: 'radiator', timeline: true,
+      preset: 'lambda', title: 'Lambda', hc_type: 'radiator', timeline: true, timeline_marks: true,
       entities: {
         room: 'sensor.living_room_temperature', pv: 'sensor.heatpump_power_from_pv', battery: 'sensor.heatpump_power_from_battery',
         grid: 'sensor.heatpump_power_from_grid', energy_today: 'sensor.heatpump_energy_today', pv_share_today: 'sensor.heatpump_pv_share_today',
         program: 'select.heatpump_heating_program', solar_collector: 'sensor.heatpump_solar_collector', solar_pump: 'binary_sensor.heatpump_solar_pump',
         dhw_middle: 'sensor.heatpump_dhw_middle', buffer_middle: 'sensor.heatpump_buffer_middle',
+        cutout_high_pressure: 'sensor.heatpump_cutouts_high_pressure', cutout_low_pressure: 'sensor.heatpump_cutouts_low_pressure', cutout_temperature: 'sensor.heatpump_cutouts_temperature',
       },
       badges: [{ entity: 'input_boolean.heatpump_boost', label: 'Boost' }],
       controls: ['input_boolean.heatpump_boost', 'button.heatpump_dhw_boost', 'select.heatpump_operating_mode', 'number.heatpump_dhw_target'],

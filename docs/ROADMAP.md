@@ -2,21 +2,20 @@
 
 This plan keeps correctness and supportability ahead of new surface area. Impact is the expected benefit across installations; effort is relative (`S` local, `M` several code paths, `L` public API or data logic, `XL` architecture or a second layout).
 
-## Current status after 0.10.0
+## Current status after 0.11.0
 
-Version 0.10.0 is released and its HACS, quality, Chromium and Firefox checks pass. There are no known open bug issues. Issues [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22), [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29), [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) and [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) shipped in that release and are closed under the 0.10.0 milestone. Environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26) is merged on `main` through [PR #39](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/39), but is not part of 0.10.0; it remains open and marked `ready for release` until the next version is published.
+Version 0.11.0 is released. There are no known open bug issues. It ships environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26), compressor cut-out counters [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35), timeline marks for badges such as Boost, and the Panasonic, Viessmann, Bosch/Buderus, Saunier Duval and Samsung EHS Mono unit drawings (part of the umbrella issue [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5), which stays open for the remaining brands). Version 0.10.0 shipped [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22), [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29), [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) and [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37).
 
 The immediate work is evidence gathering rather than another broad feature release:
 
-1. Recruit real-installation testers through [#1](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) for Viessmann, Vaillant, EMS-ESP and HeishaMon. Treat findings as bug fixes before feature work.
+1. Recruit real-installation testers through [#1](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) for Viessmann, Vaillant and EMS-ESP. HeishaMon's default MQTT mapping is now [confirmed on a real installation](https://github.com/heishamon/HeishaMon/discussions/1025#discussioncomment-19174931); additional Aquarea models and generations remain useful coverage. Treat findings as bug fixes before feature work.
 2. Leave Samsung [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) with its contributor until the requested cooling-mode and demo changes arrive and all required checks pass.
 3. Use diagnostic reports and verified integration data to unblock the ebusd preset ([#24](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24)) and pump/runtime mappings ([#31](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/31), [#34](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/34)).
 
 ## Next low-risk work
 
-1. Keep environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26) release-ready: the optional total counter, details and calendar-period tiles, total-COP fallback, demo, tests and documentation are merged. Close it only when the containing release is published.
-2. Treat the Panasonic Aquarea drawing as the next self-contained part of [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5). It needs its own visual and browser checks and must not close the umbrella issue while Viessmann and Bosch/Buderus drawings remain.
-3. Compressor cut-out counters [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35) are the next small data feature. Generic manual keys and unambiguous counter labels are safe; preset mappings are added only from verified integration or installation data.
+1. Treat the remaining brand drawings in [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5) as one brand per change, each with its own visual and browser checks and original references.
+2. Map the cut-out counters of [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35) in presets only from verified integration or installation data.
 
 Multiple entities per key [#23](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23) remains a separate later sprint because it changes entity resolution, calculations and the editor contract. Recorder- and time-window-based features remain outside this small-work track.
 
@@ -44,7 +43,7 @@ This minor adds the support and presentation features that make broader real-ins
 | 3 | [#11](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/11) | Stable custom text/language map with English fallback. | Included in 0.9.6; self-test and reference documentation complete. |
 | 4 | [#13](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/13) | Fixed night and high-contrast card themes. | Included in 0.9.6; self-test and visual review passed. |
 
-JavaScript syntax, browser self-test and visual checks across the three card themes passed before release. Real-installation tests follow when suitable Viessmann, Vaillant, EMS-ESP and HeishaMon testers are available. The diagnostic report is the preferred, privacy-reviewed input for that outreach and for preset issues.
+JavaScript syntax, browser self-test and visual checks across the three card themes passed before release. Real-installation tests were the follow-up; HeishaMon's default MQTT mapping has since been [confirmed on a real installation](https://github.com/heishamon/HeishaMon/discussions/1025#discussioncomment-19174931), while Viessmann, Vaillant and EMS-ESP still need suitable testers. The diagnostic report is the preferred, privacy-reviewed input for that outreach and for preset issues.
 
 [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) remains with its contributor and is not modified or absorbed here. It can be reassessed after the requested contributor changes arrive.
 

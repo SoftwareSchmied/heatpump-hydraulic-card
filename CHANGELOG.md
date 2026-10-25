@@ -3,10 +3,20 @@
 ## Unreleased
 
 - Added an Open3E preset for Viessmann Vitocal heat pumps, using the integration's translation keys for device-independent entity discovery.
+- Logo: a small schematic of the card (PV, heat pump, diverter valve, hot water tank, radiator) as SVG and PNG in `docs/logo/`, used in the README (light and dark variant) and as favicon, touch icon and header of the live demo. The demo title now uses the current name.
+- HeishaMon preset: marked as confirmed on a real installation after feedback that the default MQTT mapping is detected correctly. The combined/layered store in that installation remains outside the supported topology and was mapped manually.
+- README: the preset table now puts confirmed presets first and names each automatic outdoor-unit schematic. The animated demo keeps one Lambda unit while showing heating, hot water, defrost, standby, the timeline, quick controls and statistics at the card's real animation speed.
+- README: explicit steps for installations made before the rename. HACS keeps the old folder and the old dashboard resource, so the update was not loaded; the new section lists remove, resource cleanup, download and check.
+
+## 0.11.0 – 2026-10-25
+- Cut-out counters (#35): optional entities `cutout_high_pressure`, `cutout_low_pressure` and `cutout_temperature` in the details drawer, in their own section "Cut-outs (number of events)". They show event counts as whole numbers with a times sign, never with a pressure or temperature unit. Also in the editor, the diagnostic report and the demo. No preset mappings until the entity meaning is verified.
+- Timeline marks (`timeline_marks`): a thin lane under the timeline for every badge, for example a Boost switch, with the periods in which it was on, listed in the legend and selectable by tap. A list of entities or `{ entity, label }` entries works as well. Also in the editor.
+- Updated installation guidance for the HACS default listing: search and download through HACS first, with the custom-repository flow retained only as a fallback.
 - Added an optional environmental-energy total counter with details and calendar-period tiles. When delivered heat is unavailable, total COP can be derived as `(environmental energy + electricity) / electricity`; all counters must cover the same time range (#26).
 - Added a simplified, logo-free Panasonic Aquarea outdoor-unit drawing. The HeishaMon preset selects it automatically; `unit_style: panasonic` makes it available to custom configurations.
 - Added logo-free Viessmann Vitocal, Bosch/Buderus, Saunier Duval GeniaAir and Samsung EHS Mono outdoor-unit drawings plus a documented brand-to-style overview. ViCare and EMS-ESP select their drawings automatically; Saunier Duval and Samsung remain explicit choices where the preset cannot identify the brand yet.
 - Refreshed the README, development plan and tester guidance after the 0.10.0 release; completed release issues are now tracked under the 0.10.0 milestone.
+- Self-test: 524 checks.
 
 ## 0.10.0 – 2026-10-24
 - Added optional brine and heating-circuit pressure entities, unit conversion to bar, configurable low/critical/high thresholds, accessible warning symbols, live tiles and details rows (#22).

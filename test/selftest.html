@@ -88,7 +88,7 @@
     { badges: [{ entity: 'sensor.x', hold_action: 'toggle' }] },
     { program_map: [] }, { program_map: 'eco' }, { compressor_speed_max: 0 }, { compressor_speed_max: 'fast' },
     { errors: 'sensor.error' }, { error_ok: 'No Error' }, { error_ok: ['No Error', 0] },
-    { timeline: 'yes' }, { timeline_hours: 0 }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' },
+    { timeline: 'yes' }, { timeline_hours: 0 }, { timeline_marks: 'yes' }, { timeline_marks: [{ label: 'x' }] }, { timeline_marks: [7] }, { wall_timeout: -1 }, { wall_timeout: 'soon' }, { unit_style: 'tesla' }, { unit_size: 'huge' },
     { animations: 'sometimes' }, { flow_speed: 0 }, { flow_speed: 3.1 }, { source_spread: 'yes' }, { theme: 'sepia' }, { fullscreen: 'yes' },
     { texts: [] }, { texts: { NL: { title: 'x' } } }, { texts: { nl: { title: 7 } } }, { texts: { nl: { missing_key: 'x' } } },
     { brine_pressure_min: -0.1 }, { hc_pressure_crit: 1.2, hc_pressure_min: 1.0 }, { hc_pressure_min: 3, hc_pressure_max: 2 }]) {
@@ -97,6 +97,7 @@
   }
 
   // 5. detection: the right preset for each installation, nothing for gas boilers or foreign entities
+  check(HFC_PRESETS.heishamon.tested === true, 'HeishaMon preset is marked real-installation tested');
   const stub = (states, registry) => C.getStubConfig(hassOf(toStates(states), registry));
   const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp' };
   for (const [i, p] of Object.entries(expect)) {
@@ -952,6 +953,81 @@
     c.remove();
     const keysOf = (n) => (n.schema ? n.schema.flatMap(keysOf) : [n.name]);
     check(C._formSchema({}).schema.flatMap(keysOf).includes('timeline') && !C._formSchema({}).schema.flatMap(keysOf).includes('timeline_hours') && C._formSchema({ timeline: true }).schema.flatMap(keysOf).includes('timeline_hours'), 'editor offers the timeline and its length');
+    // marks: badges (or a list of entities) as extra lanes under the bar
+    c = await tl(s);
+    const lane = c.shadowRoot.querySelectorAll('#timeline .tl-mark');
+    const ms = [...c.shadowRoot.querySelectorAll('#timeline .mseg')];
+    check(lane.length === 1 && ms.length === 2, `the Boost badge gets a lane with its two periods (${lane.length} lane, ${ms.length} periods)`);
+    check(/Boost/.test(c.shadowRoot.querySelector('#timeline .tl-legend').textContent) && /Boost: \d\d:\d\d–\d\d:\d\d, \d\d:\d\d–/.test(lane[0].getAttribute('aria-label')), `legend and screen reader text name the lane (${lane[0].getAttribute('aria-label')})`);
+    check(parseFloat(ms[0].style.left) > 0 && parseFloat(ms[0].style.left) + parseFloat(ms[0].style.width) < parseFloat(ms[1].style.left), 'the periods sit in time order inside the bar');
+    ms[0].dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    const md = () => c.shadowRoot.getElementById('tl-detail').textContent;
+    check(/^Boost · \d\d:\d\d–\d\d:\d\d · 4 h 00 min$/.test(md()), `a tap on a period shows start, end and duration (${md()})`);
+    c.shadowRoot.querySelector('#timeline .mseg').dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    check(md() === '', 'a second tap clears it');
+    c.shadowRoot.querySelectorAll('#timeline .seg')[1].dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    check(/Heating/.test(md()) && !c.shadowRoot.querySelector('#timeline .mseg.sel'), 'selecting a mode period leaves the lane unselected');
+    c.remove();
+    c = await tl(s, { timeline_marks: false });
+    check(!c.shadowRoot.querySelector('#timeline .tl-mark'), 'timeline_marks: false draws no lane');
+    c.remove();
+    c = await tl(s, { timeline_marks: [{ entity: 'input_boolean.heatpump_boost', label: 'Boost run' }, 'sensor.nothing_here'] });
+    check(c.shadowRoot.querySelectorAll('#timeline .tl-mark').length === 1 && /Boost run/.test(c.shadowRoot.querySelector('#timeline .tl-legend').textContent), 'a list of entities with a label; an entity without a period draws no lane');
+    c.remove();
+    {
+      const ed = document.createElement('heatpump-flow-card-editor'); let out;
+      ed.addEventListener('config-changed', (ev) => { out = ev.detail.config; });
+      const marks = [{ entity: 'input_boolean.heatpump_boost', label: 'Boost' }];
+      ed.setConfig({ timeline: true, timeline_marks: marks }); ed.hass = hassOf(toStates({})); await wait(10);
+      check(ed._form.data.timeline_marks === true && C._formSchema({ timeline: true }).schema.flatMap(keysOf).includes('timeline_marks') && !C._formSchema({}).schema.flatMap(keysOf).includes('timeline_marks'), 'editor shows the lanes as a switch, only with the timeline on');
+      ed._changed({ timeline: true, timeline_marks: true });
+      check(JSON.stringify(out.timeline_marks) === JSON.stringify(marks), 'the editor keeps a YAML list while the switch stays on');
+      ed._changed({ timeline: true, timeline_marks: false });
+      check(!('timeline_marks' in out), 'switching off removes the option');
+      ed.remove();
+    }
+  }
+
+  // 18b. cut-out counters in the details drawer: event counts, never a pressure or a temperature
+  {
+    const s = setups[0];
+    const mk = async (cfg = {}, extra = {}, scen = 'heat') => {
+      const c = mount({ ...s.config, details_open: true, ...cfg }, hassOf(toStates({ ...s.states(scen), ...extra }), s.registry || {}, s.energy, s)); await wait(25);
+      return c;
+    };
+    const section = (c, re) => [...c.shadowRoot.querySelectorAll('#drawer-body .dsec')].find((d) => re.test(d.querySelector('.dsec-title').textContent));
+    let c = await mk();
+    const sec = section(c, /Cut-outs/);
+    const rowText = (r) => `${r.querySelector('span').textContent} ${r.querySelector('b').textContent}`;
+    const rows = sec ? [...sec.querySelectorAll('.drow')].map(rowText) : [];
+    check(!!sec && /number of events/.test(sec.querySelector('.dsec-title').textContent), 'cut-out counters have their own section that says "number of events"');
+    check(rows.join('|') === 'High-pressure cut-outs 3 ×|Low-pressure cut-outs 0 ×|Temperature cut-outs 12 ×', `rows are plain counts with a times sign (${rows.join('|')})`);
+    check(!/bar|°C|kPa/.test(sec ? sec.textContent : 'bar'), 'a cut-out count never carries a pressure or temperature unit');
+    const rf = section(c, /Refrigerant/);
+    check(!!rf && !/cut-out/i.test(rf.textContent), 'the refrigerant section stays free of cut-out counters');
+    check(sec.querySelector('.drow').dataset.entity === 'sensor.heatpump_cutouts_high_pressure', 'a row opens the more-info dialog of its counter');
+    c.remove();
+    // decimals are rounded, unknown counters are left out, text stays as it is
+    c = await mk({}, { 'sensor.heatpump_cutouts_high_pressure': '3.0', 'sensor.heatpump_cutouts_low_pressure': 'unavailable', 'sensor.heatpump_cutouts_temperature': 'n/a' });
+    const r2 = [...section(c, /Cut-outs/).querySelectorAll('.drow')].map(rowText);
+    check(r2.join('|') === 'High-pressure cut-outs 3 ×|Temperature cut-outs n/a', `rounded, unavailable left out, text kept (${r2.join('|')})`);
+    c.remove();
+    // German
+    c = await mk({ language: 'de' });
+    const de = section(c, /Abschaltungen/);
+    check(!!de && /Hochdruck-Abschaltungen 3 ×/.test(rowText(de.querySelector('.drow'))) && /Anzahl der Ereignisse/.test(de.querySelector('.dsec-title').textContent), 'German labels and section title');
+    c.remove();
+    // without the keys there is no section; the report lists the keys; the editor offers them
+    c = mount(setups[1].config, hassOf(toStates(setups[1].states('heat')), {}, setups[1].energy, setups[1])); await wait(25);
+    check(!section(c, /Cut-outs/), 'no section without cut-out entities');
+    c.remove();
+    const c2 = await mk();
+    check(/- cutout_high_pressure: sensor\.heatpump_cutouts_high_pressure = 3/.test(C._diagnosticReport(s.config, c2._hass)), 'diagnostic report lists the cut-out counters');
+    c2.remove();
+    const names = C._formSchema({}).schema.flatMap((x) => (x.schema ? x.schema.flatMap((y) => (y.schema ? y.schema.map((z) => z.name) : [y.name])) : [x.name]));
+    check(['cutout_high_pressure', 'cutout_low_pressure', 'cutout_temperature'].every((k) => names.includes(k)), 'editor offers the three counters');
+    const lab = C._formSchema({}).computeLabel;
+    check(['cutout_high_pressure', 'cutout_low_pressure', 'cutout_temperature'].every((k) => /\(count of events, not a |\(Anzahl der Ereignisse, kein/.test(lab({ name: k }))), `editor labels name the counters as events (${lab({ name: 'cutout_high_pressure' })})`);
   }
 
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
