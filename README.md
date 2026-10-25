@@ -22,6 +22,7 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 |---|---|---|---|---|
 | `lambda` | **Lambda** (EU-L series) | [lambda_heat_pumps](https://github.com/GuidoJeuken-6512/lambda_heat_pumps) (HACS) | Lambda EU-L | tested on a real installation |
 | `heishamon` | **Panasonic** Aquarea (H, J, K, L generation; monoblock, split, all-in-one) | [HeishaMon](https://github.com/heishamon/HeishaMon) + [heishamon-homeassistant](https://github.com/kamaradclimber/heishamon-homeassistant) (HACS) | Panasonic Aquarea | confirmed on a real installation |
+| `kronoterm` | **Kronoterm** (ADAPT, ETERA, VERSI, WPLV …) | [Kronoterm](https://github.com/Favio25/Kronoterm-homeassistant) (HACS), Cloud API or Modbus | generic (no Kronoterm drawing yet) | Cloud API confirmed on a real installation; Modbus from the integration source |
 | `vicare` | **Viessmann** (Vitocal) | [ViCare](https://www.home-assistant.io/integrations/vicare/) (core) | Viessmann Vitocal 250-A | untested |
 | `vaillant` | **Vaillant** (aroTHERM, aroTHERM plus), **Saunier Duval**, **Bulex**, **Glow-worm**, **DemirDöküm** | [myPyllant](https://github.com/signalkraft/mypyllant-component) (HACS) | Vaillant aroTHERM plus by default; Saunier Duval GeniaAir Mono by manual override | untested |
 | `emsesp` | **Bosch**, **Buderus**, **Junkers**, **Nefit**, **Worcester**, **Sieger**, **elm.leblanc**, **iVT** – EMS/EMS+ heat pumps such as Buderus Logatherm WLW, Bosch Compress, Nefit EnviLine | [EMS-ESP](https://github.com/emsesp/EMS-ESP32) gateway (MQTT discovery) | Bosch Compress 5800i/6800i AW | untested |
@@ -35,7 +36,7 @@ Additional real-installation reports with manual entity mappings are tracked sep
 | Viessmann Vitocal 333-G NC brine-to-water | Optisplitter (ViCare as backup) | Manual mapping offered in the [community discussion (2026-10-25)](https://community.home-assistant.io/t/card-heatpump-flow-card-animated-hydraulic-schematic-for-heat-pumps-lambda-viessmann-vaillant-bosch-buderus-panasonic/1029598/9); not yet validated with this card | Please test `source_type: brine` with the buffer entities cleared. This should show the ground loop without an air-source fan or defrost effects and keep the direct heating path connected. |
 
 > [!NOTE]
-> The **Viessmann**, **Vaillant** and **EMS-ESP** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open a preset feedback issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and paste the card's diagnostic report after reviewing its entity ids for private names. The Lambda and HeishaMon presets have been confirmed on real installations.
+> The **Viessmann**, **Vaillant** and **EMS-ESP** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations and checked with simulated data. Feedback is very welcome: please [open a preset feedback issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and paste the card's diagnostic report after reviewing its entity ids for private names. The Lambda and HeishaMon presets have been confirmed on real installations, the Kronoterm preset with the Cloud API; its Modbus names come from the integration source.
 > Manual mappings reported above confirm that the vendor-neutral configuration can cover those systems; they do not validate any zero-config preset.
 >
 > **Samsung EHS support is in preparation in [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16).** It remains marked untested until the contributor changes have been reviewed, merged and validated; `preset: samsung` is not available in the current release yet.
@@ -295,6 +296,38 @@ Notes from real installations:
 
 HeishaMon has no "current activity" value: the card shows heating while the compressor runs, hot water when the valve is on "Tank", and defrost from the defrost state. If you use HeishaMon with your own MQTT YAML instead of the integration, map the entities manually (see below).
 
+### Kronoterm (Kronoterm integration) – confirmed with the Cloud API, Modbus feedback welcome
+```yaml
+type: custom:heatpump-flow-card
+preset: kronoterm
+```
+For Kronoterm heat pumps (ADAPT, ETERA, VERSI, WPLV …) with the [Kronoterm](https://github.com/Favio25/Kronoterm-homeassistant) integration, connected through the Kronoterm Cloud API or locally through Modbus. Entities are found through the entity registry (platform `kronoterm` + translation key), so entity ids and the HA language don't matter. With several Kronoterm heat pumps, pick one with `device:`. The hot water heat pumps of the separate Kronoterm DHW cloud are not covered.
+
+What you get:
+- the working function (heating, hot water, cooling, pool, thermal disinfection, standby, remote deactivation) as the mode, defrost from the defrost status
+- the HP load as compressor running and modulation
+- flow (HP outlet) and return (HP inlet), outdoor temperature
+- electrical power and heat output, giving a live COP
+- hot water tank temperature and target: the tank sensor and current setpoint with Modbus, the DHW thermostat with the Cloud API
+- the hot water circulator as the diverter valve, the DHW circulation pump, the reserve source as the backup heater
+- loops 1 to 4 as heating circuits with their pumps and flow temperatures (`hc_count: 2` and more); room temperature and target from the thermostat of the first circuit
+- heating system pressure, the error/warning sensor, ECO mode as the eco chip
+- tiles: electricity today in total and per heating, hot water and heater (Cloud API), week, month and year from the electricity counter, COP total from the SCOP, compressor starts for heating and hot water
+- details: total electricity, HP load, evaporation and compressor (hot gas) temperature, heater hours
+
+Notes from the reference installation (Hydro S 2 + ADAPT 0312, Cloud API):
+- With the Cloud API the hot water temperature exists only on the climate entity "DHW Thermostat". The card reads its `current_temperature` and its target `temperature`.
+- The working function keeps reporting heating while the unit defrosts; the defrost status switches the card to defrost. Power and heat output read 0 W during a defrost, so no COP is shown then.
+- The heat counter `heating_energy_heating_dhw` is not mapped: it reads a tenth of the heat that the electricity counter and the SCOP imply (4,728 kWh against 13,762 kWh of electricity at an SCOP of 3.43). The total COP therefore comes from the SCOP sensor.
+- Loops with a room thermostat report the room temperature as their Cloud loop temperature, so that value is never used as the circuit flow. The loop's inlet temperature is the measured flow into the loop.
+- Compressor hours exist per heating and hot water only. Add them to the details if you want them (entity ids as on the reference installation):
+  ```yaml
+  details:
+    - sensor.kronoterm_heat_pump_operating_hours_compressor_heating
+    - sensor.kronoterm_heat_pump_operating_hours_compressor_dhw
+  ```
+- The reservoir has no tank sensor (the Cloud reports a calculated value, Modbus the HP return), so no buffer is drawn.
+
 ### Any other heat pump
 Map your entities and translate your mode states to the card's normalized modes:
 ```yaml
@@ -322,7 +355,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 
 | Option | Description |
 |---|---|
-| `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon` or omit. Fills entities, mode maps and error sensors. |
+| `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon`, `kronoterm` or omit. Fills entities, mode maps and error sensors. |
 | `prefix` | Preset prefix (Lambda device name, Vaillant home slug, EMS-ESP instance prefix, HeishaMon MQTT prefix). Omit for auto-detection, `""` for unprefixed Lambda ids. |
 | `device` | Device id: restricts preset detection to one device (several heat pumps of the same brand). |
 | `index` | Unit numbers for presets: `{hp, dhw, buffer, hc}` (default 1; Vaillant counts from 0). |
@@ -371,6 +404,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 - **Storage:** `dhw_top`, `dhw_middle`, `dhw_bottom`, `dhw_target`, `dhw_mode`, `circulation`, `dhw_heater`, `buffer_top`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` (needs the DHW tank)
 - **Heating circuit and house:** `hc_flow`, `hc_return`, `hc_setpoint`, `hc_mode`, `hc_pump`, `hc_volume`, `hc_pressure` (bar, kPa, Pa, hPa, MPa or psi), `room`, `room_target`, `program` (eco, night, party, holiday)
 - **Direct systems:** without a buffer and without circuit-specific temperature sensors, circuit 1 uses the heat pump's `flow` and `return` and remains connected in the schematic.
+- **Thermostats as temperature sources:** a temperature key also takes a `climate` or `water_heater` entity. The card reads its `current_temperature`, and its target `temperature` for `dhw_target`, `room_target` and the `_setpoint` keys. One DHW thermostat can serve as `dhw_top` and `dhw_target`.
 - **Circuits 2 to 6:** the same keys with `hc2_` to `hc6_` (`hc2_flow`, `hc6_pump`, …)
 - **Heaters** (`heater`, `dhw_heater`, `buffer_heater`): binary or on/off, a power value (on above 0) or a stage number (1-3)
 - **Power sources (W):** `pv`, `battery`, `grid` – the heat pump's power from each source. Optional: without them the card uses the Energy dashboard.
@@ -430,6 +464,7 @@ What the presets provide:
 - **EMS-ESP:** totals for electricity, heat, starts and hours per mode; other periods from long-term statistics.
 - **HeishaMon:** heat and electricity per mode as current power, so the COP tiles work for "now"; operating hours and starts.
 - **Vaillant:** daily electricity and heat for heating and DHW.
+- **Kronoterm:** electricity today in total and per heating, DHW and heater (Cloud API); week, month and year from the electricity counter; COP total from the SCOP; heating, DHW and cooling compressor starts as totals.
 
 ### Layout, actions and colours
 **Layout.** `layout: compact` reduces padding and type sizes for narrow dashboard columns. `layout: wide` shows the schematic on the left and controls, tiles and the details drawer on the right once the card is at least 760 px wide (below that it falls back to the normal stacked layout), which suits wall tablets. `layout: wall` is the wide layout with about 30 % larger type for reading from a distance. The quick controls and the details toggle are invisible and not clickable until a touch or mouse move wakes the card; after `wall_timeout` seconds (default 10) they fade out again and an open details drawer closes. A control in use, such as an open dropdown, keeps the card awake. All layouts are also in the editor.
@@ -540,7 +575,7 @@ The card shows what your integration provides and does not invent values. Where 
 | Heat output | The heat output entity if there is one. Otherwise **estimated** as flow rate × spread × 1.163 Wh/(l·K) (water) and marked with **≈**. With glycol in the circuit the estimate is slightly too high. |
 | Live COP | Heat output ÷ electrical power while the compressor runs. Marked with **≈** when the heat output is estimated. |
 | Running | Compressor entity on (or frequency/speed > 0), electrical power above `power_threshold` (default 100 W), or a running status from the preset. |
-| Mode | The operating-mode entity, translated by the preset's `mode_map`. Without a mode entity (e.g. HeishaMon): compressor off = standby, defrost entity on = defrost, valve on DHW = hot water, otherwise heating. |
+| Mode | The operating-mode entity, translated by the preset's `mode_map`. An active `defrost` entity shows defrost even when the mode entity keeps reporting heating (e.g. Kronoterm). Without a mode entity (e.g. HeishaMon): compressor off = standby, defrost entity on = defrost, valve on DHW = hot water, otherwise heating. |
 | Diverter valve | The valve entity (on, `Tank` or `DHW` = hot water), otherwise the mode. |
 | Heating circuit active | Circuit pump, else circuit mode, else "heat pump is heating". |
 | PV / battery / grid flows | Your own `pv` / `battery` / `grid` sensors if set. Otherwise **estimated** from the Energy dashboard and marked with **≈**: the heat pump's power is split by the house's current supply mix (PV used in the house, battery discharge, grid import); PV first covers battery charging and export. Needs the power sensors of the Energy dashboard and the heat pump's `power`. A flow is animated above 10 W. |
@@ -594,7 +629,7 @@ npm run dev
 `test/selftest.html` runs every installation in every scenario, broken entity states, edge-case configs, preset detection (gas boilers must not be detected as heat pumps) and the computed values. `npm run check` runs syntax and release-contract checks plus the self-test in Chromium and Firefox. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for focused and interactive commands and failure diagnostics.
 
 ## Deutsch (Kurzfassung)
-Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon). Samsung EHS über esphome-samsung-nasa ist in PR #16 in Vorbereitung, noch nicht im aktuellen Release enthalten und bleibt bis zur abgeschlossenen Prüfung als ungetestet markiert. Lambda und HeishaMon sind inzwischen mit echten Anlagen bestätigt; Viessmann, Vaillant und EMS-ESP warten noch auf diesen Praxistest – Rückmeldungen gern über das Preset-Formular mit dem zuvor geprüften Diagnosebericht. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Die Kacheln unter dem Schema lassen sich aus einem Katalog mit über 40 Kennzahlen zusammenstellen (COP, Strom und Wärme je Betriebsart, Abtauungen, Laufzeit pro Start …), jeweils für heute, gestern, Woche, Monat, Jahr oder gesamt; fehlende Zeiträume kommen aus der Langzeitstatistik von Home Assistant. Eine Kostenkachel rechnet mit festem Preis oder bei dynamischem Tarif stundengenau ab; jede Kachel und jedes Element des Schemas kann eine eigene Tipp-, Halte- oder Doppeltipp-Aktion haben. Heizprogramme (Eco, Nacht, Party, Urlaub) erscheinen als Chip, die Animation folgt der Verdichterleistung, und eine Solarthermie-Anlage (noch ungetestet) wird als Kollektor am Dach mit Kreis zum Warmwasserspeicher gezeichnet. Das Außengerät wird als vereinfachte, logofreie Zeichnung für Lambda, Viessmann, Vaillant, Bosch/Buderus, Panasonic, Saunier Duval oder Samsung dargestellt; bekannte Presets wählen die passende Familie automatisch, alle Stile lassen sich manuell auswählen. Die Karte lässt sich per Tastatur bedienen: Tab, Pfeiltasten im Schema, Enter oder Leertaste für die Aktion (Umschalt+Enter halten, Alt+Enter doppelt tippen), mit sichtbarem Fokusrahmen und Beschriftungen für Screenreader. Das Layout gibt es kompakt (schmale Spalten), breit (Kacheln neben dem Schema), als Wanddisplay und im Vollbild; die festen Karten-Themes `night` und `contrast` ergänzen das automatische Dashboard-Theme. Eigene Texte oder Sprachen werden über `texts` ergänzt, fehlende Beschriftungen fallen auf Englisch zurück. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/).
+Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw. Puffer → Heizkreis. Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon); Kronoterm (Kronoterm-Integration, Cloud oder Modbus). Samsung EHS über esphome-samsung-nasa ist in PR #16 in Vorbereitung, noch nicht im aktuellen Release enthalten und bleibt bis zur abgeschlossenen Prüfung als ungetestet markiert. Lambda, HeishaMon und Kronoterm (Cloud-API) sind inzwischen mit echten Anlagen bestätigt; Viessmann, Vaillant und EMS-ESP warten noch auf diesen Praxistest – Rückmeldungen gern über das Preset-Formular mit dem zuvor geprüften Diagnosebericht. Andere Hersteller werden über `entities` und `mode_map` angebunden. Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis. Die Kacheln unter dem Schema lassen sich aus einem Katalog mit über 40 Kennzahlen zusammenstellen (COP, Strom und Wärme je Betriebsart, Abtauungen, Laufzeit pro Start …), jeweils für heute, gestern, Woche, Monat, Jahr oder gesamt; fehlende Zeiträume kommen aus der Langzeitstatistik von Home Assistant. Eine Kostenkachel rechnet mit festem Preis oder bei dynamischem Tarif stundengenau ab; jede Kachel und jedes Element des Schemas kann eine eigene Tipp-, Halte- oder Doppeltipp-Aktion haben. Heizprogramme (Eco, Nacht, Party, Urlaub) erscheinen als Chip, die Animation folgt der Verdichterleistung, und eine Solarthermie-Anlage (noch ungetestet) wird als Kollektor am Dach mit Kreis zum Warmwasserspeicher gezeichnet. Das Außengerät wird als vereinfachte, logofreie Zeichnung für Lambda, Viessmann, Vaillant, Bosch/Buderus, Panasonic, Saunier Duval oder Samsung dargestellt; bekannte Presets wählen die passende Familie automatisch, alle Stile lassen sich manuell auswählen. Die Karte lässt sich per Tastatur bedienen: Tab, Pfeiltasten im Schema, Enter oder Leertaste für die Aktion (Umschalt+Enter halten, Alt+Enter doppelt tippen), mit sichtbarem Fokusrahmen und Beschriftungen für Screenreader. Das Layout gibt es kompakt (schmale Spalten), breit (Kacheln neben dem Schema), als Wanddisplay und im Vollbild; die festen Karten-Themes `night` und `contrast` ergänzen das automatische Dashboard-Theme. Eigene Texte oder Sprachen werden über `texts` ergänzt, fehlende Beschriftungen fallen auf Englisch zurück. Bis zu drei Heizkreise, jeweils als Flächenheizung oder Heizkörper. Wärmequelle Luft, Erdreich (Sole) oder Grundwasser; Heizstäbe in Speicher und Puffer sowie ein Zusatzheizer werden angezeigt. Volumenströme werden angezeigt, die Wärmeleistung wird bei Bedarf daraus berechnet. Grafischer Editor und Oberfläche auf Deutsch und Englisch. Ausprobieren ohne Installation: [Live-Demo](https://sturmi77.github.io/heatpump-hydraulic-card/demo/).
 
 ## License
 MIT © 2026 Sturmi77
