@@ -4,6 +4,7 @@
 - Logo: a small schematic of the card (PV, heat pump, diverter valve, hot water tank, radiator) as SVG and PNG in `docs/logo/`, used in the README (light and dark variant) and as favicon, touch icon and header of the live demo. The demo title now uses the current name.
 - HeishaMon preset: marked as confirmed on a real installation after feedback that the default MQTT mapping is detected correctly. The combined/layered store in that installation remains outside the supported topology and was mapped manually.
 - README: the preset table now puts confirmed presets first and names each automatic outdoor-unit schematic. The animated demo keeps one Lambda unit while showing heating, hot water, defrost, standby, the timeline, quick controls and statistics at the card's real animation speed.
+- README: explicit steps for installations made before the rename. HACS keeps the old folder and the old dashboard resource, so the update was not loaded; the new section lists remove, resource cleanup, download and check.
 
 ## 0.11.0 – 2026-10-25
 - Cut-out counters (#35): optional entities `cutout_high_pressure`, `cutout_low_pressure` and `cutout_temperature` in the details drawer, in their own section "Cut-outs (number of events)". They show event counts as whole numbers with a times sign, never with a pressure or temperature unit. Also in the editor, the diagnostic report and the demo. No preset mappings until the entity meaning is verified.

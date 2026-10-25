@@ -120,7 +120,19 @@ The **Open in HACS** button above opens the repository directly.
 
 If the standard HACS entry is not available in your installation, open HACS → ⋮ → **Custom repositories**, add `https://github.com/Sturmi77/heatpump-hydraulic-card` as type **Dashboard**, then install **Heat Pump Hydraulic Card** and reload the browser.
 
-The repository was called `heatpump-flow-card` until version 0.9.3. GitHub forwards the old address. If you installed the card before, remove it in HACS and reinstall it from the standard **Heat Pump Hydraulic Card** entry, so that HACS uses the folder `heatpump-hydraulic-card` and updates it from the renamed repository. The resource URL changes from `/hacsfiles/heatpump-flow-card/heatpump-flow-card.js` to `/hacsfiles/heatpump-hydraulic-card/heatpump-hydraulic-card.js` (HACS adjusts it by itself). `type: custom:heatpump-flow-card` in existing dashboards keeps working.
+### Upgrading an installation from before the rename
+
+The repository was called `heatpump-flow-card` until version 0.9.3. If you installed the card under that name, HACS keeps its old folder `/config/www/community/heatpump-flow-card/` and does **not** change the dashboard resource by itself. The new files then land next to the old ones, while the resource still loads the old file. You keep running an old version, and the card editor and new options are missing. Do the following once:
+
+1. Open **HACS**, find **Heat Pump Hydraulic Card** (it is listed under the new name, with an old version number) and choose ⋮ → **Remove**. HACS deletes the old folder.
+2. Open *Settings → Dashboards → ⋮ → Resources*. Delete every entry whose address contains `heatpump-flow-card`. If you manage resources in YAML, remove the line there.
+3. In HACS, search for **Heat Pump Hydraulic Card** again, select **Download** and keep the newest version selected.
+4. Check *Settings → Dashboards → ⋮ → Resources*: there must be exactly one entry for the card, `/hacsfiles/heatpump-hydraulic-card/heatpump-hydraulic-card.js`, type **JavaScript module**. If HACS did not add it, add it yourself.
+5. Reload the browser with a hard refresh (Ctrl+F5, or clear the cache in the companion app).
+
+Your dashboards need no change: `type: custom:heatpump-flow-card` keeps working, and `type: custom:heatpump-hydraulic-card` is the same card under its own, unique name (see [Other cards with the same name](#other-cards-with-the-same-name)). To check what you are running, open `/hacsfiles/heatpump-hydraulic-card/heatpump-hydraulic-card.js` in the browser and look for `HFC_VERSION` near the top of the file.
+
+If you installed the card manually as `/local/heatpump-flow-card.js`, replace the file by `dist/heatpump-hydraulic-card.js` from the latest release and change the resource address to match.
 
 ### Manual
 Copy `dist/heatpump-hydraulic-card.js` to `/config/www/` and add `/local/heatpump-hydraulic-card.js` as a JavaScript module under *Settings → Dashboards → Resources*.
