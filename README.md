@@ -60,7 +60,7 @@ The completed release history and the prioritized post-0.11.0 backlog are mainta
 - **Heat source:** air (the outdoor temperature is shown under the unit; default), **ground** with a brine loop or **groundwater** with two wells (`source_type`), with source inlet and outlet temperatures and the source flow rate. Optional brine and heating-circuit pressures are normalized to bar and can show warning/critical thresholds with text symbols as well as colour.
 - **Diverter valve:** shows DHW or heating; the active circuit is animated.
 - **Tanks:** DHW tank and buffer with a top/bottom temperature gradient, optionally refined by a middle sensor (`dhw_middle`, `buffer_middle`; blue = cold, then cyan and orange, red = hot), target, mode, a heat-exchanger coil while charging, and the circulation pump. **Heater rods** (`dhw_heater`, `buffer_heater`) glow orange while on, red at stage 2 or higher.
-- **Heating circuits:** up to **six circuits** (`hc_count`), each with a pump and an **underfloor loop**, **panel radiator** or **column radiator** with rising heat waves (`hc_type`, `hc2_type` to `hc6_type`), flow and target, plus a house with room temperature, target and outdoor temperature. The heating surface fades from the flow colour to the return colour, so you see the water cooling down.
+- **Heating circuits:** up to **six circuits** (`hc_count`), each with a pump and an **underfloor loop**, **panel radiator** or **column radiator** with rising heat waves (`hc_type`, `hc2_type` to `hc6_type`), flow and target, plus a house with room temperature, target and outdoor temperature. Circuits 2 to 6 can show a room temperature and target of their own under their emitter, for houses with one circuit per floor. The heating surface fades from the flow colour to the return colour, so you see the water cooling down.
 - **Solar thermal:** with `solar_collector` and `solar_pump` a collector sits on the roof edge of the house and feeds a loop into the DHW tank; the loop runs while the solar pump runs. ViCare preset only, **not yet tested on a real installation**.
 - **Heating program:** a chip for eco, night / setback, party and holiday, from the `program` entity or, without one, from the heating circuit mode (e.g. Lambda `ECO`).
 - **Flow rates:** shown on the heating-side loop, at the circuit pump (`hc_volume`) and at the source (`source_volume`). Units l/h, l/min and m³/h are converted automatically.
@@ -372,12 +372,24 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 - **Heating circuit and house:** `hc_flow`, `hc_return`, `hc_setpoint`, `hc_mode`, `hc_pump`, `hc_volume`, `hc_pressure` (bar, kPa, Pa, hPa, MPa or psi), `room`, `room_target`, `program` (eco, night, party, holiday)
 - **Direct systems:** without a buffer and without circuit-specific temperature sensors, circuit 1 uses the heat pump's `flow` and `return` and remains connected in the schematic.
 - **Circuits 2 to 6:** the same keys with `hc2_` to `hc6_` (`hc2_flow`, `hc6_pump`, …)
+- **Room of circuits 2 to 6:** `hc2_room` to `hc6_room` and `hc2_room_target` to `hc6_room_target`, for example a room sensor of its own on each floor. They appear in the status line under the emitter of their circuit, "Heating · Room 21.4 °C · Target 22.0", as a part of their own that opens the room sensor (or the target without one). Without a room sensor the target stands alone ("Room target 22.0 °C"); where mode and room do not fit side by side (long mode texts, narrow cards), the target is left out. `room` and `room_target` stay the room of circuit 1, shown in the house. Presets do not fill these keys yet.
 - **Heaters** (`heater`, `dhw_heater`, `buffer_heater`): binary or on/off, a power value (on above 0) or a stage number (1-3)
 - **Power sources (W):** `pv`, `battery`, `grid` – the heat pump's power from each source. Optional: without them the card uses the Energy dashboard.
 - **Statistics:** `cop_heating_today`, `cop_dhw_today`, `energy_today`, `pv_share_today`, `starts_today`
 - **Details, operation:** `hours`, `starts_total`, `aux_hours`, `energy_total`, `env_energy` (heat taken from air, ground or water), `heat_total`
 - **Details, refrigerant circuit:** `compressor_speed`, `evap_temp`, `cond_temp`, `suction_temp`, `hot_gas`, `liquid_temp`, `low_pressure`, `high_pressure`, `eev`, `superheat`, `subcooling`
 - **Details, cut-out counters:** `cutout_high_pressure`, `cutout_low_pressure`, `cutout_temperature`. These are cumulative **counts of cut-out events** from your integration, not pressures or temperatures. They appear in their own drawer section "Cut-outs (number of events)" as whole numbers with a times sign (for example "3 ×"), separate from the refrigerant circuit values above. No preset fills them yet; map them yourself until entity meaning and units are verified for an integration.
+
+A house with one circuit per floor, each with a room sensor of its own:
+```yaml
+hc_count: 2
+hc_name: Ground floor
+hc2_name: Attic
+entities:
+  room: sensor.living_room_temperature   # circuit 1, shown in the house
+  hc2_room: sensor.attic_temperature     # circuit 2, shown under its emitter
+  hc2_room_target: sensor.attic_target   # optional
+```
 
 ### Stat tiles
 In the UI editor, switch on **Own tile selection**. The editor then offers only the tiles your installation can fill; drag them to sort. Enter an electricity price (a number or an entity) to get the cost tile. In YAML:
