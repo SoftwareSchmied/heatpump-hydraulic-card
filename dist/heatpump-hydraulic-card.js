@@ -339,6 +339,9 @@ const HFC_PRESETS = {
       // Z1_Temp is the room temperature only with a room sensor at the zone ("Internal Thermostat", "Thermistor").
       // With "Water Temperature" or "External Thermostat" it is the zone water temperature; then the remote control sensor is the room.
       const zoneRoom = ['Internal Thermostat', 'Thermistor'].includes(ctx.state(`sensor.${m}z1_sensor_settings`));
+      // The zone water temperature needs a zone sensor; without one HeishaMon reports about -78 to -128 °C.
+      // Then the circuit has no own flow temperature and the card uses the heat pump's flow (direct system).
+      const zoneFlow = parseFloat(ctx.state(`sensor.${m}${z}_water_temp`));
       return {
         compressor: `sensor.${m}compressor_freq`,
         valve: `sensor.${m}threeway_valve_state`,
@@ -355,7 +358,7 @@ const HFC_PRESETS = {
         outdoor: `sensor.${m}outside_temp`,
         dhw_top: `sensor.${m}dhw_temp`,
         dhw_target: [`number.${m}dhw_target_temp`, `sensor.${m}dhw_target_temp`],
-        hc_flow: `sensor.${m}${z}_water_temp`,
+        hc_flow: zoneFlow > -50 || Number.isNaN(zoneFlow) ? `sensor.${m}${z}_water_temp` : undefined,
         // main_target_temp follows the hot-water target while the valve is on the tank, so the zone target comes first.
         hc_setpoint: [`sensor.${m}${z}_water_target_temp`, i.hc === 1 ? `sensor.${m}main_target_temp` : undefined],
         room: zoneRoom ? `sensor.${m}z1_temp` : [`sensor.${m}room_thermostat_temp`, `sensor.${m}z1_temp`],
@@ -363,6 +366,9 @@ const HFC_PRESETS = {
         hours: `sensor.${m}operations_hours`,
         starts_total: `sensor.${m}operations_counter`,
         aux_hours: `sensor.${m}room_heater_operations_hours`,
+        // kWh counters of the integration (Riemann sums of the power sensors, ids from their names); long-term statistics give the periods.
+        energy_total: 'sensor.aquarea_pump_total_consumption_total',
+        heat_total: 'sensor.aquarea_pump_total_production_total',
         compressor_speed: `sensor.${m}compressor_freq`,
         hot_gas: `sensor.${m}discharge_temp`,
         high_pressure: `sensor.${m}high_pressure`,
@@ -370,17 +376,22 @@ const HFC_PRESETS = {
         eev: `sensor.${m}expansion_valve`,
       };
     },
+    // TOP44 "Last Error": "No error", or an H/F code (H76, F12 …) until the error is reset.
+    errors: (p) => [`sensor.${p}_main_error`],
+    error_ok: ['No error'],
     // Holiday mode reports Off / Scheduled / Active as a sensor, or on / off as a switch.
     program_map: { Active: 'holiday', Scheduled: 'none', Off: 'none', on: 'holiday' },
-    // No energy counters: heat and electricity per mode as current power, so the COP tiles work for "now".
+    // Heat and electricity per mode as current power ("now") and as the integration's kWh counters ("total" and, from the
+    // long-term statistics, today … year). The counter ids come from the names of the power sensors plus " Total".
     tiles: (p) => {
       const m = `sensor.${p}_main_`;
       const both = (topic) => [`${m}${topic}_power_`, `${m}${topic}_energy_`];
-      const now = (topic, kind) => ({ now: both(topic).map((x) => x + kind) });
+      const now = (topic, kind, total) => ({ now: both(topic).map((x) => x + kind), total: `sensor.aquarea_${total}_total` });
       return {
-        energy_heating: now('heat', 'consumption'), heat_heating: now('heat', 'production'),
-        energy_dhw: now('dhw', 'consumption'), heat_dhw: now('dhw', 'production'),
-        energy_cooling: now('cool', 'consumption'), heat_cooling: now('cool', 'production'),
+        energy_heating: now('heat', 'consumption', 'heat_power_consumed'), heat_heating: now('heat', 'production', 'heat_power_produced'),
+        energy_dhw: now('dhw', 'consumption', 'dhw_power_consumed'), heat_dhw: now('dhw', 'production', 'dhw_power_produced'),
+        energy_cooling: now('cool', 'consumption', 'thermal_cooling_power_consumption'),
+        heat_cooling: now('cool', 'production', 'thermal_cooling_power_production'),
         starts: { total: `${m}operations_counter` }, hours: { total: `${m}operations_hours` },
         aux_hours: { total: `${m}room_heater_operations_hours` },
       };

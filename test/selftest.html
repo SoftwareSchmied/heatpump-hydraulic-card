@@ -1166,6 +1166,37 @@
     check(room('Water Temperature', noRemote) === `sensor.${p}_main_z1_temp`, 'HeishaMon without remote control sensor keeps the zone temperature');
     const card = mount({ preset: 'heishamon' }, hassOf(toStates({ ...base, [`sensor.${p}_main_z1_sensor_settings`]: 'Water Temperature' }))); await wait(20);
     check(card._n('room') === 23, `HeishaMon card shows the room temperature, not the zone water (${card._n('room')})`);
+  }
+
+  // 18e. HeishaMon: error sensor, kWh counters, zone water temperature without a zone sensor (real installation, WH-MDC05J3E5)
+  {
+    const p = 'panasonic_heat_pump';
+    const st = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.25', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`sensor.${p}_main_z1_water_temp`]: ['-78', '°C'], [`sensor.${p}_main_error`]: 'No error',
+      [`sensor.${p}_main_heat_power_consumption`]: ['600', 'W'], [`sensor.${p}_main_heat_power_production`]: ['2600', 'W'],
+      [`sensor.${p}_main_dhw_power_consumption`]: ['0', 'W'], [`sensor.${p}_main_dhw_power_production`]: ['0', 'W'],
+      'sensor.aquarea_pump_total_consumption_total': ['7690.574', 'kWh'], 'sensor.aquarea_pump_total_production_total': ['24276.876', 'kWh'],
+      'sensor.aquarea_heat_power_consumed_total': ['6636.338', 'kWh'], 'sensor.aquarea_heat_power_produced_total': ['21509.845', 'kWh'],
+      'sensor.aquarea_dhw_power_consumed_total': ['1054.239', 'kWh'], 'sensor.aquarea_dhw_power_produced_total': ['2767.033', 'kWh'],
+    };
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(toStates(st)));
+    check(JSON.stringify(r.errors) === JSON.stringify([`sensor.${p}_main_error`]), `HeishaMon error sensor (${r.errors})`);
+    check(r.entities.energy_total === 'sensor.aquarea_pump_total_consumption_total' && r.entities.heat_total === 'sensor.aquarea_pump_total_production_total', 'HeishaMon kWh totals');
+    check(r.tiles.energy?.total === 'sensor.aquarea_pump_total_consumption_total' && r.tiles.heat?.total === 'sensor.aquarea_pump_total_production_total', 'HeishaMon totals feed the energy and heat tiles');
+    check(r.tiles.energy_heating?.total === 'sensor.aquarea_heat_power_consumed_total' && r.tiles.heat_dhw?.total === 'sensor.aquarea_dhw_power_produced_total'
+      && r.tiles.energy_heating?.now === `sensor.${p}_main_heat_power_consumption`, 'HeishaMon tiles per mode: now and total');
+    check(!r.tiles.energy_cooling?.total, 'HeishaMon without cooling counters has no cooling total');
+    check(r.entities.hc_flow === undefined, `HeishaMon ignores the zone water temperature without a zone sensor (${r.entities.hc_flow})`);
+    const zone = C._resolve({ preset: 'heishamon' }, hassOf(toStates({ ...st, [`sensor.${p}_main_z1_water_temp`]: ['33', '°C'] })));
+    check(zone.entities.hc_flow === `sensor.${p}_main_z1_water_temp`, 'HeishaMon keeps a valid zone water temperature');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates(st))); await wait(20);
+    const errOn = () => card.shadowRoot.getElementById('chip-err').classList.contains('on');
+    check(!errOn(), 'HeishaMon "No error" shows no error chip');
+    check(JSON.parse(card._layoutSignature()).hc === true, 'HeishaMon circuit stays drawn as a direct system');
+    card.hass = hassOf(toStates({ ...st, [`sensor.${p}_main_error`]: 'H76' })); await wait(5);
+    check(errOn(), 'HeishaMon error code H76 shows the error chip');
     card.remove();
   }
 

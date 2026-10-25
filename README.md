@@ -284,9 +284,10 @@ What you get:
 - total power consumption and production (heating, hot water and cooling, `sensor.<prefix>_consumption` / `_production` of the integration), giving a live COP; without them the heating power sensors
 - outdoor temperature
 - DHW temperature and target
-- zone 1 water and room temperature; zone 2 becomes heating circuit 2 with `hc_count: 2`. The room temperature is `…_main_z1_temp` when the zone sensor setting is "Internal Thermostat" or "Thermistor"; otherwise `z1_temp` is the zone water temperature and the card uses the remote control sensor `…_main_room_thermostat_temp`
+- zone 1 water and room temperature; zone 2 becomes heating circuit 2 with `hc_count: 2`. The room temperature is `…_main_z1_temp` when the zone sensor setting is "Internal Thermostat" or "Thermistor"; otherwise `z1_temp` is the zone water temperature and the card uses the remote control sensor `…_main_room_thermostat_temp`. Without a zone sensor HeishaMon reports about −78 to −128 °C as zone water temperature; the preset then leaves `hc_flow` out and the circuit shows the heat pump's flow (direct system)
 - internal backup heater
-- details: operating hours and counter, heater hours, compressor frequency, discharge temperature, high and low pressure, expansion valve
+- error chip from the last error (`sensor.<prefix>_main_error`, "No error" or an H/F code until the error is reset)
+- details: operating hours and counter, heater hours, electricity and heat total (`sensor.aquarea_pump_total_consumption_total` / `_production_total`, kWh) with the total COP, compressor frequency, discharge temperature, high and low pressure, expansion valve
 
 Notes from real installations:
 - The integration reads the Power and the Energy topic of each value, depending on the firmware, so the entity ids contain either `…_heat_power_consumption` or `…_heat_energy_consumption`. The preset accepts both. The schematic prefers the total sensors `sensor.<prefix>_consumption` and `sensor.<prefix>_production`, then `sensor.aquarea_energy_consumption` and `sensor.aquarea_energy_production` (all including hot water); the period tiles use the heating, hot water and cooling sensors.
@@ -468,7 +469,7 @@ What the presets provide:
 - **Lambda:** COP heating/DHW/cooling per day, month, year and in total; electricity and heat per mode including defrost and standby; starts, heating/DHW/cooling cycles and defrosts per day and yesterday.
 - **ViCare:** COP and SPF, electricity per day, week, month and year (total, heating, DHW, cooling), compressor hours, starts and load classes, heater rod hours and starts, PV and solar thermal yield.
 - **EMS-ESP:** totals for electricity, heat, starts and hours per mode; other periods from long-term statistics.
-- **HeishaMon:** heat and electricity per mode as current power, so the COP tiles work for "now"; operating hours and starts.
+- **HeishaMon:** heat and electricity per mode as current power ("now") and from the integration's kWh counters (`sensor.aquarea_*_total`), so today, week, month, year and total come from the long-term statistics; COP per mode and in total; operating hours and starts.
 - **Vaillant:** daily electricity and heat for heating and DHW.
 
 ### Layout, actions and colours
