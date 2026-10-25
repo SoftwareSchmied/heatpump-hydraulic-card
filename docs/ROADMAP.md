@@ -2,9 +2,9 @@
 
 This plan keeps correctness and supportability ahead of new surface area. Impact is the expected benefit across installations; effort is relative (`S` local, `M` several code paths, `L` public API or data logic, `XL` architecture or a second layout).
 
-## Current status after 0.10.0
+## Current status after 0.11.0
 
-Version 0.10.0 is released and its HACS, quality, Chromium and Firefox checks pass. There are no known open bug issues. Issues [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22), [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29), [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) and [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37) shipped in that release and are closed under the 0.10.0 milestone. Environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26) is merged on `main` through [PR #39](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/39), but is not part of 0.10.0; it remains open and marked `ready for release` until the next version is published.
+Version 0.11.0 is released. There are no known open bug issues. It ships environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26), compressor cut-out counters [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35), timeline marks for badges such as Boost, and the Panasonic, Viessmann, Bosch/Buderus, Saunier Duval and Samsung EHS Mono unit drawings (part of the umbrella issue [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5), which stays open for the remaining brands). Version 0.10.0 shipped [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22), [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29), [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) and [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37).
 
 The immediate work is evidence gathering rather than another broad feature release:
 
@@ -14,9 +14,8 @@ The immediate work is evidence gathering rather than another broad feature relea
 
 ## Next low-risk work
 
-1. Keep environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26) release-ready: the optional total counter, details and calendar-period tiles, total-COP fallback, demo, tests and documentation are merged. Close it only when the containing release is published.
-2. Treat the Panasonic Aquarea drawing as the next self-contained part of [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5). It needs its own visual and browser checks and must not close the umbrella issue while Viessmann and Bosch/Buderus drawings remain.
-3. Compressor cut-out counters [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35) are the next small data feature. Generic manual keys and unambiguous counter labels are safe; preset mappings are added only from verified integration or installation data.
+1. Treat the remaining brand drawings in [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5) as one brand per change, each with its own visual and browser checks and original references.
+2. Map the cut-out counters of [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35) in presets only from verified integration or installation data.
 
 Multiple entities per key [#23](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23) remains a separate later sprint because it changes entity resolution, calculations and the editor contract. Recorder- and time-window-based features remain outside this small-work track.
 

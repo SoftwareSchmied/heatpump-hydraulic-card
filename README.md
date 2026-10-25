@@ -33,11 +33,11 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 
 ## Current status
 
-The current release is **[0.10.0](https://github.com/Sturmi77/heatpump-hydraulic-card/releases/tag/v0.10.0)**. Its HACS, quality, Chromium and Firefox checks pass, including 480 browser self-tests. The shipped presets and features are covered with simulated data, but only Lambda has been confirmed on a real installation so far.
+The current release is **[0.11.0](https://github.com/Sturmi77/heatpump-hydraulic-card/releases/tag/v0.11.0)**. Its HACS, quality, Chromium and Firefox checks pass, including 524 browser self-tests. The shipped presets and features are covered with simulated data, but only Lambda has been confirmed on a real installation so far.
 
-Real-installation feedback for Viessmann, Vaillant, EMS-ESP and HeishaMon is therefore the highest-priority follow-up. Please use the [tester issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) or the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and review the diagnostic report for private entity names before posting it. Samsung EHS remains in preparation in contributor-owned [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) and is not part of 0.10.0.
+Real-installation feedback for Viessmann, Vaillant, EMS-ESP and HeishaMon is therefore the highest-priority follow-up. Please use the [tester issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) or the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and review the diagnostic report for private entity names before posting it. Samsung EHS remains in preparation in contributor-owned [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) and is not part of 0.11.0.
 
-The completed release history and the prioritized post-0.10.0 backlog are maintained in the [development plan](docs/ROADMAP.md).
+The completed release history and the prioritized post-0.11.0 backlog are maintained in the [development plan](docs/ROADMAP.md).
 
 ## Features
 
