@@ -1148,6 +1148,27 @@
     check(a.entities.power === 'sensor.aquarea2_consumption', `HeishaMon totals follow the detected prefix (${a.entities.power})`);
   }
 
+  // 18h. HeishaMon: room temperature depends on the zone sensor setting
+  {
+    const p = 'panasonic_heat_pump';
+    const base = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.5', '°C'],
+      [`sensor.${p}_main_z1_temp`]: ['35', '°C'], [`sensor.${p}_main_room_thermostat_temp`]: ['23', '°C'],
+    };
+    const room = (setting, states = base) => C._resolve({ preset: 'heishamon' }, hassOf(toStates(setting === undefined ? states
+      : { ...states, [`sensor.${p}_main_z1_sensor_settings`]: setting }))).entities.room;
+    check(room('Water Temperature') === `sensor.${p}_main_room_thermostat_temp`, 'HeishaMon water temperature setting: room from the remote control');
+    check(room('External Thermostat') === `sensor.${p}_main_room_thermostat_temp`, 'HeishaMon external thermostat setting: room from the remote control');
+    check(room('Internal Thermostat') === `sensor.${p}_main_z1_temp`, 'HeishaMon internal thermostat setting: room from the zone');
+    check(room('Thermistor') === `sensor.${p}_main_z1_temp`, 'HeishaMon thermistor setting: room from the zone');
+    check(room(undefined) === `sensor.${p}_main_room_thermostat_temp`, 'HeishaMon without zone sensor setting: room from the remote control');
+    const noRemote = { ...base }; delete noRemote[`sensor.${p}_main_room_thermostat_temp`];
+    check(room('Water Temperature', noRemote) === `sensor.${p}_main_z1_temp`, 'HeishaMon without remote control sensor keeps the zone temperature');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates({ ...base, [`sensor.${p}_main_z1_sensor_settings`]: 'Water Temperature' }))); await wait(20);
+    check(card._n('room') === 23, `HeishaMon card shows the room temperature, not the zone water (${card._n('room')})`);
+    card.remove();
+  }
+
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
   {
     const s = setups[0];
