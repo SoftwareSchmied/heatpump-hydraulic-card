@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f8fd"/><stop offset="1" stop-color="#dde8f4"/></linearGradient>
+    <linearGradient id="tank" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f97316"/><stop offset=".55" stop-color="#f59e0b"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+    <path id="blade" d="M0 0 C5 -18 26 -36 54 -33 C52 -11 29 5 0 0 Z"/>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- pipes between unit and tank -->
+  <path d="M214 204 H300" stroke="#f97316" stroke-width="26" stroke-linecap="round" fill="none"/>
+  <path d="M214 330 H300" stroke="#2563eb" stroke-width="26" stroke-linecap="round" fill="none"/>
+  <path d="M214 204 H300 M214 330 H300" stroke="#fff" stroke-opacity=".9" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 18" fill="none"/>
+  <!-- outdoor unit -->
+  <rect x="56" y="150" width="170" height="230" rx="30" fill="#3b4148"/>
+  <circle cx="141" cy="236" r="64" fill="#2a2f35"/>
+  <g transform="translate(141 236)" fill="#38bdf8"><use href="#blade"/><use href="#blade" transform="rotate(90)"/><use href="#blade" transform="rotate(180)"/><use href="#blade" transform="rotate(270)"/></g>
+  <circle cx="141" cy="236" r="10" fill="#e6e9ec"/>
+  <rect x="96" y="328" width="90" height="12" rx="6" fill="#e6e9ec" opacity=".6"/>
+  <!-- hot water tank with coil -->
+  <rect x="296" y="96" width="156" height="320" rx="58" fill="url(#tank)"/>
+  <path d="M330 170 H418 M330 210 H418 M330 250 H418" stroke="#fff" stroke-opacity=".55" stroke-width="9" stroke-linecap="round"/>
+  <path d="M330 170 H418 L330 210 H418 L330 250 H418" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

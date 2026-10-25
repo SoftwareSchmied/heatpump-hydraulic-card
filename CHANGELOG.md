@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Logo: a small schematic of the card (PV, heat pump, diverter valve, hot water tank, radiator) as SVG and PNG in `docs/logo/`, used in the README (light and dark variant) and as favicon, touch icon and header of the live demo. The demo title now uses the current name.
+- HeishaMon preset: marked as confirmed on a real installation after feedback that the default MQTT mapping is detected correctly. The combined/layered store in that installation remains outside the supported topology and was mapped manually.
+- README: the preset table now puts confirmed presets first and names each automatic outdoor-unit schematic. The animated demo keeps one Lambda unit while showing heating, hot water, defrost, standby, the timeline, quick controls and statistics at the card's real animation speed.
 - README: explicit steps for installations made before the rename. HACS keeps the old folder and the old dashboard resource, so the update was not loaded; the new section lists remove, resource cleanup, download and check.
 
 ## 0.11.0 – 2026-10-25

@@ -8,7 +8,7 @@ Version 0.11.0 is released. There are no known open bug issues. It ships environ
 
 The immediate work is evidence gathering rather than another broad feature release:
 
-1. Recruit real-installation testers through [#1](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) for Viessmann, Vaillant, EMS-ESP and HeishaMon. Treat findings as bug fixes before feature work.
+1. Recruit real-installation testers through [#1](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) for Viessmann, Vaillant and EMS-ESP. HeishaMon's default MQTT mapping is now [confirmed on a real installation](https://github.com/heishamon/HeishaMon/discussions/1025#discussioncomment-19174931); additional Aquarea models and generations remain useful coverage. Treat findings as bug fixes before feature work.
 2. Leave Samsung [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) with its contributor until the requested cooling-mode and demo changes arrive and all required checks pass.
 3. Use diagnostic reports and verified integration data to unblock the ebusd preset ([#24](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24)) and pump/runtime mappings ([#31](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/31), [#34](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/34)).
 
@@ -43,7 +43,7 @@ This minor adds the support and presentation features that make broader real-ins
 | 3 | [#11](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/11) | Stable custom text/language map with English fallback. | Included in 0.9.6; self-test and reference documentation complete. |
 | 4 | [#13](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/13) | Fixed night and high-contrast card themes. | Included in 0.9.6; self-test and visual review passed. |
 
-JavaScript syntax, browser self-test and visual checks across the three card themes passed before release. Real-installation tests follow when suitable Viessmann, Vaillant, EMS-ESP and HeishaMon testers are available. The diagnostic report is the preferred, privacy-reviewed input for that outreach and for preset issues.
+JavaScript syntax, browser self-test and visual checks across the three card themes passed before release. Real-installation tests were the follow-up; HeishaMon's default MQTT mapping has since been [confirmed on a real installation](https://github.com/heishamon/HeishaMon/discussions/1025#discussioncomment-19174931), while Viessmann, Vaillant and EMS-ESP still need suitable testers. The diagnostic report is the preferred, privacy-reviewed input for that outreach and for preset issues.
 
 [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) remains with its contributor and is not modified or absorbed here. It can be reassessed after the requested contributor changes arrive.
 
