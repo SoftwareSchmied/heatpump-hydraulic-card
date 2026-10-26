@@ -281,7 +281,7 @@ What you get:
 - compressor frequency as "running"
 - 3-way valve (Room/Tank)
 - defrost
-- heat power consumption and production, giving a live COP
+- total power consumption and production (heating, hot water and cooling, `sensor.<prefix>_consumption` / `_production` of the integration), giving a live COP; without them the heating power sensors
 - outdoor temperature
 - DHW temperature and target
 - zone 1 water and room temperature; zone 2 becomes heating circuit 2 with `hc_count: 2`
@@ -289,7 +289,7 @@ What you get:
 - details: operating hours and counter, heater hours, compressor frequency, discharge temperature, high and low pressure, expansion valve
 
 Notes from real installations:
-- The integration reads the Power and the Energy topic of each value, depending on the firmware, so the entity ids contain either `…_heat_power_consumption` or `…_heat_energy_consumption`. The preset accepts both. The schematic prefers the total sensors `sensor.aquarea_energy_consumption` and `sensor.aquarea_energy_production` (including hot water); the period tiles use the heating, hot water and cooling sensors.
+- The integration reads the Power and the Energy topic of each value, depending on the firmware, so the entity ids contain either `…_heat_power_consumption` or `…_heat_energy_consumption`. The preset accepts both. The schematic prefers the total sensors `sensor.<prefix>_consumption` and `sensor.<prefix>_production`, then `sensor.aquarea_energy_consumption` and `sensor.aquarea_energy_production` (all including hot water); the period tiles use the heating, hot water and cooling sensors.
 - `sensor.<prefix>_main_z1_temp` is the zone *water* temperature when the zone sensor setting is "Water Temperature", and reads −128 °C without a room sensor. In that case remove it with `entities: {room: null}`.
 - Some models report a low pressure of 0.0 permanently; hide it with `entities: {low_pressure: null}`.
 - The heating setpoint is the zone target temperature. The outlet target (`main_target_temp`) follows the hot-water target while the 3-way valve is on the tank and is only used when no zone target exists.

@@ -1123,6 +1123,31 @@
     check(o.entities.program === `sensor.${p}_main_holiday_mode_state`, 'HeishaMon prefers the holiday sensor when it exists');
   }
 
+  // 18g. HeishaMon: power and heat from the integration totals, which include hot water
+  {
+    const p = 'panasonic_heat_pump';
+    const dhw = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['39.75', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['37', '°C'],
+      [`sensor.${p}_main_threeway_valve_state`]: 'Tank', [`sensor.${p}_main_compressor_freq`]: ['48', 'Hz'],
+      [`sensor.${p}_main_heat_power_consumption`]: ['0', 'W'], [`sensor.${p}_main_heat_power_production`]: ['0', 'W'],
+      [`sensor.${p}_main_dhw_power_consumption`]: ['1000', 'W'], [`sensor.${p}_main_dhw_power_production`]: ['3800', 'W'],
+      [`sensor.${p}_consumption`]: ['1000.0', 'W'], [`sensor.${p}_production`]: ['3800.0', 'W'],
+    };
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(toStates(dhw)));
+    check(r.entities.power === `sensor.${p}_consumption` && r.entities.heat === `sensor.${p}_production`, `HeishaMon uses the total power sensors (${r.entities.power}, ${r.entities.heat})`);
+    check(r.tiles.energy_heating?.now === `sensor.${p}_main_heat_power_consumption` && r.tiles.energy_dhw?.now === `sensor.${p}_main_dhw_power_consumption`, 'HeishaMon tiles keep the power per mode');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates(dhw))); await wait(20);
+    check(card._w('power') === 1000 && card._kw('heat') === 3.8, `HeishaMon shows power and heat while the valve is on the tank (${card._w('power')} W, ${card._kw('heat')} kW)`);
+    card.remove();
+    const old = { ...dhw };
+    delete old[`sensor.${p}_consumption`]; delete old[`sensor.${p}_production`];
+    const o = C._resolve({ preset: 'heishamon' }, hassOf(toStates(old)));
+    check(o.entities.power === `sensor.${p}_main_heat_power_consumption` && o.entities.heat === `sensor.${p}_main_heat_power_production`, 'HeishaMon without totals keeps the heating power sensors');
+    const other = Object.fromEntries(Object.entries(dhw).map(([k, v]) => [k.replace(p, 'aquarea2'), v]));
+    const a = C._resolve({ preset: 'heishamon' }, hassOf(toStates(other)));
+    check(a.entities.power === 'sensor.aquarea2_consumption', `HeishaMon totals follow the detected prefix (${a.entities.power})`);
+  }
+
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
   {
     const s = setups[0];
