@@ -1,8 +1,8 @@
 # Heatpump Hydraulic Card
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/logo/logo-dark.svg">
-  <img src="docs/logo/logo-light.svg" alt="Logo: heat pump, diverter valve, hot water tank and radiator as a small schematic" width="128" align="right">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Sturmi77/heatpump-hydraulic-card/main/docs/logo/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/Sturmi77/heatpump-hydraulic-card/main/docs/logo/logo-light.svg" alt="Logo: heat pump, diverter valve, hot water tank and radiator as a small schematic" width="128" align="right">
 </picture>
 
 [![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://www.hacs.xyz/docs/use/repositories/dashboard/#search-repositories)
