@@ -1632,6 +1632,56 @@
     own.remove();
   }
 
+  // 18k. heating curve shift: target, curve and shift above the circuit pump, the flow temperature below it (HeishaMon heat request)
+  {
+    const p = 'panasonic_heat_pump';
+    const st = (extra = {}) => toStates({
+      [`sensor.${p}_main_main_outlet_temp`]: ['36.75', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`sensor.${p}_main_z1_water_target_temp`]: ['36', '°C'], [`sensor.${p}_main_heating_mode`]: 'compensation curve',
+      [`number.${p}_main_z1_heat_request_temp`]: ['2', '°C'], [`sensor.${p}_main_z1_water_temp`]: ['-78', '°C'], ...extra,
+    });
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(st()));
+    check(r.entities.hc_curve_offset === `number.${p}_main_z1_heat_request_temp`, `HeishaMon curve shift from the heat request temperature (${r.entities.hc_curve_offset})`);
+    const direct = C._resolve({ preset: 'heishamon' }, hassOf(st({ [`sensor.${p}_main_heating_mode`]: 'direct' })));
+    check(direct.entities.hc_curve_offset === undefined, 'HeishaMon direct mode: the heat request temperature is the target, no curve shift');
+    const q = (c, id) => c.shadowRoot.getElementById(id);
+    const card = mount({ preset: 'heishamon', language: 'de' }, hassOf(st())); await wait(20);
+    const above = q(card, 't-hc'); const below = q(card, 't-hc-now');
+    check(['Soll 36 °C (Kurve 34 °C + 2 K Verschiebung)', 'Soll 36 °C (Kurve 34 °C + 2 K)', 'Soll 36 °C'].includes(above?.textContent), `target, curve and shift above the pump (${above?.textContent})`);
+    check(['36,8 °C', '36.8 °C'].includes(below?.textContent), `flow temperature below the pump (${below?.textContent})`);
+    const pump = card.shadowRoot.querySelector('circle.pump').getBBox(); const ba = above.getBBox(); const bb = below.getBBox();
+    check(ba.y + ba.height <= pump.y && bb.y >= pump.y + pump.height && ba.x + ba.width <= 737 && ba.x >= 399, `above ends at the pump and stays right of the valve riser, below sits under it (${ba.x.toFixed(0)}–${(ba.x + ba.width).toFixed(0)})`);
+    check(above.parentNode.dataset.entity === `number.${p}_main_z1_heat_request_temp` && below.parentNode.dataset.entity === `sensor.${p}_main_main_outlet_temp`
+      && !card.shadowRoot.querySelector('.controls'), `read only: tap targets for the shift and the flow, no quick control (${above.parentNode.dataset.entity}, ${below.parentNode.dataset.entity})`);
+    card.hass = hassOf(st({ [`number.${p}_main_z1_heat_request_temp`]: ['-1', '°C'], [`sensor.${p}_main_z1_water_target_temp`]: ['33', '°C'] })); await wait(5);
+    check(/^Soll 33 °C( \(Kurve 34 °C − 1 K( Verschiebung)?\))?$/.test(above.textContent), `negative shift (${above.textContent})`);
+    card.remove();
+    const en = mount({ preset: 'heishamon', language: 'en' }, hassOf(st())); await wait(20);
+    check(/^Target 36 °C( \(curve 34 °C \+ 2 K( shift)?\))?$/.test(q(en, 't-hc')?.textContent), `English (${q(en, 't-hc')?.textContent})`);
+    en.remove();
+    // A narrow box drops the word for the shift, then the brackets.
+    const fit = mount({ preset: 'heishamon', language: 'de' }, hassOf(st())); await wait(20);
+    const el = q(fit, 't-hc'); el._k = ''; el.getComputedTextLength = function () { return this.textContent.length * 9; };
+    fit.hass = hassOf(st({ [`number.${p}_main_z1_heat_request_temp`]: ['3', '°C'], [`sensor.${p}_main_z1_water_target_temp`]: ['37', '°C'] })); await wait(5);
+    check(el.textContent === 'Soll 37 °C (Kurve 34 °C + 3 K)', `too wide: without the word for the shift (${el.textContent})`);
+    fit.remove();
+    const vol = mount({ entities: { flow: 'sensor.f', return: 'sensor.r', hc_flow: 'sensor.f', hc_setpoint: 'sensor.t', hc_volume: 'sensor.v', hc_curve_offset: 'sensor.shift' } },
+      hassOf(toStates({ 'sensor.f': ['35', '°C'], 'sensor.r': ['30', '°C'], 'sensor.t': ['35', '°C'], 'sensor.v': ['900', 'l/h'], 'sensor.shift': ['0.5', 'K'] }))); await wait(20);
+    const v = q(vol, 't-hc-vol').getBBox(); const nw = q(vol, 't-hc-now').getBBox();
+    check(v.y >= nw.y + nw.height - 1 && q(vol, 't-hc-vol').textContent === '900 l/h', 'the flow rate moves below the flow temperature');
+    check(/\+ 0,5 K|\+ 0\.5 K/.test(q(vol, 't-hc').textContent), `decimal shift (${q(vol, 't-hc').textContent})`);
+    vol.remove();
+    const none = mount({ preset: 'heishamon', entities: { hc_curve_offset: null } }, hassOf(st())); await wait(20);
+    check(!q(none, 't-hc-now') && /^36,8 °C · Soll 36,0$|^36\.8 °C · Target 36\.0$/.test(q(none, 't-hc').textContent), `without the shift the label stays as before (${q(none, 't-hc').textContent})`);
+    none.remove();
+    const names = (config) => C._formSchema(config).schema.flatMap((x) => (x.schema ? x.schema.flatMap((y) => (y.schema ? y.schema.map((z) => z.name) : [y.name])) : [x.name]));
+    const lab = C._formSchema({}).computeLabel;
+    check(names({ hc_count: 3 }).includes('hc_curve_offset') && names({ hc_count: 3 }).includes('hc3_curve_offset') && lab({ name: 'hc3_curve_offset' }) === lab({ name: 'hc_curve_offset' }),
+      `editor offers the curve shift of each circuit (${lab({ name: 'hc_curve_offset' })})`);
+    check(/- hc_curve_offset: number\.panasonic_heat_pump_main_z1_heat_request_temp = 2/.test(C._diagnosticReport({ preset: 'heishamon' }, hassOf(st()))), 'diagnostic report lists the curve shift');
+  }
+
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
   {
     const s = setups[0];
