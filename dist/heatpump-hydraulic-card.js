@@ -28,7 +28,7 @@ const HFC_SCRIPT_URL = (() => {
 //                                a "total" counter with long-term statistics also gives today, yesterday, week, month and year
 //   *_mode_map                 → raw state → normalized mode
 // ctx.key(platform, domain, translation_key) finds entities via the entity registry (language-independent),
-// ctx.match(regex, platform) finds the first entity id matching a pattern.
+// ctx.match(regex, platform) finds the first entity id matching a pattern, ctx.state(entity_id) reads a current state.
 const HFC_PRESETS = {
   lambda: {
     name: 'Lambda (lambda_heat_pumps)',
@@ -334,9 +334,12 @@ const HFC_PRESETS = {
       const id = ctx.match(/^sensor\.(.+)_main_main_outlet_temp$/, 'aquarea');
       return id === undefined ? undefined : id.replace(/^sensor\./, '').replace(/_main_main_outlet_temp$/, '');
     },
-    entities: (p, i) => {
+    entities: (p, i, ctx) => {
       const m = `${p}_main_`;
       const z = `z${i.hc}`;
+      // Z1_Temp is the room temperature only with a room sensor at the zone ("Internal Thermostat", "Thermistor").
+      // With "Water Temperature" or "External Thermostat" it is the zone water temperature; then the remote control sensor is the room.
+      const zoneRoom = ['Internal Thermostat', 'Thermistor'].includes(ctx.state(`sensor.${m}z1_sensor_settings`));
       return {
         compressor: `sensor.${m}compressor_freq`,
         valve: `sensor.${m}threeway_valve_state`,
@@ -356,7 +359,7 @@ const HFC_PRESETS = {
         hc_flow: `sensor.${m}${z}_water_temp`,
         // main_target_temp follows the hot-water target while the valve is on the tank, so the zone target comes first.
         hc_setpoint: [`sensor.${m}${z}_water_target_temp`, i.hc === 1 ? `sensor.${m}main_target_temp` : undefined],
-        room: `sensor.${m}z1_temp`,
+        room: zoneRoom ? `sensor.${m}z1_temp` : [`sensor.${m}room_thermostat_temp`, `sensor.${m}z1_temp`],
         program: [`sensor.${m}holiday_mode_state`, `switch.${m}holiday_mode_state`],
         hours: `sensor.${m}operations_hours`,
         starts_total: `sensor.${m}operations_counter`,
@@ -784,6 +787,7 @@ class HeatpumpFlowCard extends HTMLElement {
         && reg[e]?.translation_key === tk && onDevice(e)),
       // Without a registry entry (YAML entities) the platform cannot be checked; accept the pattern match.
       match: (re, platform) => ids.find((e) => re.test(e) && (!reg[e] || !platform || reg[e].platform === platform) && onDevice(e)),
+      state: (id) => states[id]?.state,
     };
   }
 
