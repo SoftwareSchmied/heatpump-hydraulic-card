@@ -27,11 +27,16 @@ body:
       label: Preset
       options:
         - lambda
-        - vicare
-        - vaillant
-        - emsesp
         - heishamon
         - kronoterm
+        - vicare
+        - open3e
+        - vaillant
+        - emsesp
+        - ebusd
+        - wolf
+        - luxtronik
+        - samsung
         - none (manual entities)
     validations:
       required: true
