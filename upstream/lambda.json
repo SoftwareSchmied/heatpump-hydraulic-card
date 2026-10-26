@@ -1,0 +1,23 @@
+{
+  "preset": "lambda",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": null,
+    "note": "Baseline: changes before this date were not tracked."
+  },
+  "sources": [
+    {
+      "repo": "GuidoJeuken-6512/lambda_heat_pumps",
+      "branch": "main",
+      "paths": [
+        "custom_components/lambda_heat_pumps/const.py",
+        "custom_components/lambda_heat_pumps/const_base.py",
+        "custom_components/lambda_heat_pumps/const_sensor.py",
+        "custom_components/lambda_heat_pumps/const_mapping.py",
+        "custom_components/lambda_heat_pumps/sensor.py",
+        "custom_components/lambda_heat_pumps/climate.py",
+        "custom_components/lambda_heat_pumps/translations/en.json"
+      ]
+    }
+  ]
+}
