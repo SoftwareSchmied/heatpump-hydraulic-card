@@ -255,6 +255,58 @@ const ebusdStates = (s) => ({
   'sensor.heating_ebusd_hmu_rundataoverheatingactualvalue': ['0.2', 'K'],
   'sensor.ebusd_hmu_currenterror_error': s === 'idle' ? '1100' : 'unknown',
 });
+// Luxtronik controller (Alpha Innotec, Novelan, Roth …) through the Luxtronik integration (BenPru/luxtronik), resolved via translation_key.
+// Built from the integration source, not from a real installation: a water/water heat pump with one mixing circuit; mixing circuit 2
+// is not installed and reports a flow but a target of 0.
+const luxtronikReg = {
+  'sensor.luxtronik2_status': 'status', 'binary_sensor.luxtronik2_compressor': 'compressor',
+  'sensor.luxtronik2_flow_in_temperature': 'flow_in_temperature', 'sensor.luxtronik2_flow_out_temperature': 'flow_out_temperature',
+  'sensor.luxtronik2_heat_amount_flow_rate': 'heat_amount_flow_rate', 'sensor.luxtronik2_heat_source_flow_rate': 'heat_source_flow_rate',
+  'sensor.luxtronik2_heat_source_input_temperature': 'heat_source_input_temperature', 'sensor.luxtronik2_heat_source_output_temperature': 'heat_source_output_temperature',
+  'sensor.luxtronik2_outdoor_temperature': 'outdoor_temperature', 'sensor.luxtronik2_dhw_temperature': 'dhw_temperature',
+  'number.luxtronik2_dhw_target_temperature': 'dhw_target_temperature', 'select.luxtronik2_heating_mode': 'heating_mode',
+  'sensor.luxtronik2_current_power_consumption': 'current_power_consumption', 'sensor.luxtronik2_current_heat_output': 'current_heat_output',
+  'binary_sensor.luxtronik2_additional_heat_generator': 'additional_heat_generator', 'binary_sensor.luxtronik2_circulation_pump_heating': 'circulation_pump_heating',
+  'sensor.luxtronik2_flow_in_circuit1_temperature': 'flow_in_circuit1_temperature', 'sensor.luxtronik2_flow_in_circuit1_target_temperature': 'flow_in_circuit1_target_temperature',
+  'sensor.luxtronik2_flow_in_circuit2_temperature': 'flow_in_circuit2_temperature', 'sensor.luxtronik2_flow_in_circuit2_target_temperature': 'flow_in_circuit2_target_temperature',
+  'sensor.luxtronik2_room_thermostat_temperature': 'room_thermostat_temperature', 'sensor.luxtronik2_room_thermostat_temperature_target': 'room_thermostat_temperature_target',
+  'sensor.luxtronik2_hot_gas_temperature': 'hot_gas_temperature', 'sensor.luxtronik2_suction_compressor_temperature': 'suction_compressor_temperature',
+  'sensor.luxtronik2_overheating_temperature': 'overheating_temperature', 'sensor.luxtronik2_high_pressure': 'high_pressure', 'sensor.luxtronik2_low_pressure': 'low_pressure',
+  'sensor.luxtronik2_compressor1_operation_hours': 'compressor1_operation_hours', 'sensor.luxtronik2_compressor1_impulses': 'compressor1_impulses',
+  'sensor.luxtronik2_heat_amount_counter': 'heat_amount_counter', 'sensor.luxtronik2_heat_amount_heating': 'heat_amount_heating', 'sensor.luxtronik2_dhw_heat_amount': 'dhw_heat_amount',
+  'sensor.luxtronik2_heat_energy_input': 'heat_energy_input', 'sensor.luxtronik2_dhw_energy_input': 'dhw_energy_input',
+};
+const luxtronikStates = (s) => ({
+  'sensor.luxtronik2_status': { heat: 'heating', dhw: 'hot_water', defrost: 'defrost', idle: 'no_request' }[s],
+  'binary_sensor.luxtronik2_compressor': s === 'idle' ? 'off' : 'on',
+  'sensor.luxtronik2_flow_in_temperature': [{ heat: '34.8', dhw: '53.1', defrost: '27.4', idle: '29.6' }[s], '°C'],
+  'sensor.luxtronik2_flow_out_temperature': [{ heat: '29.9', dhw: '47.6', defrost: '28.1', idle: '29.3' }[s], '°C'],
+  'sensor.luxtronik2_heat_amount_flow_rate': [{ heat: '1520', dhw: '1280', defrost: '1480', idle: '0' }[s], 'l/h'],
+  'sensor.luxtronik2_heat_source_flow_rate': [{ heat: '2350', dhw: '2350', defrost: '2350', idle: '0' }[s], 'l/h'],
+  'sensor.luxtronik2_heat_source_input_temperature': ['9.4', '°C'], 'sensor.luxtronik2_heat_source_output_temperature': [{ heat: '6.1', dhw: '6.4', defrost: '7.0', idle: '9.3' }[s], '°C'],
+  'sensor.luxtronik2_outdoor_temperature': ['7.8', '°C'], 'sensor.luxtronik2_dhw_temperature': [{ heat: '49.2', dhw: '50.4', defrost: '49.0', idle: '49.6' }[s], '°C'],
+  'number.luxtronik2_dhw_target_temperature': ['50', '°C'], 'select.luxtronik2_heating_mode': 'Automatic',
+  'sensor.luxtronik2_current_power_consumption': [{ heat: '1180', dhw: '1790', defrost: '1010', idle: '0' }[s], 'W'],
+  'sensor.luxtronik2_current_heat_output': [{ heat: '5260', dhw: '6930', defrost: '0', idle: '0' }[s], 'W'],
+  'binary_sensor.luxtronik2_additional_heat_generator': 'off', 'binary_sensor.luxtronik2_circulation_pump_heating': s === 'heat' || s === 'idle' ? 'on' : 'off',
+  'sensor.luxtronik2_flow_in_circuit1_temperature': [{ heat: '33.1', dhw: '31.5', defrost: '31.9', idle: '30.2' }[s], '°C'],
+  'sensor.luxtronik2_flow_in_circuit1_target_temperature': ['33.5', '°C'],
+  'sensor.luxtronik2_flow_in_circuit2_temperature': ['5.0', '°C'], 'sensor.luxtronik2_flow_in_circuit2_target_temperature': ['0.0', '°C'],
+  'sensor.luxtronik2_room_thermostat_temperature': ['21.4', '°C'], 'sensor.luxtronik2_room_thermostat_temperature_target': ['21.5', '°C'],
+  'sensor.luxtronik2_hot_gas_temperature': [{ heat: '68.2', dhw: '81.5', defrost: '44.0', idle: '24.1' }[s], '°C'],
+  'sensor.luxtronik2_suction_compressor_temperature': [{ heat: '5.9', dhw: '6.6', defrost: '2.0', idle: '9.1' }[s], '°C'],
+  'sensor.luxtronik2_overheating_temperature': [{ heat: '5.2', dhw: '5.8', defrost: '3.1', idle: '0.0' }[s], 'K'],
+  'sensor.luxtronik2_high_pressure': [{ heat: '19.4', dhw: '25.8', defrost: '14.0', idle: '10.7' }[s], 'bar'],
+  'sensor.luxtronik2_low_pressure': [{ heat: '6.3', dhw: '6.5', defrost: '4.8', idle: '8.9' }[s], 'bar'],
+  'sensor.luxtronik2_compressor1_operation_hours': { state: '6218.43', attributes: { unit_of_measurement: 'h', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_compressor1_impulses': { state: '9120', attributes: { state_class: 'total_increasing' } },
+  'sensor.luxtronik2_heat_amount_counter': { state: '41230.5', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_heat_amount_heating': { state: '33810.2', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_dhw_heat_amount': { state: '7420.3', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_heat_energy_input': { state: '7690.4', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_dhw_energy_input': { state: '2310.1', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+});
+
 // Samsung EHS (esphome-samsung-nasa): entity names of Beormund's example.yaml, valve and error code as text sensors.
 const samsungStates = (s) => ({
   'sensor.heat_pump_flow_temp_out': [{ heat: '32.6', dhw: '45.1', defrost: '22.0', idle: '28.0' }[s], '°C'],
@@ -482,6 +534,15 @@ const setups = [
     name: 'Samsung EHS', sub: 'esphome-samsung-nasa, underfloor heating',
     states: samsungStates, registry: regOf(samsungStates, 'esphome'),
     config: { preset: 'samsung', title: 'Samsung EHS' },
+  },
+  {
+    name: 'Alpha Innotec (Luxtronik)', sub: 'Luxtronik integration, water source, one mixing circuit, energy counters per use',
+    states: luxtronikStates,
+    registry: Object.fromEntries(Object.entries(luxtronikReg).map(([id, tk]) => [id, { platform: 'luxtronik2', translation_key: tk }])),
+    config: {
+      preset: 'luxtronik', title: 'Alpha Innotec WWC', source_type: 'water',
+      tiles: ['cop_heating:total', 'cop_dhw:total', 'energy_heating:total', 'heat:total', 'hours:total', 'spread'],
+    },
   },
 ];
 const scenarios = [['heat', 'Heating'], ['dhw', 'Hot water'], ['defrost', 'Defrost'], ['idle', 'Standby + error']];

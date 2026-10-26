@@ -609,6 +609,81 @@ const HFC_PRESETS = {
     },
   },
 
+  // Heat pumps with a Luxtronik controller (Alpha Innotec, Novelan, Roth, Siemens, Elco, Buderus, Nibe, Wolf) through the
+  // "Luxtronik" integration (BenPru/luxtronik, HACS, domain luxtronik2). Built from the integration source, not tested on an
+  // installation: the SensorKey values are the translation keys, so entity ids and the HA language do not matter. Flow (Vorlauf,
+  // TVL) is flow_in_temperature and return (Rücklauf, TRL) is flow_out_temperature, "in" and "out" as seen from the heating system.
+  // The mixing circuits 1 to 3 are circuits 1 to 3 of the card, but only where they report a flow and a target; without a mixing
+  // circuit the card draws the heat pump flow as the circuit flow. The last error (error_reason) stays after a reset and the
+  // buffer is not exposed, so neither is mapped.
+  luxtronik: {
+    name: 'Luxtronik (Alpha Innotec, Novelan, Roth …)',
+    auto_circuits: false,
+    detect: (ctx) => (ctx.key('luxtronik2', 'sensor', 'status') || ctx.key('luxtronik2', 'sensor', 'flow_in_temperature') ? '' : undefined),
+    entities: (p, i, ctx) => {
+      const s = (tk) => ctx.key('luxtronik2', 'sensor', tk);
+      const b = (tk) => ctx.key('luxtronik2', 'binary_sensor', tk);
+      const n = i.hc;
+      // A mixing circuit that is not installed still has its sensors; it counts when flow and target are plain numbers.
+      const mixFlow = n <= 3 ? s(`flow_in_circuit${n}_temperature`) : undefined;
+      const mixTarget = n <= 3 ? s(`flow_in_circuit${n}_target_temperature`) : undefined;
+      const mixer = Number.isFinite(parseFloat(ctx.state(mixFlow))) && parseFloat(ctx.state(mixTarget)) >= 10;
+      return {
+        mode: s('status'),
+        compressor: b('compressor'),
+        // Both are disabled in the integration by default: enable "Current power consumption" and "Current heat output".
+        power: s('current_power_consumption'),
+        heat: s('current_heat_output'),
+        flow: s('flow_in_temperature'),
+        return: s('flow_out_temperature'),
+        volume: s('heat_amount_flow_rate'),
+        source_volume: s('heat_source_flow_rate'),
+        source_in: s('heat_source_input_temperature'),
+        source_out: s('heat_source_output_temperature'),
+        outdoor: s('outdoor_temperature'),
+        heater: b('additional_heat_generator'),
+        dhw_top: s('dhw_temperature'),
+        dhw_target: ctx.key('luxtronik2', 'number', 'dhw_target_temperature'),
+        solar_collector: s('solar_collector_temperature'),
+        solar_pump: b('solar_pump'),
+        hc_flow: mixer ? mixFlow : undefined,
+        hc_setpoint: mixer ? mixTarget : undefined,
+        hc_pump: n === 1 ? b('circulation_pump_heating') : undefined,
+        room: n === 1 ? s('room_thermostat_temperature') : undefined,
+        room_target: n === 1 ? s('room_thermostat_temperature_target') : undefined,
+        program: ctx.key('luxtronik2', 'select', 'heating_mode'),
+        hours: [s('compressor1_operation_hours'), s('operation_hours')],
+        starts_total: s('compressor1_impulses'),
+        aux_hours: s('additional_heat_generator_operation_hours'),
+        heat_total: s('heat_amount_counter'),
+        hot_gas: s('hot_gas_temperature'),
+        suction_temp: s('suction_compressor_temperature'),
+        superheat: s('overheating_temperature'),
+        high_pressure: s('high_pressure'),
+        low_pressure: s('low_pressure'),
+      };
+    },
+    // The kWh counters per use (P1136 to P1139 and the heat amounts) exist on newer firmware only; each tile appears where its counter does.
+    tiles: (p, i, ctx) => {
+      const s = (tk) => ctx.key('luxtronik2', 'sensor', tk);
+      return {
+        energy_heating: { total: s('heat_energy_input') }, energy_dhw: { total: s('dhw_energy_input') }, energy_cooling: { total: s('cooling_energy_input') },
+        energy_aux: { total: s('additional_heat_generator_energy') },
+        heat: { total: s('heat_amount_counter') }, heat_heating: { total: s('heat_amount_heating') }, heat_dhw: { total: s('dhw_heat_amount') },
+        heat_cooling: { total: s('cooling_heat_amount') },
+        hours: { total: [s('compressor1_operation_hours'), s('operation_hours')] }, aux_hours: { total: s('additional_heat_generator_operation_hours') },
+        starts: { total: s('compressor1_impulses') },
+      };
+    },
+    // Status values (LuxOperationMode); the pool and solar mode and an external heat source count as heating.
+    mode_map: {
+      heating: 'heating', hot_water: 'dhw', swimming_pool_solar: 'heating', heating_external_source: 'heating', cooling: 'cooling',
+      defrost: 'defrost', evu: 'blocked', no_request: 'idle',
+    },
+    // Heating mode select (LuxMode).
+    program_map: { Automatic: 'none', Off: 'none', 'Second heatsource': 'none', Party: 'party', Holidays: 'holiday' },
+  },
+
   // Vaillant aroTHERM / aroTHERM plus (HMU) on the eBUS via ebusd and its Home Assistant MQTT discovery.
   // Entity ids are <topic prefix>_<circuit>_<message>[_<field>]; Home Assistant may put the device name in front
   // (sensor.heating_ebusd_hmu_…), so every lookup accepts a leading part. Circuits: hmu (outdoor unit), vwzio (hydraulic

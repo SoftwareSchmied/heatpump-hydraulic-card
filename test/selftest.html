@@ -99,7 +99,7 @@
   // 5. detection: the right preset for each installation, nothing for gas boilers or foreign entities
   check(HFC_PRESETS.heishamon.tested === true, 'HeishaMon preset is marked real-installation tested');
   const stub = (states, registry) => C.getStubConfig(hassOf(toStates(states), registry));
-  const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp', 8: 'wolf', 9: 'kronoterm', 10: 'ebusd', 11: 'samsung' };
+  const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp', 8: 'wolf', 9: 'kronoterm', 10: 'ebusd', 11: 'samsung', 12: 'luxtronik' };
   for (const [i, p] of Object.entries(expect)) {
     const s = setups[i]; const st = stub(s.states('heat'), s.registry || {});
     check(st.preset === p, `stub preset ${i} = ${p} (got ${st.preset})`);
@@ -798,6 +798,43 @@
     check(/mode-dhw/.test(r.mode) && !r.err, `Samsung valve and error code as plain sensors (${JSON.stringify(r)})`);
     const { t } = await tilesOf(s, ['energy', 'heat', 'cop_total', 'energy:total']);
     check(t['Electricity · today'] === '4.3 kWh' && t['COP total · today'] === '3.74' && t['Electricity · total'] === '1,843 kWh', `Samsung tiles (${JSON.stringify(t)})`);
+  }
+
+  // 13c. Luxtronik (integration luxtronik2): entities by translation key, mixing circuits only where they report, status values
+  {
+    const s = setups[12]; const reg = s.registry; const px = 'luxtronik2';
+    const hass = (scen, extra = {}) => hassOf(toStates({ ...s.states(scen), ...extra }), reg);
+    const r = C._resolve(s.config, hass('heat')); const e = r.entities;
+    check(HFC_PRESETS.luxtronik.tested !== true && r.ready && r.prefix === '', 'Luxtronik is detected through translation keys and marked untested');
+    check(e.mode === `sensor.${px}_status` && e.compressor === `binary_sensor.${px}_compressor`
+      && e.flow === `sensor.${px}_flow_in_temperature` && e.return === `sensor.${px}_flow_out_temperature`, `Luxtronik mode, compressor, flow (Vorlauf) and return (Rücklauf) (${e.flow} / ${e.return})`);
+    check(e.power === `sensor.${px}_current_power_consumption` && e.heat === `sensor.${px}_current_heat_output` && e.volume === `sensor.${px}_heat_amount_flow_rate`, 'Luxtronik power, heat output and heating flow rate');
+    check(e.dhw_top === `sensor.${px}_dhw_temperature` && e.dhw_target === `number.${px}_dhw_target_temperature` && e.program === `select.${px}_heating_mode`, 'Luxtronik hot water, its target (number) and the heating mode select');
+    check(e.hc_flow === `sensor.${px}_flow_in_circuit1_temperature` && e.hc_setpoint === `sensor.${px}_flow_in_circuit1_target_temperature` && e.hc_pump === `binary_sensor.${px}_circulation_pump_heating`, 'Luxtronik mixing circuit 1');
+    check(e.source_in === `sensor.${px}_heat_source_input_temperature` && e.hot_gas === `sensor.${px}_hot_gas_temperature` && e.superheat === `sensor.${px}_overheating_temperature`
+      && e.errors === undefined && e.circulation === undefined, 'Luxtronik source, refrigerant circuit; no error and circulation mapping');
+    const two = C._resolve({ ...s.config, hc_count: 2 }, hass('heat')).entities;
+    check(two.hc2_flow === undefined && two.hc2_setpoint === undefined, 'Luxtronik: mixing circuit 2 without a target counts as not installed');
+    const two2 = C._resolve({ ...s.config, hc_count: 2 }, hass('heat', { [`sensor.${px}_flow_in_circuit2_target_temperature`]: ['36.0', '°C'], [`sensor.${px}_flow_in_circuit2_temperature`]: ['35.2', '°C'] })).entities;
+    check(two2.hc2_flow === `sensor.${px}_flow_in_circuit2_temperature` && two2.hc2_setpoint === `sensor.${px}_flow_in_circuit2_target_temperature`, 'Luxtronik: an installed mixing circuit 2 is mapped');
+    check(C.getStubConfig(hass('heat')).hc_count === undefined, 'Luxtronik stub leaves hc_count to the user');
+    const t = r.tiles;
+    check(t.energy_heating?.total === `sensor.${px}_heat_energy_input` && t.heat_dhw?.total === `sensor.${px}_dhw_heat_amount` && t.heat?.total === `sensor.${px}_heat_amount_counter`
+      && t.hours?.total === `sensor.${px}_compressor1_operation_hours` && t.energy_cooling === undefined, 'Luxtronik tiles: counters per use where they exist');
+    const lux = async (scen, extra = {}) => {
+      const card = mount(s.config, hass(scen, extra)); await wait(20);
+      const q = (id) => card.shadowRoot.getElementById(id);
+      const out = { mode: q('chip-mode').className, flow: q('t-vl')?.textContent, rl: q('t-rl')?.textContent, hc: q('t-hc')?.textContent, prog: q('chip-program')?.className };
+      card.remove(); return out;
+    };
+    let o = await lux('heat');
+    check(/mode-heat/.test(o.mode) && /34\.8/.test(o.flow) && /29\.9/.test(o.rl) && /33\.1/.test(o.hc), `Luxtronik heating: VL 34.8, RL 29.9, circuit 33.1 (${JSON.stringify(o)})`);
+    o = await lux('dhw'); check(/mode-dhw/.test(o.mode), `Luxtronik status hot_water is hot water (${o.mode})`);
+    o = await lux('defrost'); check(/mode-defrost/.test(o.mode), `Luxtronik status defrost (${o.mode})`);
+    o = await lux('idle'); check(/mode-idle/.test(o.mode), `Luxtronik status no_request is idle (${o.mode})`);
+    o = await lux('heat', { [`sensor.${px}_status`]: 'evu' }); check(/mode-blocked|mode-idle/.test(o.mode), `Luxtronik status evu is blocked (${o.mode})`);
+    o = await lux('heat', { [`select.${px}_heating_mode`]: 'Party' }); check(/party/.test(o.prog || ''), `Luxtronik heating mode Party shows the party chip (${o.prog})`);
+    o = await lux('heat', { [`select.${px}_heating_mode`]: 'Holidays' }); check(/holiday/.test(o.prog || ''), `Luxtronik heating mode Holidays shows the holiday chip (${o.prog})`);
   }
 
   // 14. outdoor unit drawings: style per preset, manufacturer variants, fans and snowflakes, loop symbol for ground sources
