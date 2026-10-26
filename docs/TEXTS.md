@@ -49,6 +49,8 @@ fullscreen_open
 fullscreen_close
 source_flow
 target
+curve_offset
+curve_shift
 middle
 bottom
 brine_pressure
