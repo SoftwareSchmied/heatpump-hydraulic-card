@@ -210,6 +210,7 @@ const HFC_PRESETS = {
   // translation keys; entity ids include the device name and serial number.
   open3e: {
     name: 'Viessmann (Open3E)',
+    unit_style: 'viessmann',
     index: { hc: 1 },
     detect: (ctx) => (ctx.key('open3e', 'sensor', 'refrigeration_circuit_mode')
       || ctx.key('open3e', 'binary_sensor', 'heat_pump_compressor_active') ? '' : undefined),
@@ -269,7 +270,8 @@ const HFC_PRESETS = {
       };
     },
     mode_map: { off: 'off', shutdown: 'idle', heating: 'heating', cooling: 'cooling', defrost: 'defrost', grid_lock: 'blocked' },
-    dhw_mode_map: { off: 'idle', hot_water: 'dhw', parallel_operation: 'dhw', hygiene_function: 'legionella', automatic: 'idle' },
+    // domestic_hot_water_status reports idle, active and postrun
+    dhw_mode_map: { idle: 'idle', active: 'dhw', postrun: 'idle' },
     buffer_mode_map: { heating: 'heating', cooling: 'cooling' },
     hc_mode_map: { heat: 'heating', cool: 'cooling', off: 'off', auto: 'idle' },
   },

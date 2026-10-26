@@ -103,7 +103,7 @@ The completed release history and the prioritized post-0.11.0 backlog are mainta
 |---|---|---|---|
 | `generic` | Neutral fan symbol | Any air-source heat pump | Fallback without a known style, also `preset: wolf` |
 | `lambda` | Lambda EU-L | Lambda | `preset: lambda` |
-| `viessmann` | Viessmann Vitocal 250-A | Viessmann Vitocal | `preset: vicare` |
+| `viessmann` | Viessmann Vitocal 250-A | Viessmann Vitocal | `preset: vicare`, `preset: open3e` |
 | `vaillant` | Vaillant aroTHERM plus | Vaillant; default fallback for the shared myPyllant brands | `preset: vaillant` |
 | `saunier` | Saunier Duval GeniaAir Mono | Saunier Duval | Manual override because myPyllant does not identify the brand reliably |
 | `bosch` | Bosch Compress 5800i/6800i AW | Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc and iVT through EMS-ESP | `preset: emsesp` |

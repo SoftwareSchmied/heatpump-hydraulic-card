@@ -1,0 +1,1 @@
+- Open3E preset: the hot water status `domestic_hot_water_status` (idle, active, postrun) is mapped to the card's modes, and the Viessmann Vitocal outdoor-unit drawing is selected like for the ViCare preset. `upstream/` manifests for the Kronoterm, Open3E, Samsung and ebusd presets, so changes in their integrations are reported.
