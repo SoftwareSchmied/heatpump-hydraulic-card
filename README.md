@@ -367,7 +367,7 @@ Notes:
 type: custom:heatpump-flow-card
 preset: kronoterm
 ```
-For Kronoterm heat pumps (ADAPT, ETERA, VERSI, WPLV …) with the [Kronoterm](https://github.com/Favio25/Kronoterm-homeassistant) integration, connected through the Kronoterm Cloud API or locally through Modbus. Entities are found through the entity registry (platform `kronoterm` + translation key), so entity ids and the HA language don't matter. With several Kronoterm heat pumps, pick one with `device:`. The hot water heat pumps of the separate Kronoterm DHW cloud are not covered.
+For Kronoterm heat pumps (ADAPT, ETERA, VERSI, WPLV …) with the [Kronoterm](https://github.com/Favio25/Kronoterm-homeassistant) integration, connected through the Kronoterm Cloud API or locally through Modbus. Entities are found through the entity registry (platform `kronoterm` + translation key), so entity ids and the HA language don't matter. With several Kronoterm heat pumps, pick one with `device:`. The hot water heat pumps of the separate Kronoterm DHW cloud are not covered. Details and the full mapping: [docs/presets/kronoterm.md](docs/presets/kronoterm.md).
 
 What you get:
 - the working function (heating, hot water, cooling, pool, thermal disinfection, standby, remote deactivation) as the mode, defrost from the defrost status
@@ -377,7 +377,7 @@ What you get:
 - hot water tank temperature and target: the tank sensor and current setpoint with Modbus, the DHW thermostat with the Cloud API
 - the hot water circulator as the diverter valve, the DHW circulation pump, the reserve source as the backup heater
 - loops 1 to 4 as heating circuits with their pumps and flow temperatures (`hc_count: 2` and more); room temperature and target from the thermostat of the first circuit
-- heating system pressure, the error/warning sensor, ECO mode as the eco chip
+- heating system pressure (the measured pressure needs Kronoterm 1.7.3 or newer with the Cloud API; 1.7.2 and older report the setting of the low-pressure alarm under the same name), the error/warning sensor, ECO mode as the eco chip
 - tiles: electricity today in total and per heating, hot water and heater (Cloud API), week, month and year from the electricity counter, COP total from the SCOP, compressor starts for heating and hot water
 - details: total electricity, HP load, evaporation and compressor (hot gas) temperature, heater hours
 
