@@ -1,0 +1,26 @@
+{
+  "preset": "kronoterm",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": "v1.7.3",
+    "note": "Reviewed from source (v1.7.2..v1.7.3, no installation): translation keys of the preset unchanged; heating_system_pressure now reads register 2326 (#78)."
+  },
+  "sources": [
+    {
+      "repo": "Favio25/Kronoterm-homeassistant",
+      "branch": "main",
+      "paths": [
+        "custom_components/kronoterm/const.py",
+        "custom_components/kronoterm/sensor.py",
+        "custom_components/kronoterm/binary_sensor.py",
+        "custom_components/kronoterm/climate.py",
+        "custom_components/kronoterm/select.py",
+        "custom_components/kronoterm/register_map.py",
+        "custom_components/kronoterm/entities.py",
+        "custom_components/kronoterm/identifiers.py",
+        "custom_components/kronoterm/strings.json",
+        "custom_components/kronoterm/translations/en.json"
+      ]
+    }
+  ]
+}

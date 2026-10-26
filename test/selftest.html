@@ -99,7 +99,7 @@
   // 5. detection: the right preset for each installation, nothing for gas boilers or foreign entities
   check(HFC_PRESETS.heishamon.tested === true, 'HeishaMon preset is marked real-installation tested');
   const stub = (states, registry) => C.getStubConfig(hassOf(toStates(states), registry));
-  const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp', 8: 'wolf', 9: 'kronoterm', 10: 'ebusd' };
+  const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp', 8: 'wolf', 9: 'kronoterm', 10: 'ebusd', 11: 'samsung', 12: 'luxtronik' };
   for (const [i, p] of Object.entries(expect)) {
     const s = setups[i]; const st = stub(s.states('heat'), s.registry || {});
     check(st.preset === p, `stub preset ${i} = ${p} (got ${st.preset})`);
@@ -125,6 +125,48 @@
   check(!detects('vicare', { 'sensor.vitodens_outside_temperature': '5', 'sensor.vitodens_boiler_temperature': '60' },
     { 'sensor.vitodens_outside_temperature': { platform: 'vicare', translation_key: 'outside_temperature' } }), 'ViCare gas boiler is not a heat pump');
   check(!detects('lambda', { 'sensor.other_hp1_operating_state': 'x' }, { 'sensor.other_hp1_operating_state': { platform: 'something_else' } }), 'foreign hp1_operating_state is not Lambda');
+  check(!detects('samsung', { 'sensor.boiler_3_way_valve': 'Room' }, { 'sensor.boiler_3_way_valve': { platform: 'esphome' } }), 'a 3-way valve without the Samsung error code is not Samsung');
+  {
+    const states = {}; const registry = {};
+    const add = (domain, key, state) => {
+      const id = `${domain}.vitocal_${key}`;
+      states[id] = state;
+      registry[id] = { platform: 'open3e', translation_key: key };
+      return id;
+    };
+    const ids = {
+      mode: add('sensor', 'refrigeration_circuit_mode', 'heating'),
+      compressor: add('binary_sensor', 'heat_pump_compressor_active', 'on'),
+      valve: add('sensor', 'four_three_way_valve_position', 'hot_water'),
+      flow: add('sensor', 'flow_temperature', '42'),
+      return: add('sensor', 'return_temperature', '35'),
+      dhwTop: add('sensor', 'dhw_buffer_top_temperature', '52'),
+      dhwMiddle: add('sensor', 'dhw_buffer_mid_temperature', '48'),
+      dhwBottom: add('sensor', 'dhw_buffer_bottom_temperature', '40'),
+      circuitFlow: add('sensor', 'flow_circuit1_temperature', '38'),
+      circuitTarget: add('sensor', 'flow_circuit_1_supply_temp_setpoint', '40'),
+      circuitPump: add('binary_sensor', 'circuit_1_pump', 'on'),
+      cop: add('sensor', 'cop_heating_today', '4.2'),
+      dhwStatus: add('sensor', 'domestic_hot_water_status', 'active'),
+    };
+    const hass = hassOf(toStates(states), registry);
+    const stubConfig = C.getStubConfig(hass);
+    const resolved = C._resolve({ preset: 'open3e' }, hass);
+    check(stubConfig.preset === 'open3e', `Open3E Vitocal preset detected (${stubConfig.preset})`);
+    check(resolved.ready && resolved.entities.mode === ids.mode && resolved.entities.compressor === ids.compressor
+      && resolved.entities.valve === ids.valve, 'Open3E preset maps mode, compressor and diverter valve');
+    check(resolved.entities.dhw_top === ids.dhwTop && resolved.entities.dhw_middle === ids.dhwMiddle
+      && resolved.entities.dhw_bottom === ids.dhwBottom, 'Open3E preset maps DHW tank temperature levels');
+    check(resolved.entities.hc_flow === ids.circuitFlow && resolved.entities.hc_setpoint === ids.circuitTarget
+      && resolved.entities.hc_pump === ids.circuitPump && resolved.tiles.cop_heating.today === ids.cop,
+    'Open3E preset maps circuit and daily COP entities');
+    const card = mount({ preset: 'open3e' }, hass);
+    check(/Hot water/.test(card.shadowRoot.getElementById('chip-mode')?.textContent || ''), 'Open3E hot_water valve state selects DHW mode');
+    check(/Hot water/.test(card.shadowRoot.getElementById('t-dhw-mode')?.textContent || ''), 'Open3E domestic_hot_water_status "active" shows hot water charging');
+    check(card._unitKey() === 'viessmann', `Open3E selects the Viessmann unit drawing (${card._unitKey()})`);
+    card.remove();
+  }
+
   check(!detects('ebusd', { 'sensor.ebusd_hmu_rundatastatuscode': 'standby' }, { 'sensor.ebusd_hmu_rundatastatuscode': { platform: 'something_else' } }), 'ebusd needs the MQTT platform');
 
   // Wolf (wolflink): heat pumps only, prefix = device slug; gas boilers and other platforms with the same names are not detected.
@@ -168,7 +210,9 @@
     check(r.tiles.cycles_heating.total === byKey('heatSources:hs1:numberOfStarts:ch'), 'PointT heating starts catalog source');
     check(!r.tiles.energy_cooling, 'PointT compressor-only cooling energy is not assumed to be system electricity');
     check(Object.values(r.tiles).every((periods) => Object.keys(periods).every((p) => p === 'total')), 'PointT cumulative counters are not labelled as daily readings');
-    check(r.controls.length === 17 && new Set(r.controls).size === 17, 'PointT available controls without duplicate climate/DHW mode controls');
+    const defaults = [byKey('heatingCircuits:hc1:operationMode:control', 'select'),
+      byKey('dhwCircuits:dhw1:operationMode:control', 'select'), byKey('dhwCircuits:dhw1:charge:control', 'switch')];
+    check(JSON.stringify(r.controls) === JSON.stringify(defaults), 'PointT defaults contain only circuit modes and one-time DHW charge');
     check(r.details.includes(byKey('heatSources:hs1:supplyFlowCondenserTemp')), 'PointT TC3 is an additional value, not a refrigerant temperature');
     check(r.details.includes(byKey('heatSources:numberOfStarts')), 'PointT general start counter remains available in details');
     const r2 = C._resolve({ ...cfg, index: { hc: 2, dhw: 2 } }, hass);
@@ -178,11 +222,13 @@
     check(!r2.controls.includes(byKey('heatingCircuits:hc1:operationMode:control', 'select')), 'PointT controls do not mix HC1 and HC2');
     const absentCircuit = C._resolve({ ...cfg, index: { hc: 3, dhw: 3 } }, hass);
     check(!absentCircuit.entities.room_target && !absentCircuit.entities.dhw_top, 'PointT absent circuit has no guessed fallback');
+    check(!absentCircuit.controls.length, 'PointT absent circuits do not offer controls from another circuit');
     const multi = C._resolve({ ...cfg, hc_count: 2 }, hass);
     check(multi.entities.hc2_flow === byKey('heatingCircuits:hc2:actualSupplyTemperature'), 'PointT second hydraulic circuit flow');
 
     const card = mount(cfg, hass);
-    check(card._controlList().length === 17 && card._drawerRows().length > 0, 'PointT automatic controls and details render');
+    check(card._controlList().length === 3 && card._drawerRows().length > 0, 'PointT short default control list and details render');
+    check(!card.shadowRoot.querySelector('input[type="number"], input[type="range"]'), 'PointT default card does not expose setpoint inputs');
     check(card.shadowRoot.getElementById('t-hp-cop').textContent === '', 'PointT no live COP without instantaneous power');
     check(C._diagnosticReport(cfg, hass).includes(r.controls[0]), 'PointT diagnostic includes automatic controls');
     check(!C._diagnosticReport(cfg, hass).includes('demo-pointt:'), 'PointT diagnostic excludes gateway unique identifiers');
@@ -218,7 +264,13 @@
     check(writesToSelected.length === 1 && writesToSelected[0][0] === 'select'
       && writesToSelected[0][1] === 'select_option' && writesToSelected[0][2].entity_id === expectedControl
       && writesToSelected[0][2].option === 'manual', 'PointT simulated control targets HC2 on the selected gateway');
-    const numeric = selectedCard._controlList().findIndex((c) => c.entity.startsWith('number.'));
+    const manualSetpoint = byKey('heatingCircuits:hc2:manualRoomSetpoint:control', 'number', other);
+    const optionalControls = [{ entity: manualSetpoint, name: 'Selected room target' },
+      byKey('system:silentMode:enabled:control', 'select', other), byKey('system:awayMode:enabled:control', 'switch', other)];
+    selectedCard.setConfig({ ...cfg, device: 'device-second-gateway', index: { hc: 2 }, controls: optionalControls });
+    check(selectedCard._controlList().length === 3 && selectedCard._controlList()[0].name === 'Selected room target',
+      'PointT explicit optional controls replace the defaults and preserve custom labels');
+    const numeric = selectedCard._controlList().findIndex((c) => c.entity === manualSetpoint);
     const numberElement = selectedCard.shadowRoot.getElementById(`ctl-${numeric}`);
     check(numberElement.min === '5' && numberElement.max === '80' && numberElement.step === '0.5', 'PointT numeric controls inherit actual bounds and step');
     selectedCard.remove();
@@ -228,8 +280,11 @@
     const sparse = structuredClone(fixture);
     delete sparse.states[byKey('gateway:outdoor_temperature')];
     sparse.registry[byKey('gateway:supply_temperature')].disabled_by = 'user';
+    sparse.registry[defaults[0]].disabled_by = 'user';
+    delete sparse.states[defaults[2]];
     const sparseResult = C._resolve(cfg, hassOf(toStates(sparse.states), sparse.registry));
     check(!sparseResult.entities.outdoor && !sparseResult.entities.flow, 'PointT ignores missing and disabled entities');
+    check(JSON.stringify(sparseResult.controls) === JSON.stringify([defaults[1]]), 'PointT missing or disabled controls are omitted');
     const foreign = Object.fromEntries(Object.entries(fixture.registry).map(([id, e]) => [id, { ...e, platform: 'mqtt' }]));
     check(!C._resolve(cfg, hassOf(toStates(fixture.states), foreign)).ready, 'PointT rejects foreign integration identities');
     const gas = structuredClone(fixture);
@@ -255,14 +310,25 @@
     const lateStates = toStates(fixture.states);
     const lateId = byKey('gateway:outdoor_temperature'); const late = lateStates[lateId]; delete lateStates[lateId];
     const lateHass = hassOf(lateStates, fixture.registry); const lateCard = mount(cfg, lateHass);
+    const lateEditor = document.createElement('heatpump-flow-card-editor'); lateEditor.setConfig(cfg); lateEditor.hass = lateHass;
     check(!lateCard._e.outdoor, 'PointT missing state is initially omitted');
-    lateCard.hass = { ...lateHass, states: { ...lateStates, [lateId]: late } };
+    const arrived = { ...lateHass, states: { ...lateStates, [lateId]: late } };
+    lateCard.hass = arrived; lateEditor.hass = arrived;
     check(lateCard._e.outdoor === lateId, 'PointT state arriving after registry is mapped without a reload');
-    lateCard.remove();
+    check(lateEditor._fromPreset.outdoor === lateId, 'PointT editor also detects late states');
+    const exchangedStates = { ...lateStates, [lateId]: late }; delete exchangedStates[r.entities.flow];
+    lateCard.hass = { ...lateHass, states: exchangedStates }; lateEditor.hass = { ...lateHass, states: exchangedStates };
+    check(!lateCard._e.flow && lateCard._e.outdoor === lateId && !lateEditor._fromPreset.flow,
+      'PointT removal refreshes both card and editor');
+    lateCard.hass = lateHass; lateEditor.hass = lateHass;
+    check(lateCard._e.flow === r.entities.flow && !lateCard._e.outdoor
+      && lateEditor._fromPreset.flow === r.entities.flow && !lateEditor._fromPreset.outdoor,
+      'PointT detects exchanged entities even when the matching state count stays the same');
+    lateCard.remove(); lateEditor.remove();
 
     const editor = document.createElement('heatpump-flow-card-editor');
     editor.setConfig(cfg); editor.hass = hass;
-    check(editor._form.data.controls.length === 17, 'PointT editor shows preset controls');
+    check(editor._form.data.controls.length === 3, 'PointT editor shows the short default control list');
     editor._changed({ ...editor._form.data, title: 'Renamed card' });
     check(editor._config.controls === undefined, 'PointT editor preserves automatic controls on unrelated edits');
     editor._changed({ ...editor._form.data, controls: [] });
@@ -270,7 +336,7 @@
     editor.remove();
   }
 
-  // Full registry loading is local, shared, bounded and isolated by HA connection.
+  // PointT registry loading is local, shared, bounded and isolated by HA connection.
   {
     const fixture = pointtSetup();
     const compact = Object.fromEntries(Object.entries(fixture.registry).map(([id, { unique_id, ...e }]) => [id, e]));
@@ -314,6 +380,138 @@
     await wait(10);
     check(ok(malformed) && malformed._needsBuild, 'PointT malformed registry response fails without breaking the card');
     malformed.remove();
+  }
+
+  // PointT updates do not scan unrelated states, and registry changes still refresh mappings.
+  {
+    const fixture = pointtSetup(); const cfg = { preset: 'bosch_buderus_heating', power_sources: 'manual', tiles: [] };
+    const baseStates = toStates(fixture.states);
+    for (let n = 0; n < 2000; n++) baseStates[`sensor.unrelated_${n}`] = { state: '1', attributes: {} };
+    let stateScans = 0; let registryScans = 0;
+    const registry = new Proxy({ ...fixture.registry }, { ownKeys(target) { registryScans++; return Reflect.ownKeys(target); } });
+    const hass = hassOf(baseStates, registry);
+    const card = mount(cfg, hass);
+    const editor = document.createElement('heatpump-flow-card-editor'); editor.setConfig(cfg); editor.hass = hass;
+    await wait(20);
+    const initialRegistryScans = registryScans;
+    const originalControl = card.shadowRoot.getElementById('ctl-0');
+    const flowId = card._e.flow;
+    for (let n = 0; n < 4; n++) {
+      const states = new Proxy({ ...baseStates, [flowId]: { ...baseStates[flowId], state: String(35 + n) },
+        [`sensor.unrelated_new_${n}`]: { state: '1', attributes: {} } },
+      { ownKeys(target) { stateScans++; return Reflect.ownKeys(target); } });
+      const next = { ...hass, states };
+      card.hass = next; editor.hass = next;
+    }
+    check(stateScans === 0 && registryScans === initialRegistryScans,
+      'PointT value updates with thousands of unrelated states do not enumerate states or rescan the registry');
+    check(card.shadowRoot.getElementById('ctl-0') === originalControl && card._hass.states[flowId].state === '38',
+      'PointT value updates preserve existing controls while displaying the latest state');
+
+    const renamedId = 'sensor.renamed_pointt_flow';
+    const renamedRegistry = { ...fixture.registry, [renamedId]: fixture.registry[flowId] }; delete renamedRegistry[flowId];
+    const renamedStates = { ...baseStates, [renamedId]: baseStates[flowId] }; delete renamedStates[flowId];
+    const renamed = { ...hass, entities: renamedRegistry, states: renamedStates };
+    card.hass = renamed; editor.hass = renamed; await wait(20);
+    check(card._e.flow === renamedId && editor._fromPreset.flow === renamedId,
+      'PointT registry replacement with the same entity count refreshes renamed mappings');
+    const disabled = { ...renamed, entities: { ...renamedRegistry, [renamedId]: { ...renamedRegistry[renamedId], disabled_by: 'user' } } };
+    card.hass = disabled; editor.hass = disabled; await wait(20);
+    check(!card._e.flow && !editor._fromPreset.flow, 'PointT registry updates remove newly disabled entities');
+    card.hass = renamed; editor.hass = renamed; await wait(20);
+    check(card._e.flow === renamedId && editor._fromPreset.flow === renamedId, 'PointT re-enabled entities recover without a reload');
+    card.remove(); editor.remove();
+  }
+
+  // 5a. Wolf (wolf_smartset): found by translation key with any entity ids, wolflink unchanged, wolf_smartset wins when both exist,
+  // Wolf's capitalised state texts (Heizbetrieb, Warmwasser, Ein, Aus, Betrieb) map like the wolflink slugs
+  {
+    const ws = setups.find((s) => s.name === 'Wolf CHA (wolf_smartset)'); const wl = setups.find((s) => s.name === 'Wolf CHA');
+    const regAs = (reg, patch) => Object.fromEntries(Object.entries(reg).map(([id, r]) => [id, { ...r, ...patch }]));
+    const without = (o, id) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== id));
+    const hassS = (scen) => hassOf(toStates(ws.states(scen)), ws.registry, null, ws);
+    const r = C._resolve(ws.config, hassS('heat')); const e = r.entities;
+    check(r.ready && r.prefix === '' && HFC_PRESETS.wolf.tested !== true, `wolf_smartset detected with prefix '' and still untested (${r.prefix} / ${r.ready})`);
+    check(C.getStubConfig(hassS('heat')).preset === 'wolf', 'stub config picks the wolf preset for wolf_smartset');
+    check(e.mode === 'sensor.heizgerat_betriebsart_heizgerat' && e.status === 'sensor.heizgerat_verdichterstatus' && e.compressor === 'sensor.heizgerat_verdichterfrequenz'
+      && e.compressor_speed === 'sensor.heizgerat_aktuelle_leistungsvorgabe_verdichter', `wolf_smartset mode, status and compressor (${e.mode} / ${e.status} / ${e.compressor})`);
+    check(e.power === 'sensor.heizgerat_leistungsaufnahme_wp_ehz' && e.heat === 'sensor.heizgerat_aktuelle_sekundarleistung' && e.flow === 'sensor.heizgerat_kesseltemperatur'
+      && e.return === 'sensor.heizgerat_rucklauftemperatur' && e.volume === 'sensor.heizgerat_heizkreisdurchfluss' && e.outdoor === 'sensor.heizgerat_aussentemperatur_heizung',
+      `wolf_smartset power, heat, flow, return, volume and outdoor (${e.power} / ${e.flow} / ${e.outdoor})`);
+    check(e.valve === 'sensor.heizgerat_3_wege_umschaltventil_hz_ww' && e.heater === 'sensor.heizgerat_e_heizung' && e.dhw_top === 'sensor.heizgerat_warmwassertemperatur'
+      && e.dhw_target === 'number.wolf_cha_warmwassersolltemperatur_eingestellt', `wolf_smartset valve, heater, tank and the number as DHW target (${e.valve} / ${e.dhw_target})`);
+    // without the number (no write access) the read-only sensor is the fallback
+    const numId = 'number.wolf_cha_warmwassersolltemperatur_eingestellt';
+    check(C._resolve({ preset: 'wolf' }, hassOf(toStates(without(ws.states('heat'), numId)), without(ws.registry, numId))).entities.dhw_target === 'sensor.heizgerat_warmwassersolltemperatur',
+      'wolf_smartset DHW target falls back to the read-only sensor');
+    check(e.hc_flow === 'sensor.bedienmodul_bm_2_0_vorlauftemperatur' && e.hc_pump === 'sensor.wolf_cha_mischerkreispumpe' && e.hc_mode === 'sensor.bedienmodul_bm_2_0_mischerkreis_status'
+      && e.hc_pressure === 'sensor.heizgerat_anlagendruck' && e.room_target === 'number.bedienmodul_bm_2_0_tagtemperatur_heizung_mischerkreis_1',
+      `wolf_smartset circuit: flow, system-tab pump, mode, pressure and the number as room target (${e.hc_pump} / ${e.room_target})`);
+    check(e.hours === 'sensor.heizgerat_betriebsstunden_verdichter' && e.aux_hours === 'sensor.heizgerat_betriebsstunden_e_heizung' && e.buffer_top === 'sensor.heizgerat_sammlertemperatur',
+      'wolf_smartset hours counters and the manual buffer line');
+    check(e.room === undefined && e.program === undefined, `wolf_smartset: no room sensor, no program (${e.room} / ${e.program})`);
+    // one mixer circuit only: a second circuit maps nothing instead of repeating circuit 1 (both branches)
+    const two = C._resolve({ ...ws.config, hc_count: 2 }, hassS('heat')).entities;
+    const twoL = C._resolve({ ...wl.config, hc_count: 2 }, hassOf(toStates(wl.states('heat')), wl.registry)).entities;
+    check(two.hc_flow && !two.hc2_flow && !two.hc2_pump && !two.hc2_mode && twoL.hc_flow && !twoL.hc2_flow && !twoL.hc2_pump && !twoL.hc2_mode,
+      `hc_count 2 leaves circuit 2 empty (${two.hc2_flow} / ${twoL.hc2_flow})`);
+    check(JSON.stringify(r.errors) === '[]', `wolf_smartset has no fault code, errors stay empty (${JSON.stringify(r.errors)})`);
+    check(r.tiles.heat?.yesterday === 'sensor.heizgerat_erzeugte_warmemenge_vortag' && r.tiles.heat?.month === 'sensor.heizgerat_erzeugte_warmemenge_aktueller_monat'
+      && r.tiles.heat_heating?.total === 'sensor.heizgerat_energiemenge_hz' && r.tiles.heat_dhw?.total === 'sensor.heizgerat_energiemenge_ww' && r.tiles.hours?.total === e.hours,
+      `wolf_smartset heat counter tiles by translation key (${JSON.stringify(r.tiles)})`);
+    // entity ids are irrelevant: rename every entity
+    const rename = (o) => Object.fromEntries(Object.entries(o).map(([id, v]) => [id.replace('.', '.x_'), v]));
+    const x = C._resolve({ preset: 'wolf' }, hassOf(toStates(rename(ws.states('heat'))), rename(ws.registry)));
+    check(x.ready && x.entities.mode === 'sensor.x_heizgerat_betriebsart_heizgerat' && x.entities.room_target === 'number.x_bedienmodul_bm_2_0_tagtemperatur_heizung_mischerkreis_1',
+      `wolf_smartset with arbitrary entity ids (${x.entities.mode})`);
+    // "Ausgang MKP" is the pump fallback when the system-tab pump is missing (it starts disabled in the integration)
+    const mkpId = 'sensor.mischermodul_mm1_ausgang_mkp'; const sysPump = 'sensor.wolf_cha_mischerkreispumpe';
+    const m = C._resolve({ preset: 'wolf' }, hassOf(toStates({ ...without(ws.states('heat'), sysPump), [mkpId]: 'Ein' }),
+      { ...without(ws.registry, sysPump), [mkpId]: { platform: 'wolf_smartset', translation_key: 'mkp_mixer_circuit_pump' } }));
+    check(m.entities.hc_pump === mkpId, `Ausgang MKP as the pump fallback (${m.entities.hc_pump})`);
+    // a boiler (no compressor status) and the same keys on another platform are not detected
+    const boiler = { 'sensor.heizgerat_kesseltemperatur': ['62', '°C'], 'sensor.heizgerat_aussentemperatur_heizung': ['5', '°C'],
+      'sensor.heizgerat_warmwassertemperatur': ['50', '°C'], 'sensor.heizgerat_anlagendruck': ['1.8', 'bar'] };
+    check(!detects('wolf', boiler, Object.fromEntries(Object.keys(boiler).map((id) => [id, ws.registry[id]]))), 'wolf_smartset boiler without a compressor status is not a heat pump');
+    check(!detects('wolf', ws.states('heat'), regAs(ws.registry, { platform: 'other' })), 'same translation keys on another platform are not Wolf');
+    // both installed: wolf_smartset wins; wolflink alone is unchanged
+    const both = C._resolve({ preset: 'wolf' }, hassOf(toStates({ ...wl.states('heat'), ...ws.states('heat') }), { ...wl.registry, ...ws.registry }));
+    check(both.prefix === '' && both.entities.mode === 'sensor.heizgerat_betriebsart_heizgerat' && both.errors.length === 0, `wolf_smartset wins over wolflink (${both.prefix} / ${both.entities.mode})`);
+    const l = C._resolve(wl.config, hassOf(toStates(wl.states('heat')), wl.registry)); const le = l.entities;
+    check(l.prefix === 'zuhause' && le.mode === 'sensor.zuhause_operating_mode_heater' && le.hc_pump === 'sensor.zuhause_mkp_mixer_circuit_pump' && le.room_target === 'sensor.zuhause_day_temperature'
+      && le.program === 'sensor.zuhause_holiday_mode' && JSON.stringify(l.errors) === '["sensor.zuhause_sub_fault_code"]' && l.tiles.heat_heating?.total === 'sensor.zuhause_energy_amount_htg',
+      `wolflink mapping unchanged (${l.prefix} / ${le.hc_pump} / ${le.program} / ${JSON.stringify(l.errors)})`);
+    // the entities sit on several HA devices (Heizgerät, Bedienmodul BM-2, the system), so the device option must stay unset:
+    // it keeps the heat pump keys but loses the circuit, or fails to detect altogether
+    const devReg = Object.fromEntries(Object.entries(ws.registry).map(([id, r]) => [id, { ...r, device_id: id.includes('heizgerat_') ? 'dev-hg' : (id.includes('bm_2_') ? 'dev-bm2' : 'dev-sys') }]));
+    const onHg = C._resolve({ preset: 'wolf', device: 'dev-hg' }, hassOf(toStates(ws.states('heat')), devReg));
+    check(onHg.ready && onHg.entities.mode && !onHg.entities.hc_flow && !onHg.entities.hc_pump && !onHg.entities.hc_mode && !onHg.entities.room_target && !onHg.entities.dhw_target?.startsWith('number.'),
+      `device: Heizgerät keeps the heat pump but loses the circuit and the DHW setting (${onHg.entities.hc_flow} / ${onHg.entities.dhw_target})`);
+    check(!C._resolve({ preset: 'wolf', device: 'dev-bm2' }, hassOf(toStates(ws.states('heat')), devReg)).ready, 'device: Bedienmodul is not detected at all');
+    // capitalised Wolf texts: the maps are case-insensitive, the four slugged AT/RT mixer states exist in both spellings
+    const card = mount(ws.config, hassS('heat')); await wait(20);
+    const $ = (id) => card.shadowRoot.getElementById(id);
+    const modes = { Heizbetrieb: 'heating', Warmwasser: 'dhw', Abtaubetrieb: 'defrost', Standby: 'idle', 'Aktive Kühlung': 'cooling', Antilegionellenfunktion: 'dhw' };
+    Object.entries(modes).forEach(([raw, mode]) => check(card._norm(card._maps.mode, raw) === mode, `wolf_smartset mode ${raw} = ${mode} (got ${card._norm(card._maps.mode, raw)})`));
+    const hc = { Heizbetrieb: 'heating', Aus: 'off', Absenkbetrieb: 'heating', 'AT Abschaltung': 'off', 'RT Frostschutz': 'frost', Warmwasservorrang: 'idle', at_abschaltung: 'off' };
+    Object.entries(hc).forEach(([raw, mode]) => check(card._norm(card._maps.hc, raw) === mode, `wolf_smartset circuit ${raw} = ${mode} (got ${card._norm(card._maps.hc, raw)})`));
+    check($('chip-mode').classList.contains('mode-heat') && $('impeller').classList.contains('on') && !$('heater-inline').classList.contains('on') && $('t-valve').textContent === 'Heating',
+      `Heizbetrieb, pump Ein, heater Aus, valve Heizen (${$('t-valve').textContent})`);
+    check(/1,200 W → 4\.1 kW/.test($('t-hp-power').textContent), `wolf_smartset kW power and heat (${$('t-hp-power').textContent})`);
+    card.remove();
+    const still = mount(ws.config, hassOf(toStates({ ...ws.states('heat'), 'sensor.heizgerat_verdichterfrequenz': ['0', 'Hz'], 'sensor.heizgerat_leistungsaufnahme_wp_ehz': ['0', 'kW'],
+      'sensor.heizgerat_aktuelle_sekundarleistung': ['0', 'kW'] }), ws.registry)); await wait(20);
+    check(still.shadowRoot.getElementById('t-hp-power').textContent !== still._i.compressor_off, `status Betrieb alone counts as running (${still.shadowRoot.getElementById('t-hp-power').textContent})`);
+    still.remove();
+    const dhw = mount(ws.config, hassS('dhw')); await wait(20);
+    check(dhw.shadowRoot.getElementById('chip-mode').classList.contains('mode-dhw') && dhw.shadowRoot.getElementById('t-valve').textContent === 'DHW', 'Warmwasser = DHW, valve Warmwasser = DHW');
+    dhw.remove();
+    const idle = mount(ws.config, hassS('idle')); await wait(20);
+    check(!idle.shadowRoot.getElementById('impeller').classList.contains('on') && idle.shadowRoot.getElementById('t-hp-power').textContent === idle._i.compressor_off,
+      `Standby: pump Aus, compressor off (${idle.shadowRoot.getElementById('t-hp-power').textContent})`);
+    idle.remove();
+    const opt = C._formSchema({}).schema[0].selector.select.options.find((o) => o.value === 'wolf');
+    check(/wolf_smartset/.test(opt.label), `preset dropdown names both integrations (${opt.label})`);
   }
 
   // 6. computed values
@@ -815,7 +1013,7 @@
     check(o.has && o.text === '12.5 °C' && !o.flow && !o.coil && !o.panel, `solar loop idle with the pump off (${JSON.stringify(o)})`);
     o = await sol('heat', { entities: { ...s.config.entities, solar_collector: null } });
     check(o.has && o.text === 'Solar' && o.flow, `pump only: label without a temperature (${JSON.stringify(o)})`);
-    o = await sol('heat', { entities: { ...s.config.entities, dhw_top: null, dhw_mode: null } });
+    o = await sol('heat', { entities: { ...s.config.entities, dhw_top: null, dhw_middle: null, dhw_bottom: null, dhw_mode: null } });
     check(!o.has && o.ok, 'no solar loop without a hot water tank');
     o = await sol('heat', { entities: { ...s.config.entities, solar_collector: null, solar_pump: null } });
     check(!o.has && o.ok, 'no solar loop without solar entities');
@@ -907,6 +1105,65 @@
     const one = mount(s.config, hass); await wait(10);
     check(one.shadowRoot.querySelectorAll('.hop').length === 0, 'single circuit has no bridge');
     one.remove();
+  }
+
+  // 13b. Samsung EHS: text valve "Tank (DHW)", text error code with "No Error", tiles from the example.yaml template sensors
+  {
+    const s = setups[11];
+    const sam = async (scen, extra = {}) => {
+      const card = mount(s.config, hassOf(toStates({ ...s.states(scen), ...extra }), s.registry)); await wait(20);
+      const r = { mode: card.shadowRoot.getElementById('chip-mode').className, err: card.shadowRoot.getElementById('chip-err').classList.contains('on') };
+      card.remove(); return r;
+    };
+    let r = await sam('dhw');
+    check(/mode-dhw/.test(r.mode) && !r.err, `Samsung valve "Tank (DHW)" is hot water, "No Error" is no error (${JSON.stringify(r)})`);
+    r = await sam('heat');
+    check(/mode-heat/.test(r.mode) && !r.err, `Samsung "Room (Heating)" is heating (${JSON.stringify(r)})`);
+    r = await sam('idle');
+    check(/mode-idle/.test(r.mode) && r.err, `Samsung error text shows the error chip (${JSON.stringify(r)})`);
+    r = await sam('heat', { 'sensor.heat_pump_error_code': 'unavailable' });
+    check(!r.err, 'Samsung error code unavailable is no error');
+    r = await sam('heat', { 'sensor.heat_pump_error_code': '0', 'sensor.heat_pump_3_way_valve': '1' });
+    check(/mode-dhw/.test(r.mode) && !r.err, `Samsung valve and error code as plain sensors (${JSON.stringify(r)})`);
+    const { t } = await tilesOf(s, ['energy', 'heat', 'cop_total', 'energy:total']);
+    check(t['Electricity · today'] === '4.3 kWh' && t['COP total · today'] === '3.74' && t['Electricity · total'] === '1,843 kWh', `Samsung tiles (${JSON.stringify(t)})`);
+  }
+
+  // 13c. Luxtronik (integration luxtronik2): entities by translation key, mixing circuits only where they report, status values
+  {
+    const s = setups[12]; const reg = s.registry; const px = 'luxtronik2';
+    const hass = (scen, extra = {}) => hassOf(toStates({ ...s.states(scen), ...extra }), reg);
+    const r = C._resolve(s.config, hass('heat')); const e = r.entities;
+    check(HFC_PRESETS.luxtronik.tested !== true && r.ready && r.prefix === '', 'Luxtronik is detected through translation keys and marked untested');
+    check(e.mode === `sensor.${px}_status` && e.compressor === `binary_sensor.${px}_compressor`
+      && e.flow === `sensor.${px}_flow_in_temperature` && e.return === `sensor.${px}_flow_out_temperature`, `Luxtronik mode, compressor, flow (Vorlauf) and return (Rücklauf) (${e.flow} / ${e.return})`);
+    check(e.power === `sensor.${px}_current_power_consumption` && e.heat === `sensor.${px}_current_heat_output` && e.volume === `sensor.${px}_heat_amount_flow_rate`, 'Luxtronik power, heat output and heating flow rate');
+    check(e.dhw_top === `sensor.${px}_dhw_temperature` && e.dhw_target === `number.${px}_dhw_target_temperature` && e.program === `select.${px}_heating_mode`, 'Luxtronik hot water, its target (number) and the heating mode select');
+    check(e.hc_flow === `sensor.${px}_flow_in_circuit1_temperature` && e.hc_setpoint === `sensor.${px}_flow_in_circuit1_target_temperature` && e.hc_pump === `binary_sensor.${px}_circulation_pump_heating`, 'Luxtronik mixing circuit 1');
+    check(e.source_in === `sensor.${px}_heat_source_input_temperature` && e.hot_gas === `sensor.${px}_hot_gas_temperature` && e.superheat === `sensor.${px}_overheating_temperature`
+      && e.errors === undefined && e.circulation === undefined, 'Luxtronik source, refrigerant circuit; no error and circulation mapping');
+    const two = C._resolve({ ...s.config, hc_count: 2 }, hass('heat')).entities;
+    check(two.hc2_flow === undefined && two.hc2_setpoint === undefined, 'Luxtronik: mixing circuit 2 without a target counts as not installed');
+    const two2 = C._resolve({ ...s.config, hc_count: 2 }, hass('heat', { [`sensor.${px}_flow_in_circuit2_target_temperature`]: ['36.0', '°C'], [`sensor.${px}_flow_in_circuit2_temperature`]: ['35.2', '°C'] })).entities;
+    check(two2.hc2_flow === `sensor.${px}_flow_in_circuit2_temperature` && two2.hc2_setpoint === `sensor.${px}_flow_in_circuit2_target_temperature`, 'Luxtronik: an installed mixing circuit 2 is mapped');
+    check(C.getStubConfig(hass('heat')).hc_count === undefined, 'Luxtronik stub leaves hc_count to the user');
+    const t = r.tiles;
+    check(t.energy_heating?.total === `sensor.${px}_heat_energy_input` && t.heat_dhw?.total === `sensor.${px}_dhw_heat_amount` && t.heat?.total === `sensor.${px}_heat_amount_counter`
+      && t.hours?.total === `sensor.${px}_compressor1_operation_hours` && t.energy_cooling === undefined, 'Luxtronik tiles: counters per use where they exist');
+    const lux = async (scen, extra = {}) => {
+      const card = mount(s.config, hass(scen, extra)); await wait(20);
+      const q = (id) => card.shadowRoot.getElementById(id);
+      const out = { mode: q('chip-mode').className, flow: q('t-vl')?.textContent, rl: q('t-rl')?.textContent, hc: q('t-hc')?.textContent, prog: q('chip-program')?.className };
+      card.remove(); return out;
+    };
+    let o = await lux('heat');
+    check(/mode-heat/.test(o.mode) && /34\.8/.test(o.flow) && /29\.9/.test(o.rl) && /33\.1/.test(o.hc), `Luxtronik heating: VL 34.8, RL 29.9, circuit 33.1 (${JSON.stringify(o)})`);
+    o = await lux('dhw'); check(/mode-dhw/.test(o.mode), `Luxtronik status hot_water is hot water (${o.mode})`);
+    o = await lux('defrost'); check(/mode-defrost/.test(o.mode), `Luxtronik status defrost (${o.mode})`);
+    o = await lux('idle'); check(/mode-idle/.test(o.mode), `Luxtronik status no_request is idle (${o.mode})`);
+    o = await lux('heat', { [`sensor.${px}_status`]: 'evu' }); check(/mode-blocked|mode-idle/.test(o.mode), `Luxtronik status evu is blocked (${o.mode})`);
+    o = await lux('heat', { [`select.${px}_heating_mode`]: 'Party' }); check(/party/.test(o.prog || ''), `Luxtronik heating mode Party shows the party chip (${o.prog})`);
+    o = await lux('heat', { [`select.${px}_heating_mode`]: 'Holidays' }); check(/holiday/.test(o.prog || ''), `Luxtronik heating mode Holidays shows the holiday chip (${o.prog})`);
   }
 
   // 14. outdoor unit drawings: style per preset, manufacturer variants, fans and snowflakes, loop symbol for ground sources
@@ -1282,6 +1539,134 @@
     check(/Heating circuits: 6/.test(C._diagnosticReport({ ...cfg }, hassOf(toStates(states)))), 'diagnostic report names six circuits');
   }
 
+  // 18j. room temperature and target of circuits 2 to 6: in the status line under the emitter, a part of its own beside the mode
+  {
+    const states = {
+      'sensor.hp_flow': ['35', '°C'], 'sensor.hp_return': ['30', '°C'], 'sensor.hp_power': ['1200', 'W'], 'sensor.room': ['21.0', '°C'],
+      'sensor.c2_flow': ['33', '°C'], 'binary_sensor.c2_pump': 'on', 'sensor.c3_flow': ['31', '°C'], 'binary_sensor.c3_pump': 'off',
+      'sensor.attic': { state: '19.4', attributes: { unit_of_measurement: '°C', friendly_name: 'Attic temperature' } },
+      'sensor.attic_target': ['20.0', '°C'], 'sensor.c3_target': ['18.5', '°C'], 'sensor.c2_mode': 'Frost protection',
+    };
+    const cfg = { hc_count: 3, hc2_type: 'radiator', hc3_type: 'column', hc2_name: 'Attic',
+      entities: { power: 'sensor.hp_power', flow: 'sensor.hp_flow', return: 'sensor.hp_return', room: 'sensor.room',
+        hc2_flow: 'sensor.c2_flow', hc2_pump: 'binary_sensor.c2_pump', hc3_flow: 'sensor.c3_flow', hc3_pump: 'binary_sensor.c3_pump',
+        hc2_room: 'sensor.attic', hc2_room_target: 'sensor.attic_target', hc3_room_target: 'sensor.c3_target' } };
+    const q = (c, id) => c.shadowRoot.getElementById(id);
+    const txt = (c, id) => q(c, id)?.textContent ?? '(missing)';
+    const at = (c, id, name) => q(c, id)?.getAttribute(name);
+    const box = (el, pad = 0) => { const b = el.getBBox(); return { l: b.x - pad, r: b.x + b.width + pad, t: b.y - pad, b: b.y + b.height + pad }; };
+    const meets = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+    // Mode and room text of circuit n: apart from each other, right of the risers of the further circuits (x 676, stroke 9), inside the
+    // schematic and, with drawings, clear of the pipes, the emitter and its heat waves (in the same coordinates as the texts).
+    const clear = (c, n, drawings = true) => {
+      const mode = q(c, `t-hc-mode${n}`); const room = q(c, `t-hc-room${n}`);
+      if (!mode || !room) return false;
+      const texts = [mode, room].filter((t) => t.textContent).map((t) => box(t));
+      const art = drawings ? [...room.closest('g[transform]').querySelectorAll('.pipe, .wave, .radiator, .rib, .column-rib, .column-cap, .column-foot, .screed')].map((el) => box(el, 4.5)) : [];
+      return texts.length > 0 && texts.every((t) => t.l >= 680.5 && t.r <= 1000 && !art.some((a) => meets(t, a))) && !(texts.length === 2 && meets(texts[0], texts[1]));
+    };
+    const tap = (c, id) => q(c, id)?.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+    // Whether the target still fits beside the mode depends on the fonts; it is checked with fixed text widths further down.
+    let c = mount(cfg, hassOf(toStates(states))); await wait(25);
+    check(ok(c) && /^Room 19\.4 °C( · Target 20\.0)?$/.test(txt(c, 't-hc-room2')) && q(c, 't-hc-room2')?.querySelector('.room-temp')?.textContent === '19.4 °C', `circuit 2 shows its room temperature (${txt(c, 't-hc-room2')})`);
+    check(txt(c, 't-hc-mode2') === 'running ·' && at(c, 't-hc-mode2', 'text-anchor') === 'end' && at(c, 't-hc-room2', 'text-anchor') === 'start', `mode and room share the status line, anchored at the gap between them (${txt(c, 't-hc-mode2')})`);
+    check(clear(c, 2), 'mode and room of circuit 2 overlap neither each other, the radiator, its heat waves nor the risers of circuit 3');
+    check(txt(c, 't-hc-room3') === 'Room target 18.5 °C' && txt(c, 't-hc-mode3') === '' && at(c, 't-hc-room3', 'text-anchor') === 'middle' && at(c, 't-hc-room3', 'x') === '880',
+      `a target without a room sensor stands alone, centred under the emitter (${txt(c, 't-hc-room3')})`);
+    check(clear(c, 3), 'the target of circuit 3 stays clear of the column radiator');
+    check(!q(c, 't-hc-room') && txt(c, 't-room') === '21.0 °C', 'circuit 1 keeps its room in the house');
+    const group = q(c, 't-hc-room2')?.parentNode;
+    check(group?.dataset.entity === 'sensor.attic' && group !== q(c, 't-hc-mode2').parentNode && q(c, 't-hc-room3')?.parentNode.dataset.entity === 'sensor.c3_target',
+      'the room is a tap target of its own: the room sensor, else the target');
+    c._a11y(true);
+    check(group?.getAttribute('role') === 'button' && group?.getAttribute('aria-label') === 'Attic temperature: 19.4 °C', `the room has a screen reader label (${group?.getAttribute('aria-label')})`);
+    let ev = [];
+    c.addEventListener('hass-more-info', (e) => ev.push(e.detail.entityId));
+    tap(c, 't-hc-room2');
+    check(ev.join() === 'sensor.attic', `a tap on the room opens the room sensor (${ev})`);
+    // the pump stops: the room with its target moves to the centre; it runs again: back beside the mode
+    states['binary_sensor.c2_pump'] = 'off'; c.hass = hassOf(toStates(states));
+    check(txt(c, 't-hc-mode2') === '' && txt(c, 't-hc-room2') === 'Room 19.4 °C · Target 20.0' && at(c, 't-hc-room2', 'text-anchor') === 'middle' && at(c, 't-hc-room2', 'x') === '880',
+      `without a mode text the room and its target are centred (${txt(c, 't-hc-room2')})`);
+    states['sensor.attic'] = { ...states['sensor.attic'], state: 'unavailable' }; c.hass = hassOf(toStates(states));
+    check(txt(c, 't-hc-room2') === 'Room – °C · Target 20.0', `an unavailable room sensor shows a dash (${txt(c, 't-hc-room2')})`);
+    states['binary_sensor.c2_pump'] = 'on'; c.hass = hassOf(toStates(states));
+    check(txt(c, 't-hc-mode2') === 'running ·' && at(c, 't-hc-room2', 'text-anchor') === 'start' && clear(c, 2), 'the pump runs again: mode and room side by side');
+    c.remove();
+    // a long mode text: the pair moves left but stays right of the risers, also on a narrow card with larger type
+    states['sensor.attic'] = { ...states['sensor.attic'], state: '19.4' };
+    const long = { ...cfg, entities: { ...cfg.entities, hc2_mode: 'sensor.c2_mode' } };
+    c = mount(long, hassOf(toStates(states))); await wait(25);
+    check(txt(c, 't-hc-mode2') === 'Frost protection ·' && txt(c, 't-hc-room2').startsWith('Room 19.4 °C') && clear(c, 2), `a long mode keeps mode and room apart (${txt(c, 't-hc-mode2')} ${txt(c, 't-hc-room2')})`);
+    c.style.display = 'block'; c.style.width = '400px'; await wait(30); c.hass = hassOf(toStates(states));
+    check(getComputedStyle(q(c, 'svg')).getPropertyValue('--k2').trim() === '1.3' && txt(c, 't-hc-room2').startsWith('Room 19.4 °C') && clear(c, 2, false),
+      `narrow card: larger type, mode and room still fit (${txt(c, 't-hc-mode2')} ${txt(c, 't-hc-room2')})`);
+    c.remove();
+    // where both do not fit, the target gives way (text widths fixed at 8 per character, so the result does not depend on the fonts)
+    const xs = (k) => `${at(k, 't-hc-mode2', 'x')}/${at(k, 't-hc-room2', 'x')}`;
+    const measure = SVGTextContentElement.prototype.getComputedTextLength;
+    SVGTextContentElement.prototype.getComputedTextLength = function () { return this.textContent.length * 8; };
+    try {
+      c = mount(cfg, hassOf(toStates(states))); await wait(25);
+      check(txt(c, 't-hc-room2') === 'Room 19.4 °C · Target 20.0' && xs(c) === '783/788', `72 + 5 + 208 fit: centred, then moved left to end at 996 (${xs(c)})`);
+      c.remove();
+      c = mount(long, hassOf(toStates(states))); await wait(25);
+      check(txt(c, 't-hc-room2') === 'Room 19.4 °C' && xs(c) === '895/900', `144 + 5 + 208 do not fit: the target is left out (${txt(c, 't-hc-room2')}, ${xs(c)})`);
+      c.remove();
+    } finally { SVGTextContentElement.prototype.getComputedTextLength = measure; }
+    // a card updated while hidden has no text widths: it estimates them and lays the line out again once it is shown
+    c = mount(cfg, hassOf(toStates(states))); await wait(25);
+    const shown = xs(c); c.remove();
+    c = document.createElement('heatpump-flow-card'); c.setConfig(cfg); c.style.display = 'none'; document.body.appendChild(c);
+    c.hass = hassOf(toStates(states)); c.hass = hassOf(toStates(states));
+    const hidden = xs(c);
+    c.style.display = ''; await wait(25); c.hass = hassOf(toStates(states));
+    check(hidden !== shown && xs(c) === shown, `a hidden card measures again when shown (${hidden} → ${xs(c)}, expected ${shown})`);
+    c.remove();
+    // actions, German, custom texts
+    c = mount({ ...cfg, actions: { hc2_room: { tap_action: { action: 'navigate', navigation_path: '/attic' } } } }, hassOf(toStates(states))); await wait(25);
+    ev = []; c.addEventListener('hass-action', (e) => ev.push(e.detail.config.tap_action?.navigation_path));
+    tap(c, 't-hc-room2');
+    check(ev.join() === '/attic', `actions work for hc2_room (${ev})`);
+    c.remove();
+    // with both pumps off the rooms stand alone, so the whole texts are shown whatever the fonts
+    const still = { ...states, 'binary_sensor.c2_pump': 'off' };
+    c = mount({ ...cfg, language: 'de' }, hassOf(toStates(still))); await wait(25);
+    check(/^Raum 19[.,]4 °C · Soll 20[.,]0$/.test(txt(c, 't-hc-room2')) && /^Raum-Soll 18[.,]5 °C$/.test(txt(c, 't-hc-room3')),
+      `German room texts (${txt(c, 't-hc-room2')} / ${txt(c, 't-hc-room3')})`);
+    c.remove();
+    let custom;
+    try {
+      c = mount({ ...cfg, language: 'nl', texts: { nl: { room: 'Kamer', room_target: 'Kamerdoel', target: 'Doel' } } }, hassOf(toStates(still))); await wait(25);
+      custom = `${txt(c, 't-hc-room2')} / ${txt(c, 't-hc-room3')}`; c.remove();
+    } catch (e) { custom = e.message; }
+    check(custom === 'Kamer 19.4 °C · Doel 20.0 / Kamerdoel 18.5 °C', `custom texts name the room (${custom})`);
+    // without room keys the status line is unchanged
+    c = mount({ ...cfg, entities: { ...cfg.entities, hc2_room: null, hc2_room_target: null, hc3_room_target: null } }, hassOf(toStates(states))); await wait(25);
+    check(txt(c, 't-hc-room2') === '' && !q(c, 't-hc-room2')?.parentNode.dataset.entity && txt(c, 't-hc-mode2') === 'running' && at(c, 't-hc-mode2', 'text-anchor') === 'middle',
+      'without room keys the status line keeps the mode alone');
+    c.remove();
+    // editor, labels, diagnostic report, presets
+    const names = (config) => C._formSchema(config).schema.flatMap((x) => (x.schema ? x.schema.flatMap((y) => (y.schema ? y.schema.map((z) => z.name) : [y.name])) : [x.name]));
+    check(['hc2_room', 'hc2_room_target', 'hc6_room', 'hc6_room_target'].every((k) => names({ hc_count: 6 }).includes(k)) && !names({ hc_count: 2 }).some((k) => /^hc[3-6]_room/.test(k)) && !names({}).includes('hc2_room'),
+      'editor offers the room keys in the groups of circuits 2 to 6');
+    const lab = C._formSchema({}).computeLabel;
+    check(lab({ name: 'hc2_room' }) === lab({ name: 'room' }) && lab({ name: 'hc6_room_target' }) === lab({ name: 'room_target' }) && /^(Room temperature|Raumtemperatur)$/.test(lab({ name: 'hc3_room' })),
+      `circuit rooms reuse the room labels (${lab({ name: 'hc2_room' })} / ${lab({ name: 'hc2_room_target' })})`);
+    const report = C._diagnosticReport(cfg, hassOf(toStates(states)));
+    check(/- hc2_room: sensor\.attic = 19\.4 °C/.test(report) && /- hc2_room_target: sensor\.attic_target = 20\.0 °C/.test(report) && /- hc4_room: not mapped/.test(report),
+      'diagnostic report lists the room keys of the circuits');
+    const lam = C._resolve({ preset: 'lambda', hc_count: 6 }, hassOf(toStates(setups[0].states('heat')), setups[0].registry || {}));
+    check(!Object.keys(lam.entities).some((k) => /^hc[2-6]_room/.test(k)), 'presets leave the rooms of circuits 2 to 6 to the configuration');
+    // the ground source demo: upstairs with a room sensor of its own and the thermostat target, beside "running" while heating
+    const g = setups[6]; c = mount(g.config, hassOf(toStates(g.states('heat')), g.registry || {}, g.energy, g)); await wait(25);
+    check(txt(c, 't-hc-mode2') === 'running ·' && txt(c, 't-hc-room2').startsWith('Room 20.6 °C') && txt(c, 't-room') === '21.2 °C' && clear(c, 2), `demo: upstairs room in its status line (${txt(c, 't-hc-room2')})`);
+    c.remove();
+    c = mount(g.config, hassOf(toStates(g.states('idle')), g.registry || {}, g.energy, g)); await wait(25);
+    check(txt(c, 't-hc-room2') === 'Room 20.6 °C · Target 21.0' && clear(c, 2), `demo in standby: room and target centred (${txt(c, 't-hc-room2')})`);
+    c.remove();
+  }
+
   // 18d. HeishaMon with heishamon-homeassistant 2.11.4 (#56): Energy spellings, totals, zone target, holiday switch
   {
     const p = 'panasonic_heat_pump';
@@ -1312,6 +1697,11 @@
     check(o.entities.power === `sensor.${p}_main_heat_power_consumption` && o.tiles.energy_heating?.now === `sensor.${p}_main_heat_power_consumption`, 'HeishaMon still finds the Power spelling');
     check(o.entities.hc_setpoint === `sensor.${p}_main_main_target_temp` || o.entities.hc_setpoint === `sensor.${p}_main_z1_water_target_temp`, 'HeishaMon without zone target keeps a setpoint entity');
     check(o.entities.program === `sensor.${p}_main_holiday_mode_state`, 'HeishaMon prefers the holiday sensor when it exists');
+    // #56: the holiday sensor exists but is unavailable on this model, the switch has the value
+    const u = C._resolve({ preset: 'heishamon' }, hassOf(toStates({ ...old, [`sensor.${p}_main_holiday_mode_state`]: 'unavailable', [`switch.${p}_main_holiday_mode_state`]: 'off' })));
+    check(u.entities.program === `switch.${p}_main_holiday_mode_state`, `HeishaMon skips an unavailable holiday sensor (${u.entities.program})`);
+    const u2 = C._resolve({ preset: 'heishamon' }, hassOf(toStates({ ...old, [`sensor.${p}_main_holiday_mode_state`]: 'unavailable' })));
+    check(u2.entities.program === `sensor.${p}_main_holiday_mode_state`, 'an unavailable candidate is kept when nothing else exists');
   }
 
   // 18e. Kronoterm: translation keys of Cloud and Modbus, the hot water tank from the DHW thermostat, defrost over the mode
@@ -1458,6 +1848,54 @@
     check(room('Water Temperature', noRemote) === `sensor.${p}_main_z1_temp`, 'HeishaMon without remote control sensor keeps the zone temperature');
     const card = mount({ preset: 'heishamon' }, hassOf(toStates({ ...base, [`sensor.${p}_main_z1_sensor_settings`]: 'Water Temperature' }))); await wait(20);
     check(card._n('room') === 23, `HeishaMon card shows the room temperature, not the zone water (${card._n('room')})`);
+  }
+
+  // 18j. HeishaMon defrost: the compressor pauses while the 4-way valve switches; the card stays in defrost
+  {
+    const p = 'panasonic_heat_pump';
+    const st = (comp) => toStates({
+      [`sensor.${p}_main_main_outlet_temp`]: ['28.5', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['31.75', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: [comp, 'Hz'], [`sensor.${p}_main_heat_power_consumption`]: [comp === '0' ? '0' : '1200', 'W'],
+      [`sensor.${p}_main_pump_flow`]: ['16.6', 'L/min'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`switch.${p}_main_defrosting_state`]: 'on',
+    });
+    const card = mount({ preset: 'heishamon' }, hassOf(st('35'))); await wait(20);
+    const chip = () => card.shadowRoot.getElementById('chip-mode');
+    check(/mode-defrost/.test(chip().className), `defrost with the compressor running (${chip().className})`);
+    card.hass = hassOf(st('0')); await wait(5);
+    check(/mode-defrost/.test(chip().className) && !/Standby|Ready|idle/i.test(chip().textContent), `defrost stays while the compressor pauses (${chip().textContent.trim()})`);
+    card.remove();
+  }
+
+  // 18e. HeishaMon: error sensor, kWh counters, zone water temperature without a zone sensor (real installation, WH-MDC05J3E5)
+  {
+    const p = 'panasonic_heat_pump';
+    const st = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.25', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`sensor.${p}_main_z1_water_temp`]: ['-78', '°C'], [`sensor.${p}_main_error`]: 'No error',
+      [`sensor.${p}_main_heat_power_consumption`]: ['600', 'W'], [`sensor.${p}_main_heat_power_production`]: ['2600', 'W'],
+      [`sensor.${p}_main_dhw_power_consumption`]: ['0', 'W'], [`sensor.${p}_main_dhw_power_production`]: ['0', 'W'],
+      'sensor.aquarea_pump_total_consumption_total': ['7690.574', 'kWh'], 'sensor.aquarea_pump_total_production_total': ['24276.876', 'kWh'],
+      'sensor.aquarea_heat_power_consumed_total': ['6636.338', 'kWh'], 'sensor.aquarea_heat_power_produced_total': ['21509.845', 'kWh'],
+      'sensor.aquarea_dhw_power_consumed_total': ['1054.239', 'kWh'], 'sensor.aquarea_dhw_power_produced_total': ['2767.033', 'kWh'],
+    };
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(toStates(st)));
+    check(JSON.stringify(r.errors) === JSON.stringify([`sensor.${p}_main_error`]), `HeishaMon error sensor (${r.errors})`);
+    check(r.entities.energy_total === 'sensor.aquarea_pump_total_consumption_total' && r.entities.heat_total === 'sensor.aquarea_pump_total_production_total', 'HeishaMon kWh totals');
+    check(r.tiles.energy?.total === 'sensor.aquarea_pump_total_consumption_total' && r.tiles.heat?.total === 'sensor.aquarea_pump_total_production_total', 'HeishaMon totals feed the energy and heat tiles');
+    check(r.tiles.energy_heating?.total === 'sensor.aquarea_heat_power_consumed_total' && r.tiles.heat_dhw?.total === 'sensor.aquarea_dhw_power_produced_total'
+      && r.tiles.energy_heating?.now === `sensor.${p}_main_heat_power_consumption`, 'HeishaMon tiles per mode: now and total');
+    check(!r.tiles.energy_cooling?.total, 'HeishaMon without cooling counters has no cooling total');
+    check(r.entities.hc_flow === undefined, `HeishaMon ignores the zone water temperature without a zone sensor (${r.entities.hc_flow})`);
+    const zone = C._resolve({ preset: 'heishamon' }, hassOf(toStates({ ...st, [`sensor.${p}_main_z1_water_temp`]: ['33', '°C'] })));
+    check(zone.entities.hc_flow === `sensor.${p}_main_z1_water_temp`, 'HeishaMon keeps a valid zone water temperature');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates(st))); await wait(20);
+    const errOn = () => card.shadowRoot.getElementById('chip-err').classList.contains('on');
+    check(!errOn(), 'HeishaMon "No error" shows no error chip');
+    check(JSON.parse(card._layoutSignature()).hc === true, 'HeishaMon circuit stays drawn as a direct system');
+    card.hass = hassOf(toStates({ ...st, [`sensor.${p}_main_error`]: 'H76' })); await wait(5);
+    check(errOn(), 'HeishaMon error code H76 shows the error chip');
     card.remove();
   }
 
@@ -1491,6 +1929,86 @@
     const find = (list) => flat(list).find((x) => x.name === 'power');
     check(find(C._formSchema(cfg).schema)?.selector?.entity?.multiple === true, 'editor shows a picker for several entities for a list');
     check(!find(C._formSchema({ preset: 'heishamon' }).schema)?.selector?.entity?.multiple, 'editor keeps the single picker without a list');
+  }
+
+  // 18f. HeishaMon: refrigerant temperatures and the superheat computed from them
+  {
+    const p = 'panasonic_heat_pump';
+    const st = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.25', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_discharge_temp`]: ['49', '°C'],
+      [`sensor.${p}_main_outside_pipe_temp`]: ['1', '°C'], [`sensor.${p}_main_eva_outlet_temp`]: ['3', '°C'],
+      [`sensor.${p}_main_inside_pipe_temp`]: ['32', '°C'],
+    };
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(toStates(st)));
+    check(r.entities.evap_temp === `sensor.${p}_main_outside_pipe_temp` && r.entities.suction_temp === `sensor.${p}_main_eva_outlet_temp`
+      && r.entities.liquid_temp === `sensor.${p}_main_inside_pipe_temp`, 'HeishaMon refrigerant temperatures');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates(st))); await wait(20);
+    const rows = card._drawerRows().flatMap(([, list]) => list);
+    const sh = rows.find((x) => x[0] === 'superheat');
+    check(sh && sh[3]() === '2.0 K', `HeishaMon superheat from suction gas and evaporation (${sh && sh[3] ? sh[3]() : 'none'})`);
+    card.remove();
+    // In defrost the circuit runs backwards: the outdoor pipe is no evaporation temperature then.
+    const value = (c, key) => c._drawerRows().flatMap(([, list]) => list).find((x) => x[0] === key)?.[3]();
+    const defrost = mount({ preset: 'heishamon' }, hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'on' }))); await wait(20);
+    check(['evap_temp', 'suction_temp', 'liquid_temp', 'superheat'].every((k) => value(defrost, k) === '–') && /49/.test(value(defrost, 'hot_gas')),
+      `HeishaMon defrost hides the heating-only refrigerant roles (${['evap_temp', 'superheat', 'hot_gas'].map((k) => value(defrost, k)).join(', ')})`);
+    defrost.hass = hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'off' })); await wait(5);
+    check(value(defrost, 'superheat') === '2.0 K' && /1/.test(value(defrost, 'evap_temp')), 'after defrost the roles come back');
+    defrost.remove();
+    const own = mount({ preset: 'heishamon', entities: { evap_temp: `sensor.${p}_main_outside_pipe_temp` } }, hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'on' }))); await wait(20);
+    check(value(own, 'evap_temp') !== '–' && value(own, 'suction_temp') === '–', 'an entity set in the config keeps its value in defrost');
+    own.remove();
+  }
+
+  // 18k. heating curve shift: target, curve and shift above the circuit pump, the flow temperature below it (HeishaMon heat request)
+  {
+    const p = 'panasonic_heat_pump';
+    const st = (extra = {}) => toStates({
+      [`sensor.${p}_main_main_outlet_temp`]: ['36.75', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`sensor.${p}_main_z1_water_target_temp`]: ['36', '°C'], [`sensor.${p}_main_heating_mode`]: 'compensation curve',
+      [`number.${p}_main_z1_heat_request_temp`]: ['2', '°C'], [`sensor.${p}_main_z1_water_temp`]: ['-78', '°C'], ...extra,
+    });
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(st()));
+    check(r.entities.hc_curve_offset === `number.${p}_main_z1_heat_request_temp`, `HeishaMon curve shift from the heat request temperature (${r.entities.hc_curve_offset})`);
+    const direct = C._resolve({ preset: 'heishamon' }, hassOf(st({ [`sensor.${p}_main_heating_mode`]: 'direct' })));
+    check(direct.entities.hc_curve_offset === undefined, 'HeishaMon direct mode: the heat request temperature is the target, no curve shift');
+    const q = (c, id) => c.shadowRoot.getElementById(id);
+    const card = mount({ preset: 'heishamon', language: 'de' }, hassOf(st())); await wait(20);
+    const above = q(card, 't-hc'); const below = q(card, 't-hc-now');
+    check(['Soll 36 °C (Kurve 34 °C + 2 K Verschiebung)', 'Soll 36 °C (Kurve 34 °C + 2 K)', 'Soll 36 °C'].includes(above?.textContent), `target, curve and shift above the pump (${above?.textContent})`);
+    check(['36,8 °C', '36.8 °C'].includes(below?.textContent), `flow temperature below the pump (${below?.textContent})`);
+    const pump = card.shadowRoot.querySelector('circle.pump').getBBox(); const ba = above.getBBox(); const bb = below.getBBox();
+    check(ba.y + ba.height <= pump.y && bb.y >= pump.y + pump.height && ba.x + ba.width <= 737 && ba.x >= 399, `above ends at the pump and stays right of the valve riser, below sits under it (${ba.x.toFixed(0)}–${(ba.x + ba.width).toFixed(0)})`);
+    check(above.parentNode.dataset.entity === `number.${p}_main_z1_heat_request_temp` && below.parentNode.dataset.entity === `sensor.${p}_main_main_outlet_temp`
+      && !card.shadowRoot.querySelector('.controls'), `read only: tap targets for the shift and the flow, no quick control (${above.parentNode.dataset.entity}, ${below.parentNode.dataset.entity})`);
+    card.hass = hassOf(st({ [`number.${p}_main_z1_heat_request_temp`]: ['-1', '°C'], [`sensor.${p}_main_z1_water_target_temp`]: ['33', '°C'] })); await wait(5);
+    check(/^Soll 33 °C( \(Kurve 34 °C − 1 K( Verschiebung)?\))?$/.test(above.textContent), `negative shift (${above.textContent})`);
+    card.remove();
+    const en = mount({ preset: 'heishamon', language: 'en' }, hassOf(st())); await wait(20);
+    check(/^Target 36 °C( \(curve 34 °C \+ 2 K( shift)?\))?$/.test(q(en, 't-hc')?.textContent), `English (${q(en, 't-hc')?.textContent})`);
+    en.remove();
+    // A narrow box drops the word for the shift, then the brackets.
+    const fit = mount({ preset: 'heishamon', language: 'de' }, hassOf(st())); await wait(20);
+    const el = q(fit, 't-hc'); el._k = ''; el.getComputedTextLength = function () { return this.textContent.length * 9; };
+    fit.hass = hassOf(st({ [`number.${p}_main_z1_heat_request_temp`]: ['3', '°C'], [`sensor.${p}_main_z1_water_target_temp`]: ['37', '°C'] })); await wait(5);
+    check(el.textContent === 'Soll 37 °C (Kurve 34 °C + 3 K)', `too wide: without the word for the shift (${el.textContent})`);
+    fit.remove();
+    const vol = mount({ entities: { flow: 'sensor.f', return: 'sensor.r', hc_flow: 'sensor.f', hc_setpoint: 'sensor.t', hc_volume: 'sensor.v', hc_curve_offset: 'sensor.shift' } },
+      hassOf(toStates({ 'sensor.f': ['35', '°C'], 'sensor.r': ['30', '°C'], 'sensor.t': ['35', '°C'], 'sensor.v': ['900', 'l/h'], 'sensor.shift': ['0.5', 'K'] }))); await wait(20);
+    const v = q(vol, 't-hc-vol').getBBox(); const nw = q(vol, 't-hc-now').getBBox();
+    check(v.y >= nw.y + nw.height - 1 && q(vol, 't-hc-vol').textContent === '900 l/h', 'the flow rate moves below the flow temperature');
+    check(/\+ 0,5 K|\+ 0\.5 K/.test(q(vol, 't-hc').textContent), `decimal shift (${q(vol, 't-hc').textContent})`);
+    vol.remove();
+    const none = mount({ preset: 'heishamon', entities: { hc_curve_offset: null } }, hassOf(st())); await wait(20);
+    check(!q(none, 't-hc-now') && /^36,8 °C · Soll 36,0$|^36\.8 °C · Target 36\.0$/.test(q(none, 't-hc').textContent), `without the shift the label stays as before (${q(none, 't-hc').textContent})`);
+    none.remove();
+    const names = (config) => C._formSchema(config).schema.flatMap((x) => (x.schema ? x.schema.flatMap((y) => (y.schema ? y.schema.map((z) => z.name) : [y.name])) : [x.name]));
+    const lab = C._formSchema({}).computeLabel;
+    check(names({ hc_count: 3 }).includes('hc_curve_offset') && names({ hc_count: 3 }).includes('hc3_curve_offset') && lab({ name: 'hc3_curve_offset' }) === lab({ name: 'hc_curve_offset' }),
+      `editor offers the curve shift of each circuit (${lab({ name: 'hc_curve_offset' })})`);
+    check(/- hc_curve_offset: number\.panasonic_heat_pump_main_z1_heat_request_temp = 2/.test(C._diagnosticReport({ preset: 'heishamon' }, hassOf(st()))), 'diagnostic report lists the curve shift');
   }
 
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
@@ -1612,6 +2130,49 @@
     check(['env_energy', 'brine_pressure_min', 'brine_pressure_crit', 'brine_pressure_max', 'hc_pressure_min', 'hc_pressure_crit', 'hc_pressure_max'].every((key) => schema.flatMap(keysOf).includes(key)), 'editor offers environmental energy and pressure thresholds');
     const emitter = (() => { let found; const visit = (n) => { if (n.name === 'hc_type') found = n; (n.schema || []).forEach(visit); }; schema.forEach(visit); return found; })();
     check(emitter.selector.select.options.some((o) => o.value === 'column'), 'editor offers column radiators');
+  }
+
+  // 20a. return temperature label per heating circuit (#63)
+  {
+    const g = setups[6];
+    const states = { ...g.states('heat'), 'sensor.floor_return': ['27.4', '°C'], 'sensor.upstairs_return': ['31.8', '°C'] };
+    const entities = { ...g.config.entities, hc_return: 'sensor.floor_return', hc2_return: 'sensor.upstairs_return' };
+    const txt = (c, id) => c.shadowRoot.getElementById(id)?.textContent ?? '(missing)';
+    let c = mount({ ...g.config, entities }, hassOf(toStates(states), g.registry || {}, g.energy, g)); await wait(25);
+    check(txt(c, 't-hc-rl') === '(missing)' && txt(c, 't-hc-rl2') === '(missing)', 'no circuit return label by default');
+    c.remove();
+    c = mount({ ...g.config, entities, hc_return_label: true }, hassOf(toStates(states), g.registry || {}, g.energy, g)); await wait(25);
+    check(txt(c, 't-hc-rl') === 'RL 27.4 °C' && txt(c, 't-hc-rl2') === 'RL 31.8 °C', `circuit return labels (${txt(c, 't-hc-rl')} / ${txt(c, 't-hc-rl2')})`);
+    check(c.shadowRoot.getElementById('t-hc-rl').parentNode.dataset.entity === 'sensor.floor_return', 'the label opens its own return sensor');
+    const label = c.shadowRoot.getElementById('t-hc-rl'); const pipe = c.shadowRoot.getElementById('p-hc-rl');
+    const lb = label.getBBox(); const pb = pipe.getBBox();
+    check(lb.y >= pb.y + pb.height - 1 && lb.x >= 685, `label sits below the return pipe, right of the risers (${Math.round(lb.x)},${Math.round(lb.y)} / pipe bottom ${Math.round(pb.y + pb.height)})`);
+    const l2 = c.shadowRoot.getElementById('t-hc-rl2').getBBox(); const r2 = c.shadowRoot.getElementById('t-hc-mode2').getBBox();
+    check(l2.x + l2.width <= r2.x + 1, `circuit 2: return label ends left of the status line (${Math.round(l2.x + l2.width)} / ${Math.round(r2.x)})`);
+    c.remove();
+    // without an own return sensor nothing is shown, the buffer or heat pump return is not repeated
+    c = mount({ ...g.config, hc_return_label: true }, hassOf(toStates(g.states('heat')), g.registry || {}, g.energy, g)); await wait(25);
+    check(txt(c, 't-hc-rl') === '' && txt(c, 't-hc-rl2') === '', 'no label without a circuit return entity');
+    c.remove();
+    check(C._formSchema({}).schema.flatMap(function keysOf(n) { return n.schema ? n.schema.flatMap(keysOf) : [n.name]; }).includes('hc_return_label'), 'editor offers the circuit return label');
+  }
+
+  // 20b. DHW tank with only a sensor near the bottom (HeishaMon has one tank sensor; its position depends on the tank)
+  {
+    const states = toStates({ 'sensor.flow': ['35', '°C'], 'sensor.return': ['30', '°C'], 'sensor.dhw': ['37', '°C'] });
+    const card = mount({ entities: { flow: 'sensor.flow', return: 'sensor.return', dhw_bottom: 'sensor.dhw' } }, hassOf(states)); await wait(20);
+    const $ = (id) => card.shadowRoot.getElementById(id);
+    check(ok(card) && !!card.shadowRoot.querySelector('rect.tank'), 'DHW tank is drawn with only a bottom sensor');
+    check($('t-dhw-top').textContent === '' && $('t-dhw-bottom').textContent === card._t(37), `the value shows at the bottom without a position label (${$('t-dhw-bottom').textContent})`);
+    check($('g-dhw-top').getAttribute('stop-color') === $('g-dhw-bottom').getAttribute('stop-color'), 'the tank colour comes from the bottom sensor');
+    check(card.shadowRoot.querySelector('rect.tank').closest('.tap')?.getAttribute('data-entity') === 'sensor.dhw', 'tapping the tank opens the bottom sensor');
+    card.remove();
+    const preset = mount({ preset: 'heishamon', entities: { dhw_top: null, dhw_bottom: 'sensor.panasonic_heat_pump_main_dhw_temp' } }, hassOf(toStates({
+      'sensor.panasonic_heat_pump_main_main_outlet_temp': ['36', '°C'], 'sensor.panasonic_heat_pump_main_main_inlet_temp': ['32', '°C'],
+      'sensor.panasonic_heat_pump_main_dhw_temp': ['37', '°C'],
+    }))); await wait(20);
+    check(!preset._has('dhw_top') && /37/.test(preset.shadowRoot.getElementById('t-dhw-bottom').textContent), 'a preset sensor can be moved from top to bottom in the config');
+    preset.remove();
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);

@@ -2,19 +2,21 @@
 
 This plan keeps correctness and supportability ahead of new surface area. Impact is the expected benefit across installations; effort is relative (`S` local, `M` several code paths, `L` public API or data logic, `XL` architecture or a second layout).
 
-## Current status after 0.11.0
+## Current status after 0.12.0
 
-Version 0.11.0 is released. There are no known open bug issues. It ships environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26), compressor cut-out counters [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35), timeline marks for badges such as Boost, and the Panasonic, Viessmann, Bosch/Buderus, Saunier Duval and Samsung EHS Mono unit drawings (part of the umbrella issue [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5), which stays open for the remaining brands). Version 0.10.0 shipped [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22), [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29), [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) and [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37).
+Version 0.12.0 is released ([milestone](https://github.com/Sturmi77/heatpump-hydraulic-card/milestone/4)). It ships the presets for Wolf, Kronoterm, ebusd ([#24](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24)), Open3E, Luxtronik ([#75](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/75)) and Samsung, up to six heating circuits ([#33](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/33)), the circuit return label ([#63](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/63)), room temperature per circuit, the HeishaMon fixes ([#56](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/56)), the weekly upstream watch for the preset integrations and the changelog-fragment workflow. The new presets ship as untested until a real installation confirms them; [#75](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/75) stays open for that.
+
+Version 0.11.0 shipped environmental energy [#26](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/26), compressor cut-out counters [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35), timeline marks for badges such as Boost, and the Panasonic, Viessmann, Bosch/Buderus, Saunier Duval and Samsung EHS Mono unit drawings (part of the umbrella issue [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5), which stays open for the remaining brands). Version 0.10.0 shipped [#22](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/22), [#29](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/29), [#30](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/30) and [#37](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/37).
 
 The immediate work is evidence gathering rather than another broad feature release:
 
 1. Recruit real-installation testers through [#1](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) for Viessmann, Vaillant and EMS-ESP. HeishaMon's default MQTT mapping is now [confirmed on a real installation](https://github.com/heishamon/HeishaMon/discussions/1025#discussioncomment-19174931); additional Aquarea models and generations remain useful coverage. Treat findings as bug fixes before feature work.
-2. Leave Samsung [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) with its contributor until the requested cooling-mode and demo changes arrive and all required checks pass.
-3. Use diagnostic reports and verified integration data to unblock the ebusd preset ([#24](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24)) and pump/runtime mappings ([#31](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/31), [#34](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/34)).
+2. Ask for real-installation reports for the new presets (Wolf, Open3E, Luxtronik) and review the upstream-watch issues (label `upstream-change`) each week, so renamed entities in the integrations show up before users report them.
+3. Use diagnostic reports and verified integration data to unblock pump/runtime mappings ([#31](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/31), [#34](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/34)) and the ebusd follow-up for older brine heat pumps ([#82](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/82)).
 
 ## Next low-risk work
 
-1. Treat the remaining brand drawings in [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5) as one brand per change, each with its own visual and browser checks and original references.
+1. Treat the remaining brand drawings in [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5) as one brand per change, each with its own visual and browser checks and original references. Open candidates: the Luxtronik brands (Alpha Innotec, Novelan, Roth, Siemens, Elco, Nibe), Kronoterm and Wolf; air units only, brine and water units keep the loop symbol.
 2. Map the cut-out counters of [#35](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/35) in presets only from verified integration or installation data.
 
 Multiple entities per key [#23](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23) remains a separate later sprint because it changes entity resolution, calculations and the editor contract. Recorder- and time-window-based features remain outside this small-work track.
@@ -80,10 +82,9 @@ Pump counters remain follow-up work in [#31](https://github.com/Sturmi77/heatpum
 
 | Rank | Issue | Impact | Effort | Reason / dependency |
 | ---: | --- | --- | --- | --- |
-| 1 | [#24 ebusd preset](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/24) | High | M | Blocked on a real entity/state sample; the 0.9.6 diagnostic report provides the preferred input. |
-| 2 | [#23 Multiple entities per key](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23) | High | L–XL | Broad value but changes resolution, editor and calculation contracts. |
-| 3 | [#27 Seasonal brine minimum](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/27) | Medium | M–L | Valuable for ground sources; needs recorder, season and date logic. |
-| 4 | [#4 Phone layouts](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/4) | High | XL | Use feedback from the full-screen view before maintaining a second schematic geometry. |
+| 1 | [#23 Multiple entities per key](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/23) | High | L–XL | Broad value but changes resolution, editor and calculation contracts. |
+| 2 | [#27 Seasonal brine minimum](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/27) | Medium | M–L | Valuable for ground sources; needs recorder, season and date logic. |
+| 3 | [#4 Phone layouts](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/4) | High | XL | Use feedback from the full-screen view before maintaining a second schematic geometry. |
 
 ## Deferred or demand-driven
 

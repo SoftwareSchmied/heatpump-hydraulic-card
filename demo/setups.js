@@ -178,6 +178,8 @@ const brineStates = (s) => ({
   'sensor.mixer_hc1_flowtemphc': ['33.0', '°C'], 'binary_sensor.mixer_hc1_pumpstatus': ['heat', 'defrost'].includes(s) ? 'on' : 'off',
   'sensor.mixer_hc2_flowtemphc': ['45.5', '°C'], 'binary_sensor.mixer_hc2_pumpstatus': s === 'heat' || s === 'defrost' ? 'on' : 'off',
   'sensor.thermostat_hc1_currtemp': ['21.2', '°C'], 'sensor.thermostat_hc1_seltemp': ['21.5', '°C'],
+  // Upstairs (circuit 2): a room sensor of its own and the target of the thermostat's second circuit.
+  'sensor.upstairs_temperature': ['20.6', '°C'], 'sensor.thermostat_hc2_seltemp': ['21.0', '°C'],
 });
 // Wolf CHA via wolflink: English parameter names, German list states, ein/aus switches, kW, L/min, repeated names with _2/_3.
 const wolfStates = (s) => {
@@ -220,6 +222,63 @@ const wolfStates = (s) => {
   };
   return Object.fromEntries(Object.entries(v).map(([k, val]) => [`${x}${k}`, val]));
 };
+// Wolf CHA via wolf_smartset (HACS): German entity ids (device name + Wolf label), found by translation key only. List states are
+// Wolf's texts as the SmartSet app shows them (Heizbetrieb, Betrieb, Ein). "Ausgang MKP" and "Raumtemperatur" start disabled in
+// the integration, so they do not exist here; the circuit pump is "Mischerkreispumpe" of the system tab.
+const wolfSmartsetReg = {
+  'sensor.heizgerat_betriebsart_heizgerat': 'operating_mode_heater', 'sensor.heizgerat_verdichterstatus': 'compressor_status',
+  'sensor.heizgerat_verdichterfrequenz': 'compressor_frequency', 'sensor.heizgerat_aktuelle_leistungsvorgabe_verdichter': 'current_capacity_specification_compressor',
+  'sensor.heizgerat_leistungsaufnahme_wp_ehz': 'power_consumption_wp_ehz', 'sensor.heizgerat_aktuelle_sekundarleistung': 'current_secondary_power',
+  'sensor.heizgerat_kesseltemperatur': 'boiler_water_temperature', 'sensor.heizgerat_kesselsolltemperatur': 'set_boiler_temperature',
+  'sensor.heizgerat_rucklauftemperatur': 'return_temperature', 'sensor.heizgerat_sammlertemperatur': 'header_temperature',
+  'sensor.heizgerat_heizkreisdurchfluss': 'hc_flow_rate', 'sensor.heizgerat_aussentemperatur_heizung': 'outside_temperature',
+  'sensor.bedienmodul_bm_2_0_gemittelte_aussentemperatur': 'average_outside_temperature',
+  'sensor.heizgerat_3_wege_umschaltventil_hz_ww': '3_way_diverter_valve_htg_dhw', 'sensor.heizgerat_3_wege_umschaltventil_hz_k': '3_way_diverter_valve_htg_clg',
+  'sensor.heizgerat_e_heizung': 'electric_booster_heater', 'sensor.heizgerat_warmwassertemperatur': 'dhw_temperature',
+  'sensor.heizgerat_warmwassersolltemperatur': 'set_dhw_temperature_adjusted', 'sensor.wolf_cha_warmwasser_status': 'dhw_status',
+  'sensor.bedienmodul_bm_2_0_vorlauftemperatur': 'flow_temperature', 'sensor.bedienmodul_bm_2_0_mischerkreis_status': 'mixer_circuit_status',
+  'sensor.bedienmodul_bm_2_0_anforderung_mischerkreis': 'mixer_circuit_demand', 'sensor.wolf_cha_mischerkreispumpe': 'mixer_circuit_pump',
+  'sensor.heizgerat_heizkreispumpe': 'heating_circuit_pump', 'sensor.heizgerat_anlagendruck': 'system_pressure',
+  'number.bedienmodul_bm_2_0_tagtemperatur_heizung_mischerkreis_1': 'day_temperature_mixer_circuit_1',
+  'number.wolf_cha_warmwassersolltemperatur_eingestellt': 'set_dhw_temperature',
+  'sensor.heizgerat_betriebsstunden_verdichter': 'compressor_operating_hours', 'sensor.heizgerat_betriebsstunden_e_heizung': 'e_heating_operating_hours',
+  'sensor.heizgerat_energiemenge_hz': 'energy_amount_htg', 'sensor.heizgerat_energiemenge_ww': 'energy_amount_dhw', 'sensor.heizgerat_energiemenge_kuhl': 'clg_energy_amount',
+  'sensor.heizgerat_erzeugte_warmemenge_vortag': 'heat_generated_previous_day', 'sensor.heizgerat_erzeugte_warmemenge_aktueller_monat': 'heat_generated_current_month',
+  'sensor.heizgerat_erzeugte_warmemenge_aktuelles_jahr': 'heat_generated_current_year',
+};
+const wolfSmartsetStates = (s) => ({
+  'sensor.heizgerat_betriebsart_heizgerat': { heat: 'Heizbetrieb', dhw: 'Warmwasser', defrost: 'Abtaubetrieb', idle: 'Standby' }[s],
+  'sensor.heizgerat_verdichterstatus': { heat: 'Betrieb', dhw: 'Betrieb', defrost: 'Abtaubetrieb', idle: 'Standby' }[s],
+  'sensor.heizgerat_verdichterfrequenz': [{ heat: '38', dhw: '50', defrost: '45', idle: '0' }[s], 'Hz'],
+  'sensor.heizgerat_aktuelle_leistungsvorgabe_verdichter': [{ heat: '46', dhw: '70', defrost: '60', idle: '0' }[s], '%'],
+  'sensor.heizgerat_leistungsaufnahme_wp_ehz': [{ heat: '1.2', dhw: '1.7', defrost: '0.9', idle: '0' }[s], 'kW'],
+  'sensor.heizgerat_aktuelle_sekundarleistung': [{ heat: '4.1', dhw: '4.9', defrost: '0', idle: '0' }[s], 'kW'],
+  'sensor.heizgerat_kesseltemperatur': [{ heat: '31.4', dhw: '49.0', defrost: '22.0', idle: '28.8' }[s], '°C'],
+  'sensor.heizgerat_kesselsolltemperatur': ['31.0', '°C'],
+  'sensor.heizgerat_rucklauftemperatur': [{ heat: '26.9', dhw: '44.2', defrost: '25.0', idle: '24.6' }[s], '°C'],
+  'sensor.heizgerat_sammlertemperatur': [{ heat: '30.8', dhw: '29.6', defrost: '29.8', idle: '29.4' }[s], '°C'],
+  'sensor.heizgerat_heizkreisdurchfluss': [s === 'idle' ? '0' : '17.6', 'L/min'],
+  'sensor.heizgerat_aussentemperatur_heizung': ['4.5', '°C'], 'sensor.bedienmodul_bm_2_0_gemittelte_aussentemperatur': ['5.2', '°C'],
+  'sensor.heizgerat_3_wege_umschaltventil_hz_ww': s === 'dhw' ? 'Warmwasser' : 'Heizen', 'sensor.heizgerat_3_wege_umschaltventil_hz_k': 'Heizen',
+  'sensor.heizgerat_e_heizung': 'Aus',
+  // "Warmwassersolltemperatur" (read-only) reads 10 °C on the reference installation; the setting is the number below.
+  'sensor.heizgerat_warmwassertemperatur': [s === 'dhw' ? '44' : '47', '°C'], 'sensor.heizgerat_warmwassersolltemperatur': ['10', '°C'],
+  'sensor.wolf_cha_warmwasser_status': s === 'dhw' ? 'Ein' : 'Bereit, keine Ladung',
+  'sensor.bedienmodul_bm_2_0_vorlauftemperatur': ['30.1', '°C'],
+  'sensor.bedienmodul_bm_2_0_mischerkreis_status': s === 'idle' ? 'AT Abschaltung' : 'Heizbetrieb',
+  'sensor.bedienmodul_bm_2_0_anforderung_mischerkreis': 'Automatik ein',
+  'sensor.wolf_cha_mischerkreispumpe': s === 'idle' ? 'Aus' : 'Ein', 'sensor.heizgerat_heizkreispumpe': 'Aus',
+  'sensor.heizgerat_anlagendruck': ['1.65', 'bar'],
+  'number.bedienmodul_bm_2_0_tagtemperatur_heizung_mischerkreis_1': { state: '20', attributes: { unit_of_measurement: '°C', min: 5, max: 30, step: 0.5, friendly_name: 'Tagtemperatur (Heizung) (Mischerkreis 1)' } },
+  'number.wolf_cha_warmwassersolltemperatur_eingestellt': { state: '48', attributes: { unit_of_measurement: '°C', min: 25, max: 65, step: 1, friendly_name: 'Warmwassersolltemperatur eingestellt' } },
+  'sensor.heizgerat_betriebsstunden_verdichter': { state: '7500', attributes: { unit_of_measurement: 'h', state_class: 'total_increasing' } },
+  'sensor.heizgerat_betriebsstunden_e_heizung': { state: '3', attributes: { unit_of_measurement: 'h', state_class: 'total_increasing' } },
+  'sensor.heizgerat_energiemenge_hz': { state: '28534', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heizgerat_energiemenge_ww': { state: '11218', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heizgerat_energiemenge_kuhl': { state: '0', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heizgerat_erzeugte_warmemenge_vortag': ['51', 'kWh'], 'sensor.heizgerat_erzeugte_warmemenge_aktueller_monat': ['732', 'kWh'],
+  'sensor.heizgerat_erzeugte_warmemenge_aktuelles_jahr': ['11865', 'kWh'],
+});
 // Vaillant aroTHERM plus via ebusd (HMU + VWZ hydraulic station + sensoCOMFORT), entity ids from a real installation:
 // most carry the topic prefix, newer ones also the device name (sensor.heating_ebusd_…). Underfloor + radiator circuit.
 const ebusdStates = (s) => ({
@@ -252,6 +311,82 @@ const ebusdStates = (s) => ({
   'sensor.ebusd_hmu_rundatahighpressure': ['15.2', 'bar'], 'sensor.ebusd_hmu_rundataeevpositionabs': '143',
   'sensor.heating_ebusd_hmu_rundataoverheatingactualvalue': ['0.2', 'K'],
   'sensor.ebusd_hmu_currenterror_error': s === 'idle' ? '1100' : 'unknown',
+});
+// Luxtronik controller (Alpha Innotec, Novelan, Roth …) through the Luxtronik integration (BenPru/luxtronik), resolved via translation_key.
+// Built from the integration source, not from a real installation: a water/water heat pump with one mixing circuit; mixing circuit 2
+// is not installed and reports a flow but a target of 0.
+const luxtronikReg = {
+  'sensor.luxtronik2_status': 'status', 'binary_sensor.luxtronik2_compressor': 'compressor',
+  'sensor.luxtronik2_flow_in_temperature': 'flow_in_temperature', 'sensor.luxtronik2_flow_out_temperature': 'flow_out_temperature',
+  'sensor.luxtronik2_heat_amount_flow_rate': 'heat_amount_flow_rate', 'sensor.luxtronik2_heat_source_flow_rate': 'heat_source_flow_rate',
+  'sensor.luxtronik2_heat_source_input_temperature': 'heat_source_input_temperature', 'sensor.luxtronik2_heat_source_output_temperature': 'heat_source_output_temperature',
+  'sensor.luxtronik2_outdoor_temperature': 'outdoor_temperature', 'sensor.luxtronik2_dhw_temperature': 'dhw_temperature',
+  'number.luxtronik2_dhw_target_temperature': 'dhw_target_temperature', 'select.luxtronik2_heating_mode': 'heating_mode',
+  'sensor.luxtronik2_current_power_consumption': 'current_power_consumption', 'sensor.luxtronik2_current_heat_output': 'current_heat_output',
+  'binary_sensor.luxtronik2_additional_heat_generator': 'additional_heat_generator', 'binary_sensor.luxtronik2_circulation_pump_heating': 'circulation_pump_heating',
+  'sensor.luxtronik2_flow_in_circuit1_temperature': 'flow_in_circuit1_temperature', 'sensor.luxtronik2_flow_in_circuit1_target_temperature': 'flow_in_circuit1_target_temperature',
+  'sensor.luxtronik2_flow_in_circuit2_temperature': 'flow_in_circuit2_temperature', 'sensor.luxtronik2_flow_in_circuit2_target_temperature': 'flow_in_circuit2_target_temperature',
+  'sensor.luxtronik2_room_thermostat_temperature': 'room_thermostat_temperature', 'sensor.luxtronik2_room_thermostat_temperature_target': 'room_thermostat_temperature_target',
+  'sensor.luxtronik2_hot_gas_temperature': 'hot_gas_temperature', 'sensor.luxtronik2_suction_compressor_temperature': 'suction_compressor_temperature',
+  'sensor.luxtronik2_overheating_temperature': 'overheating_temperature', 'sensor.luxtronik2_high_pressure': 'high_pressure', 'sensor.luxtronik2_low_pressure': 'low_pressure',
+  'sensor.luxtronik2_compressor1_operation_hours': 'compressor1_operation_hours', 'sensor.luxtronik2_compressor1_impulses': 'compressor1_impulses',
+  'sensor.luxtronik2_heat_amount_counter': 'heat_amount_counter', 'sensor.luxtronik2_heat_amount_heating': 'heat_amount_heating', 'sensor.luxtronik2_dhw_heat_amount': 'dhw_heat_amount',
+  'sensor.luxtronik2_heat_energy_input': 'heat_energy_input', 'sensor.luxtronik2_dhw_energy_input': 'dhw_energy_input',
+};
+const luxtronikStates = (s) => ({
+  'sensor.luxtronik2_status': { heat: 'heating', dhw: 'hot_water', defrost: 'defrost', idle: 'no_request' }[s],
+  'binary_sensor.luxtronik2_compressor': s === 'idle' ? 'off' : 'on',
+  'sensor.luxtronik2_flow_in_temperature': [{ heat: '34.8', dhw: '53.1', defrost: '27.4', idle: '29.6' }[s], '°C'],
+  'sensor.luxtronik2_flow_out_temperature': [{ heat: '29.9', dhw: '47.6', defrost: '28.1', idle: '29.3' }[s], '°C'],
+  'sensor.luxtronik2_heat_amount_flow_rate': [{ heat: '1520', dhw: '1280', defrost: '1480', idle: '0' }[s], 'l/h'],
+  'sensor.luxtronik2_heat_source_flow_rate': [{ heat: '2350', dhw: '2350', defrost: '2350', idle: '0' }[s], 'l/h'],
+  'sensor.luxtronik2_heat_source_input_temperature': ['9.4', '°C'], 'sensor.luxtronik2_heat_source_output_temperature': [{ heat: '6.1', dhw: '6.4', defrost: '7.0', idle: '9.3' }[s], '°C'],
+  'sensor.luxtronik2_outdoor_temperature': ['7.8', '°C'], 'sensor.luxtronik2_dhw_temperature': [{ heat: '49.2', dhw: '50.4', defrost: '49.0', idle: '49.6' }[s], '°C'],
+  'number.luxtronik2_dhw_target_temperature': ['50', '°C'], 'select.luxtronik2_heating_mode': 'Automatic',
+  'sensor.luxtronik2_current_power_consumption': [{ heat: '1180', dhw: '1790', defrost: '1010', idle: '0' }[s], 'W'],
+  'sensor.luxtronik2_current_heat_output': [{ heat: '5260', dhw: '6930', defrost: '0', idle: '0' }[s], 'W'],
+  'binary_sensor.luxtronik2_additional_heat_generator': 'off', 'binary_sensor.luxtronik2_circulation_pump_heating': s === 'heat' || s === 'idle' ? 'on' : 'off',
+  'sensor.luxtronik2_flow_in_circuit1_temperature': [{ heat: '33.1', dhw: '31.5', defrost: '31.9', idle: '30.2' }[s], '°C'],
+  'sensor.luxtronik2_flow_in_circuit1_target_temperature': ['33.5', '°C'],
+  'sensor.luxtronik2_flow_in_circuit2_temperature': ['5.0', '°C'], 'sensor.luxtronik2_flow_in_circuit2_target_temperature': ['0.0', '°C'],
+  'sensor.luxtronik2_room_thermostat_temperature': ['21.4', '°C'], 'sensor.luxtronik2_room_thermostat_temperature_target': ['21.5', '°C'],
+  'sensor.luxtronik2_hot_gas_temperature': [{ heat: '68.2', dhw: '81.5', defrost: '44.0', idle: '24.1' }[s], '°C'],
+  'sensor.luxtronik2_suction_compressor_temperature': [{ heat: '5.9', dhw: '6.6', defrost: '2.0', idle: '9.1' }[s], '°C'],
+  'sensor.luxtronik2_overheating_temperature': [{ heat: '5.2', dhw: '5.8', defrost: '3.1', idle: '0.0' }[s], 'K'],
+  'sensor.luxtronik2_high_pressure': [{ heat: '19.4', dhw: '25.8', defrost: '14.0', idle: '10.7' }[s], 'bar'],
+  'sensor.luxtronik2_low_pressure': [{ heat: '6.3', dhw: '6.5', defrost: '4.8', idle: '8.9' }[s], 'bar'],
+  'sensor.luxtronik2_compressor1_operation_hours': { state: '6218.43', attributes: { unit_of_measurement: 'h', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_compressor1_impulses': { state: '9120', attributes: { state_class: 'total_increasing' } },
+  'sensor.luxtronik2_heat_amount_counter': { state: '41230.5', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_heat_amount_heating': { state: '33810.2', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_dhw_heat_amount': { state: '7420.3', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_heat_energy_input': { state: '7690.4', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.luxtronik2_dhw_energy_input': { state: '2310.1', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+});
+
+// Samsung EHS (esphome-samsung-nasa): entity names of Beormund's example.yaml, valve and error code as text sensors.
+const samsungStates = (s) => ({
+  'sensor.heat_pump_flow_temp_out': [{ heat: '32.6', dhw: '45.1', defrost: '22.0', idle: '28.0' }[s], '°C'],
+  'sensor.heat_pump_flow_temp_return': [{ heat: '30.5', dhw: '40.3', defrost: '25.5', idle: '27.5' }[s], '°C'],
+  'sensor.heat_pump_flow_rate_sensor': [s === 'idle' ? '0' : '14.5', 'L/min'],
+  'binary_sensor.heat_pump_compressor_status': s === 'idle' ? 'off' : 'on',
+  'sensor.heat_pump_compressor_frequency': [{ heat: '47', dhw: '58', defrost: '62', idle: '0' }[s], 'Hz'],
+  'sensor.heat_pump_3_way_valve': s === 'dhw' ? 'Tank (DHW)' : 'Room (Heating)',
+  'binary_sensor.heat_pump_defrost': s === 'defrost' ? 'on' : 'off',
+  'binary_sensor.heat_pump_primary_water_pump': s === 'idle' ? 'off' : 'on',
+  'binary_sensor.heat_pump_booster_heater': 'off',
+  'sensor.heat_pump_power_consumed_last_minute': [{ heat: '1190', dhw: '1450', defrost: '1300', idle: '12' }[s], 'W'],
+  'sensor.heat_pump_power_produced_last_minute': [{ heat: '4300', dhw: '4700', defrost: '0', idle: '0' }[s], 'W'],
+  'sensor.heat_pump_outdoor_temperature': ['9.3', '°C'],
+  'sensor.heat_pump_dhw_temperature': [s === 'dhw' ? '38.2' : '42.4', '°C'],
+  'number.heat_pump_dhw_target_temperature': { state: '43', attributes: { unit_of_measurement: '°C', min: 30, max: 50, step: 1 } },
+  'sensor.heat_pump_zone_1_indoor_temp': ['20.8', '°C'], 'number.heat_pump_zone_1_target_temp': ['21', '°C'],
+  'sensor.heat_pump_error_code': s === 'idle' ? 'Communication Error (ODU Time-out 3m)' : 'No Error',
+  'switch.heat_pump_away_mode': 'off',
+  'sensor.heat_pump_total_consumed_energy': { state: '1843.2', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heat_pump_total_produced_energy': { state: '6912.0', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heat_pump_daily_energy_consumed': ['4.3', 'kWh'], 'sensor.heat_pump_daily_heat_generated': ['16.1', 'kWh'],
+  'sensor.heat_pump_cop_daily': '3.74', 'sensor.heat_pump_cop_total': '3.75',
 });
 const regOf = (fn, platform) => Object.fromEntries(Object.keys(fn('heat')).map((id) => [id, { platform }]));
 
@@ -392,7 +527,7 @@ const setups = [
     config: { preset: 'heishamon', title: 'Aquarea', hc_type: 'radiator' },
   },
   {
-    name: 'Ground source heat pump', sub: 'EMS-ESP, brine loop, environmental energy, two heating circuits and heaters',
+    name: 'Ground source heat pump', sub: 'EMS-ESP, brine loop, environmental energy, two heating circuits with a room temperature each, heaters',
     states: brineStates, registry: regOf(brineStates, 'mqtt'),
     statistics: {
       'sensor.boiler_nrgconstotal': { today: 6.1, month: 180, year: 1720 },
@@ -405,7 +540,7 @@ const setups = [
       brine_pressure_min: 0.9, brine_pressure_crit: 0.6, brine_pressure_max: 2.5,
       hc_pressure_min: 1.0, hc_pressure_crit: 0.7, hc_pressure_max: 2.8,
       entities: { dhw_heater: 'binary_sensor.dhw_heater_rod', brine_pressure: 'sensor.boiler_brine_pressure', hc_pressure: 'sensor.boiler_heating_pressure',
-        env_energy: 'sensor.boiler_environmental_energy_total' },
+        env_energy: 'sensor.boiler_environmental_energy_total', hc2_room: 'sensor.upstairs_temperature', hc2_room_target: 'sensor.thermostat_hc2_seltemp' },
       tiles: ['energy', 'env_energy', 'cop_total', 'env_energy:month', 'spread', 'brine_pressure', 'hc_pressure'],
     },
   },
@@ -450,6 +585,31 @@ const setups = [
     config: {
       preset: 'ebusd', title: 'aroTHERM plus', hc_count: 2, hc_name: 'Underfloor', hc2_type: 'radiator', hc2_name: 'Radiators',
       tiles: ['cop_live', 'cop_total', 'energy', 'env_energy', 'starts', 'hours_per_start', 'hc_pressure'],
+    },
+  },
+  {
+    name: 'Samsung EHS', sub: 'esphome-samsung-nasa, underfloor heating',
+    states: samsungStates, registry: regOf(samsungStates, 'esphome'),
+    config: { preset: 'samsung', title: 'Samsung EHS' },
+  },
+  {
+    name: 'Alpha Innotec (Luxtronik)', sub: 'Luxtronik integration, water source, one mixing circuit, energy counters per use',
+    states: luxtronikStates,
+    registry: Object.fromEntries(Object.entries(luxtronikReg).map(([id, tk]) => [id, { platform: 'luxtronik2', translation_key: tk }])),
+    config: {
+      preset: 'luxtronik', title: 'Alpha Innotec WWC', source_type: 'water',
+      tiles: ['cop_heating:total', 'cop_dhw:total', 'energy_heating:total', 'heat:total', 'hours:total', 'spread'],
+    },
+  },
+  {
+    name: 'Wolf CHA (wolf_smartset)', sub: 'wolf_smartset integration, German entity ids found by translation key, buffer from the header sensor',
+    states: wolfSmartsetStates,
+    registry: Object.fromEntries(Object.entries(wolfSmartsetReg).map(([id, tk]) => [id, { platform: 'wolf_smartset', translation_key: tk }])),
+    statistics: { 'sensor.heizgerat_energiemenge_hz': { today: 38.6, month: 612 }, 'sensor.heizgerat_energiemenge_ww': { today: 7.9, month: 120 } },
+    config: {
+      preset: 'wolf', title: 'Wolf CHA (SmartSet)',
+      entities: { buffer_top: 'sensor.heizgerat_sammlertemperatur' },
+      tiles: ['heat_heating', 'heat_dhw', 'heat:yesterday', 'heat:month', 'hours:total', 'spread', 'hc_pressure'],
     },
   },
 ];

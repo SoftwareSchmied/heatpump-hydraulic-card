@@ -1,0 +1,29 @@
+{
+  "preset": "ebusd",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": null,
+    "note": "Baseline: changes before this date were not tracked."
+  },
+  "sources": [
+    {
+      "repo": "john30/ebusd-configuration",
+      "branch": "master",
+      "paths": [
+        "src/vaillant/08.hmu.tsp",
+        "src/vaillant/08.hmu.HW5103.tsp",
+        "src/vaillant/15.ctlv2.tsp",
+        "src/vaillant/15.ctlv3.tsp",
+        "src/vaillant/15.ctls2.tsp",
+        "src/vaillant/76.vwzio.tsp"
+      ]
+    },
+    {
+      "repo": "john30/ebusd",
+      "branch": "master",
+      "paths": [
+        "src/ebusd/mqtthandler.cpp"
+      ]
+    }
+  ]
+}

@@ -26,6 +26,8 @@ dhw
 buffer
 heating_circuit
 house
+room
+room_target
 running
 compressor_off
 source_in
@@ -46,7 +48,10 @@ diagnostic_failed
 fullscreen_open
 fullscreen_close
 source_flow
+return_short
 target
+curve_offset
+curve_shift
 middle
 bottom
 brine_pressure
