@@ -1711,6 +1711,31 @@
     check(emitter.selector.select.options.some((o) => o.value === 'column'), 'editor offers column radiators');
   }
 
+  // 20a. return temperature label per heating circuit (#63)
+  {
+    const g = setups[6];
+    const states = { ...g.states('heat'), 'sensor.floor_return': ['27.4', '°C'], 'sensor.upstairs_return': ['31.8', '°C'] };
+    const entities = { ...g.config.entities, hc_return: 'sensor.floor_return', hc2_return: 'sensor.upstairs_return' };
+    const txt = (c, id) => c.shadowRoot.getElementById(id)?.textContent ?? '(missing)';
+    let c = mount({ ...g.config, entities }, hassOf(toStates(states), g.registry || {}, g.energy, g)); await wait(25);
+    check(txt(c, 't-hc-rl') === '(missing)' && txt(c, 't-hc-rl2') === '(missing)', 'no circuit return label by default');
+    c.remove();
+    c = mount({ ...g.config, entities, hc_return_label: true }, hassOf(toStates(states), g.registry || {}, g.energy, g)); await wait(25);
+    check(txt(c, 't-hc-rl') === 'RL 27.4 °C' && txt(c, 't-hc-rl2') === 'RL 31.8 °C', `circuit return labels (${txt(c, 't-hc-rl')} / ${txt(c, 't-hc-rl2')})`);
+    check(c.shadowRoot.getElementById('t-hc-rl').parentNode.dataset.entity === 'sensor.floor_return', 'the label opens its own return sensor');
+    const label = c.shadowRoot.getElementById('t-hc-rl'); const pipe = c.shadowRoot.getElementById('p-hc-rl');
+    const lb = label.getBBox(); const pb = pipe.getBBox();
+    check(lb.y >= pb.y + pb.height - 1 && lb.x >= 685, `label sits below the return pipe, right of the risers (${Math.round(lb.x)},${Math.round(lb.y)} / pipe bottom ${Math.round(pb.y + pb.height)})`);
+    const l2 = c.shadowRoot.getElementById('t-hc-rl2').getBBox(); const r2 = c.shadowRoot.getElementById('t-hc-mode2').getBBox();
+    check(l2.x + l2.width <= r2.x + 1, `circuit 2: return label ends left of the status line (${Math.round(l2.x + l2.width)} / ${Math.round(r2.x)})`);
+    c.remove();
+    // without an own return sensor nothing is shown, the buffer or heat pump return is not repeated
+    c = mount({ ...g.config, hc_return_label: true }, hassOf(toStates(g.states('heat')), g.registry || {}, g.energy, g)); await wait(25);
+    check(txt(c, 't-hc-rl') === '' && txt(c, 't-hc-rl2') === '', 'no label without a circuit return entity');
+    c.remove();
+    check(C._formSchema({}).schema.flatMap(function keysOf(n) { return n.schema ? n.schema.flatMap(keysOf) : [n.name]; }).includes('hc_return_label'), 'editor offers the circuit return label');
+  }
+
   // 20b. DHW tank with only a sensor near the bottom (HeishaMon has one tank sensor; its position depends on the tank)
   {
     const states = toStates({ 'sensor.flow': ['35', '°C'], 'sensor.return': ['30', '°C'], 'sensor.dhw': ['37', '°C'] });
