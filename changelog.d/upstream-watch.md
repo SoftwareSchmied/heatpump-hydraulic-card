@@ -1,1 +1,0 @@
-- Upstream watch: `upstream/<preset>.json` lists the integrations and files each preset is built on. A weekly workflow opens one issue per preset (label `upstream-change`) with the new releases and commits to those files, so renamed entities or changed state texts are noticed. Dependabot now also keeps the GitHub Actions and the dev dependencies up to date.
