@@ -1,0 +1,1 @@
+- Kronoterm: preset documentation in `docs/presets/kronoterm.md`. With the Cloud API the heating pressure is the measured pressure only with Kronoterm 1.7.3 or newer; 1.7.2 and older report the setting of the low-pressure alarm (register 2325, 0.8 bar on the reference installation) under the same sensor. The card needs no change; it finds the sensor by its translation key.

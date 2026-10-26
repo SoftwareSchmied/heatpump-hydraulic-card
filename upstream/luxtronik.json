@@ -1,0 +1,23 @@
+{
+  "preset": "luxtronik",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": "2026.10.18",
+    "note": "Built from the 2026.10.18 source, no installation."
+  },
+  "sources": [
+    {
+      "repo": "BenPru/luxtronik",
+      "branch": "main",
+      "paths": [
+        "custom_components/luxtronik2/const.py",
+        "custom_components/luxtronik2/sensor_entities_predefined.py",
+        "custom_components/luxtronik2/binary_sensor_entities_predefined.py",
+        "custom_components/luxtronik2/number_entities_predefined.py",
+        "custom_components/luxtronik2/select_entities_predefined.py",
+        "custom_components/luxtronik2/base.py",
+        "custom_components/luxtronik2/translations/en.json"
+      ]
+    }
+  ]
+}

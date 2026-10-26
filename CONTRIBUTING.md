@@ -33,7 +33,7 @@ New setups and scenarios belong in `demo/setups.js`; assertions belong in `test/
 
 Several pull requests are usually open at once. Files that every change edits make them collide, so a pull request keeps to these rules:
 
-- **Do not edit `README.md` or `CHANGELOG.md`.** The maintainer updates the preset table, the feature list and the German summary when merging.
+- **Do not edit `README.md` or `CHANGELOG.md`.** The maintainer updates the preset table, the feature list, the German summary and the preset list of the bug report template (`.github/ISSUE_TEMPLATE/bug_report.yml`) when merging.
 - **Changelog:** add one file `changelog.d/<pull request number or topic>.md` with the entry as a bullet list (see `changelog.d/README.md`). At release time `npm run changelog:compile` moves the fragments into `CHANGELOG.md`.
 - **Preset documentation** goes into `docs/presets/<preset>.md`: what is mapped, what is deliberately not, the evidence (integration source, real installation) and the known limits. Describe the same in the pull request text.
 - **Do not list presets in the header comment of `dist/heatpump-hydraulic-card.js`;** it is generic on purpose.

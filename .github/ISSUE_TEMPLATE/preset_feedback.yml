@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        The Viessmann, Vaillant, EMS-ESP and HeishaMon presets are built from the integrations' source code and have **not yet been tested on real installations** – your feedback is exactly what is needed. "It works" reports are welcome too!
+        The Viessmann (ViCare, Open3E), Vaillant, EMS-ESP, Wolf and Luxtronik presets are built from the integrations' source code and have **not yet been tested on real installations** – your feedback is exactly what is needed. "It works" reports are welcome too!
         If your card version shows a document button in the header, use it to copy a diagnostic report. It stays local until you paste it. Entity ids may contain names, so review and remove anything private first.
   - type: dropdown
     id: kind
