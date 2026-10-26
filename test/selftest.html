@@ -99,18 +99,75 @@
   // 5. detection: the right preset for each installation, nothing for gas boilers or foreign entities
   check(HFC_PRESETS.heishamon.tested === true, 'HeishaMon preset is marked real-installation tested');
   const stub = (states, registry) => C.getStubConfig(hassOf(toStates(states), registry));
-  const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp', 8: 'wolf', 9: 'kronoterm' };
+  const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp', 8: 'wolf', 9: 'kronoterm', 10: 'ebusd', 11: 'samsung' };
   for (const [i, p] of Object.entries(expect)) {
     const s = setups[i]; const st = stub(s.states('heat'), s.registry || {});
     check(st.preset === p, `stub preset ${i} = ${p} (got ${st.preset})`);
     if (+i === 6) { check(st.source_type === 'brine', 'stub source_type brine'); check(st.hc_count === 2, `stub hc_count 2 (got ${st.hc_count})`); }
-    if (+i === 7) check(st.hc_count === 2 && !st.source_type, `Kronoterm stub counts its two loops (${JSON.stringify(st)})`);
+    if (+i === 9) check(st.hc_count === 2 && !st.source_type, `Kronoterm stub counts its two loops (${JSON.stringify(st)})`);
+    // The controller also reports inactive circuits (hc3 pump "0"), so the stub must not count them.
+    if (+i === 10) check(st.hc_count === undefined, `ebusd stub leaves hc_count to the user (got ${st.hc_count})`);
+  }
+  {
+    const s = setups[10]; const hass = hassOf(toStates(s.states('heat')), s.registry);
+    const r = C._resolve(s.config, hass);
+    check(r.prefix === 'ebusd', `ebusd prefix detected (got ${r.prefix})`);
+    check(r.entities.evap_temp === 'sensor.heating_ebusd_hmu_rundataevaporationtemp', 'ebusd: entity with device-name prefix found');
+    check(r.entities.hc2_flow === 'sensor.ebusd_ctlv2_hc2flowtemp' && r.entities.hc2_pump === 'sensor.ebusd_ctlv2_hc2pumpstatus', 'ebusd: second circuit from the controller');
+    check(r.entities.hc_pressure === 'sensor.ebusd_hmu_flowpressure' && r.entities.hc2_pressure === undefined, 'ebusd: one system pressure, not copied to circuit 2');
+    check(r.entities.buffer_top === undefined, 'ebusd: buffer stays unmapped');
+    check(r.tiles.env_energy?.total === 'sensor.ebusd_hmu_statenvironmentenergysum', 'ebusd: environmental energy tile');
+    const modes = HFC_PRESETS.ebusd.mode_map;
+    check(modes.deicing_active === 'defrost' && modes.hwc_overrun === 'dhw' && modes.heat_compressor_blocked === 'blocked' && modes.standby === 'idle', 'ebusd status codes normalized');
   }
   const detects = (preset, states, registry) => HFC_PRESETS[preset].detect(C._ctx(hassOf(toStates(states), registry), undefined, { hp: 1, dhw: 1, buffer: 1, hc: 1 })) !== undefined;
   check(!detects('emsesp', { 'sensor.boiler_curflowtemp': '45', 'sensor.boiler_outdoortemp': '5' }, { 'sensor.boiler_curflowtemp': { platform: 'mqtt' } }), 'EMS-ESP gas boiler is not a heat pump');
   check(!detects('vicare', { 'sensor.vitodens_outside_temperature': '5', 'sensor.vitodens_boiler_temperature': '60' },
     { 'sensor.vitodens_outside_temperature': { platform: 'vicare', translation_key: 'outside_temperature' } }), 'ViCare gas boiler is not a heat pump');
   check(!detects('lambda', { 'sensor.other_hp1_operating_state': 'x' }, { 'sensor.other_hp1_operating_state': { platform: 'something_else' } }), 'foreign hp1_operating_state is not Lambda');
+  check(!detects('samsung', { 'sensor.boiler_3_way_valve': 'Room' }, { 'sensor.boiler_3_way_valve': { platform: 'esphome' } }), 'a 3-way valve without the Samsung error code is not Samsung');
+  {
+    const states = {}; const registry = {};
+    const add = (domain, key, state) => {
+      const id = `${domain}.vitocal_${key}`;
+      states[id] = state;
+      registry[id] = { platform: 'open3e', translation_key: key };
+      return id;
+    };
+    const ids = {
+      mode: add('sensor', 'refrigeration_circuit_mode', 'heating'),
+      compressor: add('binary_sensor', 'heat_pump_compressor_active', 'on'),
+      valve: add('sensor', 'four_three_way_valve_position', 'hot_water'),
+      flow: add('sensor', 'flow_temperature', '42'),
+      return: add('sensor', 'return_temperature', '35'),
+      dhwTop: add('sensor', 'dhw_buffer_top_temperature', '52'),
+      dhwMiddle: add('sensor', 'dhw_buffer_mid_temperature', '48'),
+      dhwBottom: add('sensor', 'dhw_buffer_bottom_temperature', '40'),
+      circuitFlow: add('sensor', 'flow_circuit1_temperature', '38'),
+      circuitTarget: add('sensor', 'flow_circuit_1_supply_temp_setpoint', '40'),
+      circuitPump: add('binary_sensor', 'circuit_1_pump', 'on'),
+      cop: add('sensor', 'cop_heating_today', '4.2'),
+      dhwStatus: add('sensor', 'domestic_hot_water_status', 'active'),
+    };
+    const hass = hassOf(toStates(states), registry);
+    const stubConfig = C.getStubConfig(hass);
+    const resolved = C._resolve({ preset: 'open3e' }, hass);
+    check(stubConfig.preset === 'open3e', `Open3E Vitocal preset detected (${stubConfig.preset})`);
+    check(resolved.ready && resolved.entities.mode === ids.mode && resolved.entities.compressor === ids.compressor
+      && resolved.entities.valve === ids.valve, 'Open3E preset maps mode, compressor and diverter valve');
+    check(resolved.entities.dhw_top === ids.dhwTop && resolved.entities.dhw_middle === ids.dhwMiddle
+      && resolved.entities.dhw_bottom === ids.dhwBottom, 'Open3E preset maps DHW tank temperature levels');
+    check(resolved.entities.hc_flow === ids.circuitFlow && resolved.entities.hc_setpoint === ids.circuitTarget
+      && resolved.entities.hc_pump === ids.circuitPump && resolved.tiles.cop_heating.today === ids.cop,
+    'Open3E preset maps circuit and daily COP entities');
+    const card = mount({ preset: 'open3e' }, hass);
+    check(/Hot water/.test(card.shadowRoot.getElementById('chip-mode')?.textContent || ''), 'Open3E hot_water valve state selects DHW mode');
+    check(/Hot water/.test(card.shadowRoot.getElementById('t-dhw-mode')?.textContent || ''), 'Open3E domestic_hot_water_status "active" shows hot water charging');
+    check(card._unitKey() === 'viessmann', `Open3E selects the Viessmann unit drawing (${card._unitKey()})`);
+    card.remove();
+  }
+
+  check(!detects('ebusd', { 'sensor.ebusd_hmu_rundatastatuscode': 'standby' }, { 'sensor.ebusd_hmu_rundatastatuscode': { platform: 'something_else' } }), 'ebusd needs the MQTT platform');
 
   // Wolf (wolflink): heat pumps only, prefix = device slug; gas boilers and other platforms with the same names are not detected.
   {
@@ -627,7 +684,7 @@
     check(o.has && o.text === '12.5 °C' && !o.flow && !o.coil && !o.panel, `solar loop idle with the pump off (${JSON.stringify(o)})`);
     o = await sol('heat', { entities: { ...s.config.entities, solar_collector: null } });
     check(o.has && o.text === 'Solar' && o.flow, `pump only: label without a temperature (${JSON.stringify(o)})`);
-    o = await sol('heat', { entities: { ...s.config.entities, dhw_top: null, dhw_mode: null } });
+    o = await sol('heat', { entities: { ...s.config.entities, dhw_top: null, dhw_middle: null, dhw_bottom: null, dhw_mode: null } });
     check(!o.has && o.ok, 'no solar loop without a hot water tank');
     o = await sol('heat', { entities: { ...s.config.entities, solar_collector: null, solar_pump: null } });
     check(!o.has && o.ok, 'no solar loop without solar entities');
@@ -719,6 +776,28 @@
     const one = mount(s.config, hass); await wait(10);
     check(one.shadowRoot.querySelectorAll('.hop').length === 0, 'single circuit has no bridge');
     one.remove();
+  }
+
+  // 13b. Samsung EHS: text valve "Tank (DHW)", text error code with "No Error", tiles from the example.yaml template sensors
+  {
+    const s = setups[11];
+    const sam = async (scen, extra = {}) => {
+      const card = mount(s.config, hassOf(toStates({ ...s.states(scen), ...extra }), s.registry)); await wait(20);
+      const r = { mode: card.shadowRoot.getElementById('chip-mode').className, err: card.shadowRoot.getElementById('chip-err').classList.contains('on') };
+      card.remove(); return r;
+    };
+    let r = await sam('dhw');
+    check(/mode-dhw/.test(r.mode) && !r.err, `Samsung valve "Tank (DHW)" is hot water, "No Error" is no error (${JSON.stringify(r)})`);
+    r = await sam('heat');
+    check(/mode-heat/.test(r.mode) && !r.err, `Samsung "Room (Heating)" is heating (${JSON.stringify(r)})`);
+    r = await sam('idle');
+    check(/mode-idle/.test(r.mode) && r.err, `Samsung error text shows the error chip (${JSON.stringify(r)})`);
+    r = await sam('heat', { 'sensor.heat_pump_error_code': 'unavailable' });
+    check(!r.err, 'Samsung error code unavailable is no error');
+    r = await sam('heat', { 'sensor.heat_pump_error_code': '0', 'sensor.heat_pump_3_way_valve': '1' });
+    check(/mode-dhw/.test(r.mode) && !r.err, `Samsung valve and error code as plain sensors (${JSON.stringify(r)})`);
+    const { t } = await tilesOf(s, ['energy', 'heat', 'cop_total', 'energy:total']);
+    check(t['Electricity · today'] === '4.3 kWh' && t['COP total · today'] === '3.74' && t['Electricity · total'] === '1,843 kWh', `Samsung tiles (${JSON.stringify(t)})`);
   }
 
   // 14. outdoor unit drawings: style per preset, manufacturer variants, fans and snowflakes, loop symbol for ground sources
@@ -1289,6 +1368,38 @@
     card.remove();
   }
 
+  // 18e. HeishaMon: error sensor, kWh counters, zone water temperature without a zone sensor (real installation, WH-MDC05J3E5)
+  {
+    const p = 'panasonic_heat_pump';
+    const st = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.25', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_threeway_valve_state`]: 'Room',
+      [`sensor.${p}_main_z1_water_temp`]: ['-78', '°C'], [`sensor.${p}_main_error`]: 'No error',
+      [`sensor.${p}_main_heat_power_consumption`]: ['600', 'W'], [`sensor.${p}_main_heat_power_production`]: ['2600', 'W'],
+      [`sensor.${p}_main_dhw_power_consumption`]: ['0', 'W'], [`sensor.${p}_main_dhw_power_production`]: ['0', 'W'],
+      'sensor.aquarea_pump_total_consumption_total': ['7690.574', 'kWh'], 'sensor.aquarea_pump_total_production_total': ['24276.876', 'kWh'],
+      'sensor.aquarea_heat_power_consumed_total': ['6636.338', 'kWh'], 'sensor.aquarea_heat_power_produced_total': ['21509.845', 'kWh'],
+      'sensor.aquarea_dhw_power_consumed_total': ['1054.239', 'kWh'], 'sensor.aquarea_dhw_power_produced_total': ['2767.033', 'kWh'],
+    };
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(toStates(st)));
+    check(JSON.stringify(r.errors) === JSON.stringify([`sensor.${p}_main_error`]), `HeishaMon error sensor (${r.errors})`);
+    check(r.entities.energy_total === 'sensor.aquarea_pump_total_consumption_total' && r.entities.heat_total === 'sensor.aquarea_pump_total_production_total', 'HeishaMon kWh totals');
+    check(r.tiles.energy?.total === 'sensor.aquarea_pump_total_consumption_total' && r.tiles.heat?.total === 'sensor.aquarea_pump_total_production_total', 'HeishaMon totals feed the energy and heat tiles');
+    check(r.tiles.energy_heating?.total === 'sensor.aquarea_heat_power_consumed_total' && r.tiles.heat_dhw?.total === 'sensor.aquarea_dhw_power_produced_total'
+      && r.tiles.energy_heating?.now === `sensor.${p}_main_heat_power_consumption`, 'HeishaMon tiles per mode: now and total');
+    check(!r.tiles.energy_cooling?.total, 'HeishaMon without cooling counters has no cooling total');
+    check(r.entities.hc_flow === undefined, `HeishaMon ignores the zone water temperature without a zone sensor (${r.entities.hc_flow})`);
+    const zone = C._resolve({ preset: 'heishamon' }, hassOf(toStates({ ...st, [`sensor.${p}_main_z1_water_temp`]: ['33', '°C'] })));
+    check(zone.entities.hc_flow === `sensor.${p}_main_z1_water_temp`, 'HeishaMon keeps a valid zone water temperature');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates(st))); await wait(20);
+    const errOn = () => card.shadowRoot.getElementById('chip-err').classList.contains('on');
+    check(!errOn(), 'HeishaMon "No error" shows no error chip');
+    check(JSON.parse(card._layoutSignature()).hc === true, 'HeishaMon circuit stays drawn as a direct system');
+    card.hass = hassOf(toStates({ ...st, [`sensor.${p}_main_error`]: 'H76' })); await wait(5);
+    check(errOn(), 'HeishaMon error code H76 shows the error chip');
+    card.remove();
+  }
+
   // 18i. an entity list adds the values, e.g. two S0 meters of HeishaMon as the heat pump power
   {
     const p = 'panasonic_heat_pump';
@@ -1319,6 +1430,36 @@
     const find = (list) => flat(list).find((x) => x.name === 'power');
     check(find(C._formSchema(cfg).schema)?.selector?.entity?.multiple === true, 'editor shows a picker for several entities for a list');
     check(!find(C._formSchema({ preset: 'heishamon' }).schema)?.selector?.entity?.multiple, 'editor keeps the single picker without a list');
+  }
+
+  // 18f. HeishaMon: refrigerant temperatures and the superheat computed from them
+  {
+    const p = 'panasonic_heat_pump';
+    const st = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.25', '°C'],
+      [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'], [`sensor.${p}_main_discharge_temp`]: ['49', '°C'],
+      [`sensor.${p}_main_outside_pipe_temp`]: ['1', '°C'], [`sensor.${p}_main_eva_outlet_temp`]: ['3', '°C'],
+      [`sensor.${p}_main_inside_pipe_temp`]: ['32', '°C'],
+    };
+    const r = C._resolve({ preset: 'heishamon' }, hassOf(toStates(st)));
+    check(r.entities.evap_temp === `sensor.${p}_main_outside_pipe_temp` && r.entities.suction_temp === `sensor.${p}_main_eva_outlet_temp`
+      && r.entities.liquid_temp === `sensor.${p}_main_inside_pipe_temp`, 'HeishaMon refrigerant temperatures');
+    const card = mount({ preset: 'heishamon' }, hassOf(toStates(st))); await wait(20);
+    const rows = card._drawerRows().flatMap(([, list]) => list);
+    const sh = rows.find((x) => x[0] === 'superheat');
+    check(sh && sh[3]() === '2.0 K', `HeishaMon superheat from suction gas and evaporation (${sh && sh[3] ? sh[3]() : 'none'})`);
+    card.remove();
+    // In defrost the circuit runs backwards: the outdoor pipe is no evaporation temperature then.
+    const value = (c, key) => c._drawerRows().flatMap(([, list]) => list).find((x) => x[0] === key)?.[3]();
+    const defrost = mount({ preset: 'heishamon' }, hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'on' }))); await wait(20);
+    check(['evap_temp', 'suction_temp', 'liquid_temp', 'superheat'].every((k) => value(defrost, k) === '–') && /49/.test(value(defrost, 'hot_gas')),
+      `HeishaMon defrost hides the heating-only refrigerant roles (${['evap_temp', 'superheat', 'hot_gas'].map((k) => value(defrost, k)).join(', ')})`);
+    defrost.hass = hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'off' })); await wait(5);
+    check(value(defrost, 'superheat') === '2.0 K' && /1/.test(value(defrost, 'evap_temp')), 'after defrost the roles come back');
+    defrost.remove();
+    const own = mount({ preset: 'heishamon', entities: { evap_temp: `sensor.${p}_main_outside_pipe_temp` } }, hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'on' }))); await wait(20);
+    check(value(own, 'evap_temp') !== '–' && value(own, 'suction_temp') === '–', 'an entity set in the config keeps its value in defrost');
+    own.remove();
   }
 
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
@@ -1440,6 +1581,24 @@
     check(['env_energy', 'brine_pressure_min', 'brine_pressure_crit', 'brine_pressure_max', 'hc_pressure_min', 'hc_pressure_crit', 'hc_pressure_max'].every((key) => schema.flatMap(keysOf).includes(key)), 'editor offers environmental energy and pressure thresholds');
     const emitter = (() => { let found; const visit = (n) => { if (n.name === 'hc_type') found = n; (n.schema || []).forEach(visit); }; schema.forEach(visit); return found; })();
     check(emitter.selector.select.options.some((o) => o.value === 'column'), 'editor offers column radiators');
+  }
+
+  // 20b. DHW tank with only a sensor near the bottom (HeishaMon has one tank sensor; its position depends on the tank)
+  {
+    const states = toStates({ 'sensor.flow': ['35', '°C'], 'sensor.return': ['30', '°C'], 'sensor.dhw': ['37', '°C'] });
+    const card = mount({ entities: { flow: 'sensor.flow', return: 'sensor.return', dhw_bottom: 'sensor.dhw' } }, hassOf(states)); await wait(20);
+    const $ = (id) => card.shadowRoot.getElementById(id);
+    check(ok(card) && !!card.shadowRoot.querySelector('rect.tank'), 'DHW tank is drawn with only a bottom sensor');
+    check($('t-dhw-top').textContent === '' && $('t-dhw-bottom').textContent === card._t(37), `the value shows at the bottom without a position label (${$('t-dhw-bottom').textContent})`);
+    check($('g-dhw-top').getAttribute('stop-color') === $('g-dhw-bottom').getAttribute('stop-color'), 'the tank colour comes from the bottom sensor');
+    check(card.shadowRoot.querySelector('rect.tank').closest('.tap')?.getAttribute('data-entity') === 'sensor.dhw', 'tapping the tank opens the bottom sensor');
+    card.remove();
+    const preset = mount({ preset: 'heishamon', entities: { dhw_top: null, dhw_bottom: 'sensor.panasonic_heat_pump_main_dhw_temp' } }, hassOf(toStates({
+      'sensor.panasonic_heat_pump_main_main_outlet_temp': ['36', '°C'], 'sensor.panasonic_heat_pump_main_main_inlet_temp': ['32', '°C'],
+      'sensor.panasonic_heat_pump_main_dhw_temp': ['37', '°C'],
+    }))); await wait(20);
+    check(!preset._has('dhw_top') && /37/.test(preset.shadowRoot.getElementById('t-dhw-bottom').textContent), 'a preset sensor can be moved from top to bottom in the config');
+    preset.remove();
   }
 
   log.push(`${checks} checks, ${fails.length} failed`);
