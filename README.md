@@ -291,7 +291,6 @@ What you get:
 Notes from real installations:
 - The integration reads the Power and the Energy topic of each value, depending on the firmware, so the entity ids contain either `…_heat_power_consumption` or `…_heat_energy_consumption`. The preset accepts both. The schematic prefers the total sensors `sensor.<prefix>_consumption` and `sensor.<prefix>_production`, then `sensor.aquarea_energy_consumption` and `sensor.aquarea_energy_production` (all including hot water); the period tiles use the heating, hot water and cooling sensors.
 - `sensor.<prefix>_main_z1_temp` is the zone *water* temperature when the zone sensor setting is "Water Temperature", and reads −128 °C without a room sensor. The preset then prefers `…_main_room_thermostat_temp`; if that value is not a room temperature either, remove it with `entities: {room: null}`.
-- HeishaMon has one DHW tank sensor (`…_main_dhw_temp`), mapped as `dhw_top`. Its position depends on the tank. If it sits near the bottom, move it: `entities: {dhw_top: null, dhw_bottom: sensor.<prefix>_main_dhw_temp}`. The value then shows at the bottom of the tank.
 - Some models report a low pressure of 0.0 permanently; hide it with `entities: {low_pressure: null}`.
 - The heating setpoint is the zone target temperature. The outlet target (`main_target_temp`) follows the hot-water target while the 3-way valve is on the tank and is only used when no zone target exists.
 
