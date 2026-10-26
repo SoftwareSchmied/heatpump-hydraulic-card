@@ -1169,6 +1169,38 @@
     card.remove();
   }
 
+  // 18i. an entity list adds the values, e.g. two S0 meters of HeishaMon as the heat pump power
+  {
+    const p = 'panasonic_heat_pump';
+    const states = {
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32.5', '°C'],
+      [`sensor.${p}_main_heat_power_consumption`]: ['400', 'W'], [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'],
+      [`sensor.${p}_s0_watt_1`]: ['581', 'W'], [`sensor.${p}_s0_watt_2`]: ['1.5', 'kW'],
+    };
+    const s0 = [`sensor.${p}_s0_watt_1`, `sensor.${p}_s0_watt_2`];
+    const cfg = { preset: 'heishamon', entities: { power: s0 } };
+    const r = C._resolve(cfg, hassOf(toStates(states)));
+    check(r.entities.power === s0[0] && JSON.stringify(r.sums.power) === JSON.stringify(s0), `entity list: first entity stands for the key, all are summed (${r.entities.power})`);
+    const single = C._resolve({ preset: 'heishamon', entities: { power: [s0[0]] } }, hassOf(toStates(states)));
+    check(single.entities.power === s0[0] && !single.sums.power, 'entity list with one entity is a plain entity');
+    const card = mount(cfg, hassOf(toStates(states))); await wait(20);
+    check(card._w('power') === 2081, `entity list sums W and kW (${card._w('power')} W)`);
+    card.hass = hassOf(toStates({ ...states, [s0[1]]: 'unavailable' })); await wait(5);
+    check(card._w('power') === 581, `entity list skips a member without a number (${card._w('power')} W)`);
+    card.hass = hassOf(toStates({ ...states, [s0[0]]: 'unavailable', [s0[1]]: 'unknown' })); await wait(5);
+    check(Number.isNaN(card._w('power')), 'entity list without any number gives no value');
+    card.remove();
+    const kw = mount({ preset: 'heishamon' }, hassOf(toStates({ ...states, [`sensor.${p}_main_heat_power_production`]: ['3800', 'W'] }))); await wait(20);
+    check(kw._kw('heat') === 3.8, `W to kW conversion stays exact (${kw._kw('heat')} kW)`);
+    kw.remove();
+    const report = C._diagnosticReport(cfg, hassOf(toStates(states)));
+    check(report.includes(`- power (sum 1): ${s0[0]} = 581 W`) && report.includes(`- power (sum 2): ${s0[1]} = 1.5 kW`), 'diagnostic report lists every member of the sum');
+    const flat = (list) => list.flatMap((x) => (x.schema ? flat(x.schema) : [x]));
+    const find = (list) => flat(list).find((x) => x.name === 'power');
+    check(find(C._formSchema(cfg).schema)?.selector?.entity?.multiple === true, 'editor shows a picker for several entities for a list');
+    check(!find(C._formSchema({ preset: 'heishamon' }).schema)?.selector?.entity?.multiple, 'editor keeps the single picker without a list');
+  }
+
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes
   {
     const s = setups[0];
