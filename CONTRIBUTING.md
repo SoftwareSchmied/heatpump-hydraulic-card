@@ -43,3 +43,7 @@ The recommended required checks for the default branch are `HACS validation`, `Q
 - When the containing version is published, assign its version milestone, remove `ready for release`, add a release comment and close the issue.
 - Contributor-owned pull requests stay with their contributor unless they explicitly hand over the work. Follow-up work should not silently absorb or replace them.
 - Umbrella issues remain open while only one sub-part is delivered; record the shipped part in a comment and keep the remaining scope explicit.
+
+## Tracking upstream integrations
+
+Presets depend on other projects' entity ids and state texts. `upstream/<preset>.json` lists the repositories and files a preset is built on, and the workflow `Upstream watch` opens one issue per preset when those files change (see `upstream/README.md`). A pull request for a new preset adds its own `upstream/<preset>.json`. After reviewing an upstream change, run `npm run upstream:ack -- <preset>` and close the issue.

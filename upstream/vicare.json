@@ -1,0 +1,23 @@
+{
+  "preset": "vicare",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": null,
+    "note": "Baseline: changes before this date were not tracked."
+  },
+  "sources": [
+    {
+      "repo": "home-assistant/core",
+      "branch": "dev",
+      "releases": false,
+      "paths": [
+        "homeassistant/components/vicare/sensor.py",
+        "homeassistant/components/vicare/binary_sensor.py",
+        "homeassistant/components/vicare/const.py",
+        "homeassistant/components/vicare/strings.json",
+        "homeassistant/components/vicare/climate.py",
+        "homeassistant/components/vicare/water_heater.py"
+      ]
+    }
+  ]
+}
