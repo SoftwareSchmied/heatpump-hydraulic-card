@@ -1,0 +1,24 @@
+{
+  "preset": "vaillant",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": null,
+    "note": "Baseline: changes before this date were not tracked."
+  },
+  "sources": [
+    {
+      "repo": "signalkraft/mypyllant-component",
+      "branch": "main",
+      "paths": [
+        "custom_components/mypyllant/sensor.py",
+        "custom_components/mypyllant/binary_sensor.py",
+        "custom_components/mypyllant/const.py",
+        "custom_components/mypyllant/strings.json",
+        "custom_components/mypyllant/climate.py",
+        "custom_components/mypyllant/water_heater.py",
+        "custom_components/mypyllant/number.py",
+        "custom_components/mypyllant/switch.py"
+      ]
+    }
+  ]
+}
