@@ -12,6 +12,7 @@
     "upstream:check": "node scripts/upstream-watch.mjs --check",
     "syntax": "node --check dist/heatpump-hydraulic-card.js && node --check demo/setups.js && node --check scripts/upstream-watch.mjs && node scripts/upstream-watch.mjs --check",
     "release:check": "node scripts/release-check.mjs",
+    "changelog:compile": "node scripts/changelog.mjs",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:chromium": "playwright test --project=chromium",
