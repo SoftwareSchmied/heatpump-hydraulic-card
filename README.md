@@ -446,7 +446,12 @@ The controller sits in air, brine and water heat pumps alike, so the card draws 
 What you get:
 - the operating status (heating, hot water, defrost, cooling, grid lock, idle) as the mode, the compressor as running
 - flow (Vorlauf) and return (Rücklauf), heating flow rate, outdoor temperature, heat source in and out
-- electrical power and heat output, giving a live COP: enable "Current power consumption" and "Current heat output" in the integration, both are disabled by default
+- electrical power and heat output, giving a live COP: enable "Current power consumption" and "Current heat output" in the integration, both are disabled by default. Not every controller reports them: on an Alpha Innotec WWC 100 H/X the heat output stays 0 and the power value does not exist ([#75](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/75)). In that case use your own electricity meter and drop the heat sensor, so that the card estimates the heat output from flow rate and spread (needs a flow rate from the controller):
+  ```yaml
+  entities:
+    power: sensor.my_heat_pump_power
+    heat: none
+  ```
 - hot water temperature and target, solar collector and pump where installed, the additional heat generator as the backup heater
 - mixing circuits 1 to 3 as heating circuits (`hc_count`), only where they report a flow and a target; room unit temperature and target; the heating mode (party, holidays) as the program chip
 - refrigerant circuit in the details: hot gas, suction gas, superheat, high and low pressure
