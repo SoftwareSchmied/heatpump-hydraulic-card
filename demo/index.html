@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Heatpump Flow Card – live demo</title>
+<title>Heat Pump Hydraulic Card – live demo</title>
+<link rel="icon" type="image/svg+xml" href="../docs/logo/icon-small.svg">
+<link rel="icon" type="image/png" sizes="64x64" href="../docs/logo/favicon-64.png">
+<link rel="apple-touch-icon" href="../docs/logo/apple-touch-icon.png">
 <meta name="description" content="Animated hydraulic schematic card for heat pumps in Home Assistant – try every preset with simulated data.">
 <style>
   :root {
@@ -22,7 +25,8 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 Roboto, "Segoe UI", system-ui, sans-serif; }
   main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
-  header h1 { margin: 0 0 4px; font-size: 26px; }
+  header h1 { margin: 0 0 4px; font-size: 26px; display: flex; align-items: center; gap: 12px; }
+  header h1 img { width: 44px; height: 44px; flex: none; }
   header p { margin: 0; color: var(--muted); }
   .links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; }
   a { color: var(--accent); }
@@ -58,15 +62,15 @@
 <body>
 <main>
   <header>
-    <h1>Heatpump Flow Card</h1>
+    <h1><img src="../docs/logo/logo-dark.svg" alt="" width="44" height="44">Heat Pump Hydraulic Card</h1>
     <p>Live demo with simulated heat pumps – no Home Assistant needed. Pick a heat pump and an operating state.</p>
     <div class="links">
-      <a href="https://github.com/Sturmi77/heatpump-flow-card">GitHub repository and docs</a>
-      <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Sturmi77&amp;repository=heatpump-flow-card&amp;category=plugin">Install via HACS</a>
-      <a href="https://github.com/Sturmi77/heatpump-flow-card/issues/new?template=preset_feedback.yml">Preset feedback</a>
+      <a href="https://github.com/Sturmi77/heatpump-hydraulic-card">GitHub repository and docs</a>
+      <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Sturmi77&amp;repository=heatpump-hydraulic-card&amp;category=plugin">Install via HACS</a>
+      <a href="https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml">Preset feedback</a>
       <a href="https://community.home-assistant.io/t/card-heatpump-flow-card-animated-hydraulic-schematic-for-heat-pumps-lambda-viessmann-vaillant-bosch-buderus-panasonic/1029598">Community thread</a>
     </div>
-    <div class="warn">Your system asks for reduced motion, so the card shows no animations – just like it would in Home Assistant. To see the flow, turn animations back on in your operating system (Windows: Settings → Accessibility → Visual effects → Animation effects).</div>
+    <div class="warn">Your system asks for reduced motion, so the card shows no animations – just like the default in Home Assistant. To see the flow without changing the operating system setting, choose <code>animations: always</code> in the card.</div>
   </header>
   <div class="layout">
     <section>
@@ -75,13 +79,15 @@
     </section>
     <aside>
       <div class="panel"><h2>Heat pump</h2><div class="opts" id="setups"></div>
-        <p class="note">Only the Lambda preset is tested on a real installation. The others are built from the integrations' source code – feedback welcome.</p></div>
+        <p class="note">Lambda, HeishaMon and Kronoterm (Cloud API) are confirmed on real installations. ViCare, myPyllant and EMS-ESP are built from the integrations' source code – feedback welcome.</p></div>
       <div class="panel"><h2>Operating state</h2><div class="opts row" id="states"></div></div>
       <div class="panel"><h2>Display</h2><div class="opts row" id="display"></div></div>
       <div class="panel"><h2>Layout</h2><div class="opts row" id="layouts"></div>
         <p class="note">Wide puts the tiles beside the schematic when the card is wide enough; compact saves space in narrow columns; wall display uses large type and hides the controls until you touch the card.</p></div>
+      <div class="panel"><h2>Card theme</h2><div class="opts row" id="themes"></div>
+        <p class="note">Automatic follows the dashboard. Night dims the card for wall tablets; high contrast strengthens text, pipes and outlines.</p></div>
       <div class="panel"><h2>Unit drawing</h2><div class="opts row" id="units"></div>
-        <p class="note">Automatic uses the drawing of the preset (Lambda, Vaillant); other heat pumps keep the generic fan. Vaillant comes in three sizes. Ground and groundwater sources keep their loop symbol.</p></div>
+        <p class="note">Automatic uses the drawing of the preset (Lambda, Viessmann, Vaillant, Bosch/Buderus, Panasonic). Saunier Duval and Samsung are selectable manually. Vaillant comes in three sizes. Ground and groundwater sources keep their loop symbol.</p></div>
       <div class="panel"><h2>Colours</h2><div class="opts row" id="palettes"></div>
         <p class="note">Every colour is a CSS variable (<code>--hfc-*</code>) you can set in a theme or with card-mod.</p></div>
       <div class="panel"><div class="yhead"><h2>Card configuration</h2><button id="copy">Copy</button></div><pre id="yaml"></pre>
@@ -90,17 +96,18 @@
   </div>
 </main>
 <div id="toast"></div>
-<script src="../dist/heatpump-flow-card.js"></script>
+<script src="../dist/heatpump-hydraulic-card.js"></script>
 <script src="setups.js"></script>
 <script>
 
 const q = new URLSearchParams(location.search);
 let cur = Math.min(Math.max(+q.get('setup') || 0, 0), setups.length - 1);
 let scen = scenarios.some(([k]) => k === q.get('s')) ? q.get('s') : 'heat';
-let lang = q.get('lang') === 'de' ? 'de' : 'en';
+let lang = ['en', 'de', 'nl'].includes(q.get('lang')) ? q.get('lang') : 'en';
 if (q.get('embed') === '1') document.body.classList.add('embed');
 let layout = ['default', 'compact', 'wide', 'wall'].includes(q.get('layout')) ? q.get('layout') : 'default';
-const unitKeys = ['auto', 'generic', 'lambda', 'vaillant-small', 'vaillant-medium', 'vaillant-large'];
+let theme = ['auto', 'night', 'contrast'].includes(q.get('theme')) ? q.get('theme') : 'auto';
+const unitKeys = ['auto', 'generic', 'lambda', 'vaillant-small', 'vaillant-medium', 'vaillant-large', 'panasonic', 'viessmann', 'bosch', 'saunier', 'samsung'];
 let unit = unitKeys.includes(q.get('unit')) ? q.get('unit') : 'auto';
 let palette = q.get('palette') === 'teal' ? 'teal' : 'default';
 const palettes = { teal: { '--hfc-heat': '#14b8a6', '--hfc-hot': '#e11d48', '--hfc-flow-cold': '#5eead4', '--hfc-flow-hot': '#e11d48', '--hfc-tank-cold': '#6366f1', '--hfc-tank-hot': '#f43f5e', '--hfc-pv': '#eab308' } };
@@ -159,7 +166,11 @@ function draw() {
   document.documentElement.classList.toggle('dark', dark);
   wrap.innerHTML = '';
   const card = document.createElement('heatpump-flow-card');
-  const cfg = { ...setup.config, ...(layout !== 'default' ? { layout } : {}), ...(unit !== 'auto' ? { unit_style: unit.split('-')[0], ...(unit.includes('-') ? { unit_size: unit.split('-')[1] } : {}) } : {}) };
+  const nl = { title: 'Warmtepomp', heat_pump: 'Warmtepomp', dhw: 'Warm water', buffer: 'Buffervat', house: 'Woonruimtes',
+    details: 'Details', modes: { idle: 'Stand-by', heating: 'Verwarming', dhw: 'Warm water', cooling: 'Koeling', defrost: 'Ontdooien', blocked: 'Geblokkeerd' } };
+  const cfg = { ...setup.config, ...(layout !== 'default' ? { layout } : {}), ...(theme !== 'auto' ? { theme } : {}),
+    ...(lang === 'nl' ? { language: 'nl', texts: { nl } } : {}),
+    ...(unit !== 'auto' ? { unit_style: unit.split('-')[0], ...(unit.includes('-') ? { unit_size: unit.split('-')[1] } : {}) } : {}) };
   card.setConfig(cfg);
   Object.entries(palettes[palette] || {}).forEach(([k, v]) => card.style.setProperty(k, v));
   wrap.appendChild(card);
@@ -181,8 +192,9 @@ function draw() {
   document.querySelectorAll('#display button').forEach((b) => b.classList.toggle('sel', b.dataset.k === lang || b.dataset.k === (dark ? 'dark' : 'light')));
   document.querySelectorAll('#units button').forEach((b) => b.classList.toggle('sel', b.dataset.k === unit));
   document.querySelectorAll('#layouts button').forEach((b) => b.classList.toggle('sel', b.dataset.k === layout));
+  document.querySelectorAll('#themes button').forEach((b) => b.classList.toggle('sel', b.dataset.k === theme));
   document.querySelectorAll('#palettes button').forEach((b) => b.classList.toggle('sel', b.dataset.k === palette));
-  const p = new URLSearchParams({ setup: cur, s: scen, lang, dark: dark ? 1 : 0, layout, palette, unit, ...(q.get('embed') === '1' ? { embed: 1 } : {}) });
+  const p = new URLSearchParams({ setup: cur, s: scen, lang, dark: dark ? 1 : 0, layout, theme, palette, unit, ...(q.get('embed') === '1' ? { embed: 1 } : {}) });
   history.replaceState(null, '', `?${p}`);
 }
 const mk = (bar, html, key, fn) => {
@@ -193,10 +205,17 @@ const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>':
 setups.forEach((s, i) => mk('setups', `${esc(s.name)}<small>${esc(s.sub)}</small>`, String(i), () => { cur = i; }));
 scenarios.forEach(([k, l]) => mk('states', l, k, () => { scen = k; }));
 [['default', 'Default'], ['compact', 'Compact'], ['wide', 'Wide'], ['wall', 'Wall display']].forEach(([k, l]) => mk('layouts', l, k, () => { layout = k; }));
-[['auto', 'Automatic'], ['generic', 'Generic'], ['lambda', 'Lambda'], ['vaillant-small', 'Vaillant 3.5 / 5.5 kW'], ['vaillant-medium', 'Vaillant 7.5 kW'], ['vaillant-large', 'Vaillant 10.5 / 12.5 kW']].forEach(([k, l]) => mk('units', l, k, () => { unit = k; }));
+[['auto', 'Automatic'], ['night', 'Night'], ['contrast', 'High contrast']].forEach(([k, l]) => mk('themes', l, k, () => { theme = k; }));
+[
+  ['auto', 'Automatic'], ['generic', 'Generic'], ['lambda', 'Lambda'],
+  ['vaillant-small', 'Vaillant 3.5 / 5.5 kW'], ['vaillant-medium', 'Vaillant 7.5 kW'], ['vaillant-large', 'Vaillant 10.5 / 12.5 kW'],
+  ['panasonic', 'Panasonic Aquarea'], ['viessmann', 'Viessmann Vitocal'], ['bosch', 'Bosch / Buderus'],
+  ['saunier', 'Saunier Duval GeniaAir'], ['samsung', 'Samsung EHS Mono'],
+].forEach(([k, l]) => mk('units', l, k, () => { unit = k; }));
 [['default', 'Default'], ['teal', 'Teal']].forEach(([k, l]) => mk('palettes', l, k, () => { palette = k; }));
 mk('display', 'English', 'en', () => { lang = 'en'; });
 mk('display', 'Deutsch', 'de', () => { lang = 'de'; });
+mk('display', 'Nederlands (custom)', 'nl', () => { lang = 'nl'; });
 mk('display', 'Light', 'light', () => { dark = false; });
 mk('display', 'Dark', 'dark', () => { dark = true; });
 document.getElementById('copy').onclick = async (e) => {

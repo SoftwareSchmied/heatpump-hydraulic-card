@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0f2742"/><stop offset="1" stop-color="#1d4a74"/></linearGradient>
+    <linearGradient id="tank" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ef4444"/><stop offset=".6" stop-color="#f97316"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+    <linearGradient id="rad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f97316"/><stop offset="1" stop-color="#38bdf8"/></linearGradient>
+    <path id="blade" d="M0 0 C6 -24 32 -46 66 -42 C64 -14 36 6 0 0 Z"/>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <path d="M322 214 H388 Q430 214 430 256 V300" fill="none" stroke="#f97316" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M430 300 V330 Q430 372 388 372 H322" fill="none" stroke="#38bdf8" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M322 214 H388 Q430 214 430 256 V330 Q430 372 388 372 H322" fill="none" stroke="#fff" stroke-opacity=".9" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 17"/>
+  <circle cx="430" cy="270" r="40" fill="#1c1c1c" stroke="#e1e1e1" stroke-width="9"/>
+  <g transform="rotate(0 430 270)" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"><path d="M430 250 V290 M416.4 276.4 L430 290.8 L443.6 276.4"/></g>
+  <circle cx="110" cy="82" r="38" fill="#16324f" stroke="#f59e0b" stroke-width="8"/><circle cx="110" cy="82" r="12" fill="#f59e0b"/><path d="M110 61 V54" transform="rotate(0 110 82)" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/><path d="M110 61 V54" transform="rotate(45 110 82)" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/><path d="M110 61 V54" transform="rotate(90 110 82)" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/><path d="M110 61 V54" transform="rotate(135 110 82)" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/><path d="M110 61 V54" transform="rotate(180 110 82)" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/><path d="M110 61 V54" transform="rotate(225 110 82)" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/><path d="M110 61 V54" transform="rotate(270 110 82)" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/><path d="M110 61 V54" transform="rotate(315 110 82)" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/>
+  <path d="M110 126 V150" fill="none" stroke="#f59e0b" stroke-width="7" stroke-linecap="round" stroke-dasharray="1 14" stroke-linejoin="round"/>
+  <rect x="62" y="152" width="260" height="276" rx="38" fill="#e6e9ec" stroke="#f97316" stroke-width="12"/>
+  <circle cx="192" cy="276" r="88" fill="#3b4148"/>
+  <g transform="translate(192 276) scale(1)" fill="#38bdf8"><use href="#blade"/><use href="#blade" transform="rotate(90)"/><use href="#blade" transform="rotate(180)"/><use href="#blade" transform="rotate(270)"/></g>
+  <circle cx="192" cy="276" r="13" fill="#e6e9ec"/>
+  <rect x="136" y="384" width="112" height="13" rx="6.5" fill="#3b4148" opacity=".55"/>
+</svg>

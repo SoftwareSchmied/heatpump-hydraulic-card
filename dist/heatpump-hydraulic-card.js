@@ -2,12 +2,18 @@
  * Heatpump Flow Card
  * Animated hydraulic schematic for air-to-water heat pumps in Home Assistant:
  * power sources (PV / battery / grid) → heat pump → diverter valve → DHW tank / buffer → heating circuit.
- * Vendor-neutral core with presets: Lambda, Viessmann (ViCare), Vaillant (myPyllant),
- * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …), Panasonic Aquarea (HeishaMon) and Samsung EHS (esphome-samsung-nasa).
+ * Vendor-neutral core with built-in presets for several brands (list: README preset table).
  *
- * https://github.com/Sturmi77/heatpump-flow-card · MIT License
+ * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
-const HFC_VERSION = '0.9.3';
+const HFC_VERSION = '0.11.0';
+// Address this file was loaded from: shows at once when a dashboard resource still points to an old file.
+const HFC_SCRIPT_URL = (() => {
+  try {
+    if (document.currentScript?.src) return document.currentScript.src;
+    return performance.getEntriesByType('resource').map((r) => r.name).find((n) => /heatpump-(flow|hydraulic)-card[^/?]*\.js/.test(n)) || '';
+  } catch (e) { return ''; }
+})();
 
 /* ------------------------------------------------------------------ */
 /* Presets                                                             */
@@ -16,12 +22,12 @@ const HFC_VERSION = '0.9.3';
 //   detect(ctx)                → prefix (string, may be '') or undefined when the integration is not present
 //   entities(prefix, idx, ctx) → { key: entity_id | [candidates…] }  (first existing candidate wins)
 //   errors(prefix, idx, ctx)   → error sensors (numeric ≠ 0 or binary "on" shows the error chip)
-//   error_ok                   → text states of the error sensors that mean "no error" (any other text shows the chip)
+//   error_ok                   → text states that mean "no error"; any other known text shows the chip
 //   tiles(prefix, idx, ctx)    → { tile: { period: entity_id | [candidates…] } } for the stat tile catalog (HFC_TILES);
 //                                a "total" counter with long-term statistics also gives today, yesterday, week, month and year
 //   *_mode_map                 → raw state → normalized mode
 // ctx.key(platform, domain, translation_key) finds entities via the entity registry (language-independent),
-// ctx.match(regex, platform) finds the first entity id matching a pattern.
+// ctx.match(regex, platform) finds the first entity id matching a pattern, ctx.state(entity_id) reads a current state.
 const HFC_PRESETS = {
   lambda: {
     name: 'Lambda (lambda_heat_pumps)',
@@ -130,6 +136,7 @@ const HFC_PRESETS = {
   // so entity ids and the HA language do not matter. Restrict to one device with `device:`.
   vicare: {
     name: 'Viessmann (ViCare)',
+    unit_style: 'viessmann',
     // Gas boilers also report outside_temperature, so only compressor entities count as a heat pump.
     detect: (ctx) => (ctx.key('vicare', 'binary_sensor', 'compressor') || ctx.key('vicare', 'sensor', 'compressor_phase')
       || ctx.key('vicare', 'sensor', 'compressor_starts') ? '' : undefined),
@@ -199,6 +206,74 @@ const HFC_PRESETS = {
     },
   },
 
+  // Viessmann Vitocal via the Open3E MQTT integration. The integration exposes stable
+  // translation keys; entity ids include the device name and serial number.
+  open3e: {
+    name: 'Viessmann (Open3E)',
+    index: { hc: 1 },
+    detect: (ctx) => (ctx.key('open3e', 'sensor', 'refrigeration_circuit_mode')
+      || ctx.key('open3e', 'binary_sensor', 'heat_pump_compressor_active') ? '' : undefined),
+    entities: (p, i, ctx) => {
+      const s = (...tks) => tks.map((tk) => ctx.key('open3e', 'sensor', tk)).filter(Boolean);
+      const b = (...tks) => tks.map((tk) => ctx.key('open3e', 'binary_sensor', tk)).filter(Boolean);
+      return {
+        mode: s('refrigeration_circuit_mode'),
+        compressor: b('heat_pump_compressor_active'),
+        valve: s('four_three_way_valve_position'),
+        power: s('power_consumption_system'),
+        heat: s('thermal_power'),
+        flow: s('flow_temperature'),
+        return: s('return_temperature'),
+        source_in: s('primary_inlet_temperature'),
+        outdoor: s('outside_temperature'),
+        brine_pressure: s('water_pressure'),
+        dhw_top: s('dhw_buffer_top_temperature', 'domestic_hot_water_temperature'),
+        dhw_middle: s('dhw_buffer_mid_temperature'),
+        dhw_bottom: s('dhw_buffer_bottom_temperature'),
+        dhw_target: s('domestic_hot_water_temperature_setpoint'),
+        dhw_mode: s('domestic_hot_water_status'),
+        buffer_top: s('heating_buffer_temperature', 'heating_cooling_buffer_temperature'),
+        buffer_mode: ctx.key('open3e', 'select', 'buffer_operation_mode'),
+        heater: b('additional_heater_active'),
+        hc_flow: s(`flow_circuit${i.hc}_temperature`),
+        hc_setpoint: s(`flow_circuit_${i.hc}_supply_temp_setpoint`),
+        hc_mode: ctx.key('open3e', 'climate', `climate_circuit_${i.hc}`),
+        hc_pump: b(`circuit_${i.hc}_pump`),
+        room: s(`room${i.hc}_temperature`),
+        cop_heating_today: s('cop_heating_today'),
+        cop_dhw_today: s('cop_dhw_today'),
+        energy_today: s('energy_consumption_total_today'),
+        starts_total: s('compressor_starts'),
+        hours: s('compressor_operating_hours'),
+        compressor_speed: s('compressor_speed_percentage'),
+        evap_temp: s('evaporation_vapor_temperature'),
+        suction_temp: s('compressor_inlet_temperature'),
+        hot_gas: s('compressor_outlet_temperature'),
+        low_pressure: s('compressor_inlet_pressure'),
+        high_pressure: s('compressor_outlet_pressure'),
+        eev: s('expansion_valve1_position'),
+      };
+    },
+    tiles: (p, i, ctx) => {
+      const s = (tk) => ctx.key('open3e', 'sensor', tk);
+      return {
+        cop_heating: { today: s('cop_heating_today') }, cop_dhw: { today: s('cop_dhw_today') },
+        cop_cooling: { today: s('cop_cooling_today') }, cop_total: { today: s('cop_total_today') },
+        energy: { today: s('energy_consumption_total_today') },
+        energy_heating: { today: s('energy_consumption_central_heating_today') },
+        energy_dhw: { today: s('energy_consumption_domestic_hot_water_today') },
+        energy_cooling: { today: s('energy_consumption_cooling_today') },
+        heat_heating: { today: s('thermal_output_today') }, heat_dhw: { today: s('warm_water_output_today') },
+        starts: { total: s('compressor_starts') }, hours: { total: s('compressor_operating_hours') },
+        aux_hours: { total: s('additional_heater_operating_hours') }, aux_starts: { total: s('additional_heater_starts') },
+      };
+    },
+    mode_map: { off: 'off', shutdown: 'idle', heating: 'heating', cooling: 'cooling', defrost: 'defrost', grid_lock: 'blocked' },
+    dhw_mode_map: { off: 'idle', hot_water: 'dhw', parallel_operation: 'dhw', hygiene_function: 'legionella', automatic: 'idle' },
+    buffer_mode_map: { heating: 'heating', cooling: 'cooling' },
+    hc_mode_map: { heat: 'heating', cool: 'cooling', off: 'off', auto: 'idle' },
+  },
+
   // Vaillant aroTHERM via myPyllant (HACS). Names are fixed English strings prefixed with the
   // home name, so entity ids follow sensor.<home>_…; indices start at 0 (circuit_0, domestic_hot_water_0).
   vaillant: {
@@ -251,6 +326,7 @@ const HFC_PRESETS = {
   // the "multiple instances" entity format adds a prefix, which is detected. Enum texts follow the EMS-ESP language.
   emsesp: {
     name: 'EMS-ESP (Bosch, Buderus, Junkers, Nefit …)',
+    unit_style: 'bosch',
     source_type: (e, hass) => (/hpbrinein$/.test(e.source_in || '') && hass.states[e.source_in] ? 'brine' : 'air'),
     detect: (ctx) => {
       // Gas boilers have curflowtemp as well; only heat pump entities count.
@@ -318,21 +394,29 @@ const HFC_PRESETS = {
   // Entity ids are slugs of the MQTT topics: sensor.<prefix>_main_<topic>, prefix default panasonic_heat_pump.
   heishamon: {
     name: 'Panasonic Aquarea (HeishaMon)',
+    tested: true,
+    unit_style: 'panasonic',
     auto_circuits: false,
     detect: (ctx) => {
       const id = ctx.match(/^sensor\.(.+)_main_main_outlet_temp$/, 'aquarea');
       return id === undefined ? undefined : id.replace(/^sensor\./, '').replace(/_main_main_outlet_temp$/, '');
     },
-    entities: (p, i) => {
+    entities: (p, i, ctx) => {
       const m = `${p}_main_`;
       const z = `z${i.hc}`;
+      // Z1_Temp is the room temperature only with a room sensor at the zone ("Internal Thermostat", "Thermistor").
+      // With "Water Temperature" or "External Thermostat" it is the zone water temperature; then the remote control sensor is the room.
+      const zoneRoom = ['Internal Thermostat', 'Thermistor'].includes(ctx.state(`sensor.${m}z1_sensor_settings`));
       return {
         compressor: `sensor.${m}compressor_freq`,
         valve: `sensor.${m}threeway_valve_state`,
         defrost: [`binary_sensor.${m}defrosting_state`, `switch.${m}defrosting_state`],
         heater: [`binary_sensor.${m}internal_heater_state`, `sensor.${m}internal_heater_state`],
-        power: `sensor.${m}heat_power_consumption`,
-        heat: `sensor.${m}heat_power_production`,
+        // The integration reads Power and Energy topics (firmware dependent), so the id has either spelling.
+        // The totals (sensor.<prefix>_consumption / _production) add heating, hot water and cooling;
+        // the heating values stay 0 W while the valve is on the tank.
+        power: [`sensor.${p}_consumption`, 'sensor.aquarea_energy_consumption', `sensor.${m}heat_power_consumption`, `sensor.${m}heat_energy_consumption`],
+        heat: [`sensor.${p}_production`, 'sensor.aquarea_energy_production', `sensor.${m}heat_power_production`, `sensor.${m}heat_energy_production`],
         flow: `sensor.${m}main_outlet_temp`,
         return: `sensor.${m}main_inlet_temp`,
         volume: `sensor.${m}pump_flow`,
@@ -340,9 +424,10 @@ const HFC_PRESETS = {
         dhw_top: `sensor.${m}dhw_temp`,
         dhw_target: [`number.${m}dhw_target_temp`, `sensor.${m}dhw_target_temp`],
         hc_flow: `sensor.${m}${z}_water_temp`,
-        hc_setpoint: i.hc === 1 ? `sensor.${m}main_target_temp` : undefined,
-        room: `sensor.${m}z1_temp`,
-        program: `sensor.${m}holiday_mode_state`,
+        // main_target_temp follows the hot-water target while the valve is on the tank, so the zone target comes first.
+        hc_setpoint: [`sensor.${m}${z}_water_target_temp`, i.hc === 1 ? `sensor.${m}main_target_temp` : undefined],
+        room: zoneRoom ? `sensor.${m}z1_temp` : [`sensor.${m}room_thermostat_temp`, `sensor.${m}z1_temp`],
+        program: [`sensor.${m}holiday_mode_state`, `switch.${m}holiday_mode_state`],
         hours: `sensor.${m}operations_hours`,
         starts_total: `sensor.${m}operations_counter`,
         aux_hours: `sensor.${m}room_heater_operations_hours`,
@@ -353,18 +438,231 @@ const HFC_PRESETS = {
         eev: `sensor.${m}expansion_valve`,
       };
     },
-    // Holiday mode reports Off / Scheduled / Active.
-    program_map: { Active: 'holiday', Scheduled: 'none', Off: 'none' },
+    // Holiday mode reports Off / Scheduled / Active as a sensor, or on / off as a switch.
+    program_map: { Active: 'holiday', Scheduled: 'none', Off: 'none', on: 'holiday' },
     // No energy counters: heat and electricity per mode as current power, so the COP tiles work for "now".
     tiles: (p) => {
       const m = `sensor.${p}_main_`;
+      const both = (topic) => [`${m}${topic}_power_`, `${m}${topic}_energy_`];
+      const now = (topic, kind) => ({ now: both(topic).map((x) => x + kind) });
       return {
-        energy_heating: { now: `${m}heat_power_consumption` }, heat_heating: { now: `${m}heat_power_production` },
-        energy_dhw: { now: `${m}dhw_power_consumption` }, heat_dhw: { now: `${m}dhw_power_production` },
-        energy_cooling: { now: `${m}cool_power_consumption` }, heat_cooling: { now: `${m}cool_power_production` },
+        energy_heating: now('heat', 'consumption'), heat_heating: now('heat', 'production'),
+        energy_dhw: now('dhw', 'consumption'), heat_dhw: now('dhw', 'production'),
+        energy_cooling: now('cool', 'consumption'), heat_cooling: now('cool', 'production'),
         starts: { total: `${m}operations_counter` }, hours: { total: `${m}operations_hours` },
         aux_hours: { total: `${m}room_heater_operations_hours` },
       };
+    },
+  },
+
+  // Wolf heat pumps (CHA …) via the core wolflink integration (WOLF Link home, SmartSet cloud, polled every 60 s).
+  // Entity ids are sensor.<device>_<parameter name> with names in the SmartSet language (English expected here); list states
+  // are German texts or their slugs (heizbetrieb, Abtaubetrieb …). Names that repeat get _2, _3 in no fixed order and are not used.
+  wolf: {
+    name: 'Wolf (wolflink)',
+    // The integration also serves gas and oil boilers; only heat pumps report a compressor status (Verdichterstatus).
+    detect: (ctx) => {
+      const id = ctx.match(/^sensor\.(.+)_compressor_status$/, 'wolflink');
+      return id === undefined ? undefined : id.replace(/^sensor\./, '').replace(/_compressor_status$/, '');
+    },
+    entities: (p) => {
+      const s = (name) => `sensor.${p}_${name}`;
+      return {
+        mode: s('operating_mode_heater'),
+        status: s('compressor_status'),
+        compressor: s('compressor_frequency'),
+        compressor_speed: s('current_capacity_specification_compressor'),
+        power: s('power_consumption_wp_ehz'),
+        heat: s('current_secondary_power'),
+        flow: s('boiler_water_temperature'),
+        return: s('return_temperature'),
+        volume: s('hc_flow_rate'),
+        outdoor: s('outside_temperature'),
+        valve: s('3_way_diverter_valve_htg_dhw'),
+        heater: s('electric_booster_heater'),
+        dhw_top: s('dhw_temperature'),
+        dhw_target: s('set_dhw_temperature_adjusted'),
+        hc_flow: s('flow_temperature'),
+        hc_pump: s('mkp_mixer_circuit_pump'),
+        hc_mode: s('mixer_circuit_status'),
+        hc_pressure: s('system_pressure'),
+        room: s('room_temperature'),
+        room_target: s('day_temperature'),
+        program: s('holiday_mode'),
+        hours: s('compressor_operating_hours'),
+        aux_hours: s('e_heating_operating_hours'),
+      };
+    },
+    // Heat counters only: the electricity counters stay 0 without an energy meter at the heat pump, which would give empty COP tiles.
+    tiles: (p) => {
+      const s = (name) => `sensor.${p}_${name}`;
+      return {
+        heat: { yesterday: s('heat_generated_previous_day'), month: s('heat_generated_current_month'), year: s('heat_generated_current_year') },
+        heat_heating: { total: s('energy_amount_htg') }, heat_dhw: { total: s('energy_amount_dhw') }, heat_cooling: { total: s('clg_energy_amount') },
+        hours: { total: s('compressor_operating_hours') }, aux_hours: { total: s('e_heating_operating_hours') },
+      };
+    },
+    errors: (p) => [`sensor.${p}_sub_fault_code`],
+    // "Betriebsart Heizgerät" list items (wolf-comm parameter example for heat pumps), as wolflink reports them.
+    mode_map: {
+      heizbetrieb: 'heating', warmwasser: 'dhw', 'WW-Nachlauf': 'circulate', 'HZ-Nachlauf': 'circulate', Abtaubetrieb: 'defrost', standby: 'idle',
+      'Aktive Kühlung': 'cooling', 'Nachlauf K': 'circulate', 'Frostschutz HK': 'frost', 'Frostschutz Warmwasser': 'frost',
+      antilegionellenfunktion: 'dhw', Pool: 'heating',
+    },
+    // "Mischerkreis Status" list items.
+    hc_mode_map: {
+      aus: 'off', heizbetrieb: 'heating', absenkbetrieb: 'heating', eco: 'heating', absenkstop: 'heating', Kühlbetrieb: 'cooling',
+      at_abschaltung: 'off', rt_abschaltung: 'off', at_frostschutz: 'frost', rt_frostschutz: 'frost', warmwasservorrang: 'idle',
+    },
+    program_map: { aktiviert: 'holiday', deaktiviert: 'none' },
+    running_states: ['Betrieb'],
+    status_labels: {
+      de: { vorspulen: 'Vorspülen', nachspulen: 'Nachspülen', Sperrzeit: 'Sperrzeit', 'EVU Sperre': 'EVU-Sperre' },
+      en: { vorspulen: 'pre-flush', nachspulen: 'post-flush', Sperrzeit: 'blocking time', 'EVU Sperre': 'utility lock' },
+    },
+  },
+
+  // Kronoterm (ADAPT, ETERA, VERSI, WPLV …) via the "Kronoterm" integration (HACS), Cloud API or Modbus. Entities are
+  // found by translation_key, so entity ids and the HA language do not matter. Cloud and Modbus name the circuit
+  // temperatures differently (loop_1_inlet_temperature, loop_1_temp); both spellings are candidates.
+  kronoterm: {
+    name: 'Kronoterm',
+    tested: true,
+    // The hot water heat pumps of the Kronoterm DHW cloud have neither, so only heating heat pumps are detected.
+    detect: (ctx) => (ctx.key('kronoterm', 'sensor', 'working_function') || ctx.key('kronoterm', 'sensor', 'hp_outlet_temperature') ? '' : undefined),
+    entities: (p, i, ctx) => {
+      const s = (...tks) => tks.map((tk) => ctx.key('kronoterm', 'sensor', tk)).filter(Boolean);
+      const b = (tk) => ctx.key('kronoterm', 'binary_sensor', tk);
+      const c = (tk) => ctx.key('kronoterm', 'climate', tk);
+      const n = i.hc;
+      // With a room thermostat the Cloud reports the room temperature as loop_<n>_temperature, without one the loop water.
+      const thermostat = s(`loop_${n}_thermostat_temperature`);
+      return {
+        mode: s('working_function'),
+        // HP load in %: above 0 while the compressor runs, also while it defrosts (power and heat output then read 0).
+        compressor: s('hp_load'),
+        defrost: b('defrost_status'),
+        // Bit 1 of register 2028, the hot water circulator: on exactly while the tank is charged.
+        valve: b('dhw_circulation_pump'),
+        power: s('current_heating_cooling_power'),
+        heat: s('current_heating_cooling_capacity'),
+        flow: s('hp_outlet_temperature'),
+        return: s('hp_inlet_temperature'),
+        outdoor: s('temperature_outside'),
+        heater: b('reserve_source_status'),
+        // The Cloud has the tank temperature only as the current temperature of the DHW thermostat (climate).
+        dhw_top: [...s('dhw_temperature'), c('dhw_temperature')],
+        dhw_target: [...s('dhw_current_setpoint'), c('dhw_temperature')],
+        circulation: b('circulation_pump'),
+        hc_flow: [...s(`loop_${n}_inlet_temperature`, `loop_${n}_temp`), ...(thermostat.length ? [] : s(`loop_${n}_temperature`))],
+        hc_pump: b(`circulation_loop_${n}`),
+        hc_pressure: s('heating_system_pressure'),
+        room: thermostat,
+        room_target: thermostat.length ? [...s(`loop_${n}_room_current_setpoint`), c(`loop_${n}_temperature`)] : undefined,
+        program: [ctx.key('kronoterm', 'select', 'operational_mode'), ...s('operation_program')],
+        energy_today: s('energy_combined'),
+        aux_hours: s('operating_hours_additional_source_1'),
+        energy_total: s('electrical_energy_heating_dhw'),
+        compressor_speed: s('hp_load'),
+        evap_temp: s('temperature_compressor_inlet'),
+        hot_gas: s('temperature_compressor_outlet'),
+      };
+    },
+    // Today's electricity per use from the Cloud; compressor starts per use and the SCOP as totals.
+    tiles: (p, i, ctx) => {
+      const s = (tk) => ctx.key('kronoterm', 'sensor', tk);
+      return {
+        energy_heating: { today: s('energy_heating') }, energy_dhw: { today: s('energy_dhw') }, energy_aux: { today: s('energy_heater') },
+        cop_total: { total: s('scop_value') },
+        cycles_heating: { total: s('compressor_activations_heating') }, cycles_dhw: { total: s('activations_boiler') },
+        cycles_cooling: { total: s('compressor_activations_cooling') },
+        aux_hours: { total: s('operating_hours_additional_source_1') },
+      };
+    },
+    errors: (p, i, ctx) => [ctx.key('kronoterm', 'sensor', 'error_warning')].filter(Boolean),
+    // Cloud: no_error, warning, error. Modbus: no_error, warning, alarm, notice.
+    error_ok: ['no_error', 'notice'],
+    mode_map: {
+      heating: 'heating', dhw: 'dhw', cooling: 'cooling', pool_heating: 'heating', thermal_disinfection: 'dhw',
+      standby: 'idle', start: 'heating', remote_deactivation: 'blocked', protection: 'blocked',
+    },
+  },
+
+  // Vaillant aroTHERM / aroTHERM plus (HMU) on the eBUS via ebusd and its Home Assistant MQTT discovery.
+  // Entity ids are <topic prefix>_<circuit>_<message>[_<field>]; Home Assistant may put the device name in front
+  // (sensor.heating_ebusd_hmu_…), so every lookup accepts a leading part. Circuits: hmu (outdoor unit), vwzio (hydraulic
+  // station), ctlv2 / ctlv3 / ctls2 (sensoCOMFORT / multiMATIC, one message set). The buffer is not mapped: which VR 70/71
+  // sensor sits in it depends on the hydraulic scheme. Status texts from RunDataStatuscode in ebusd-configuration.
+  ebusd: {
+    name: 'ebusd (Vaillant aroTHERM, HMU)',
+    unit_style: 'vaillant',
+    // The controller reports all its circuits, inactive ones included, so the editor stub cannot count them.
+    auto_circuits: false,
+    detect: (ctx) => {
+      const id = ctx.match(/^sensor\.(?:.+_)?[a-z0-9]+_hmu_rundatastatuscode$/, 'mqtt');
+      return id === undefined ? undefined : id.match(/([a-z0-9]+)_hmu_rundatastatuscode$/)[1];
+    },
+    entities: (p, i, ctx) => {
+      const x = p.replace(/[^a-z0-9_]/g, '');
+      const e = (circuit, name) => ctx.match(new RegExp(`^sensor\\.(?:.+_)?${x}_${circuit}_${name}$`), 'mqtt');
+      const h = (n) => e('hmu', n); const c = (n) => e('ctl[sv]\\d', n); const w = (n) => e('vwzio', n);
+      return {
+        mode: h('rundatastatuscode'),
+        compressor: h('rundatacompressorspeed'),
+        valve: w('statusdhw_dhwactive'),
+        power: h('currentconsumedpower'),
+        heat: h('currentyieldpower'),
+        flow: h('rundataflowtemp'),
+        return: h('rundatareturntemp'),
+        volume: h('buildingcircuitflow'),
+        source_in: h('rundataairinlettemp'),
+        outdoor: [e('broadcast', 'outsidetemp'), c('displayedoutsidetemp')],
+        dhw_top: [c('hwcstoragetemp'), w('statusdhw_hwcstoragetemp')],
+        dhw_target: c('hwctempdesired'),
+        hc_flow: c(`hc${i.hc}flowtemp`),
+        hc_setpoint: c(`hc${i.hc}actualflowtempdesired`),
+        hc_pump: c(`hc${i.hc}pumpstatus`),
+        // One system pressure: only for the first circuit, the further ones would copy it as hc2_pressure …
+        hc_pressure: i.hc === 1 ? [h('flowpressure'), c('waterpressure')] : undefined,
+        room: c(`z${i.hc}roomtemp`),
+        room_target: c(`z${i.hc}actualroomtempdesired`),
+        hours: h('runstatscompressorhours'),
+        starts_total: h('runstatscompressorstarts'),
+        aux_hours: w('immersionheaterhours'),
+        energy_total: h('statelectricenergysum'),
+        env_energy: h('statenvironmentenergysum'),
+        compressor_speed: h('rundatacompressorspeed'),
+        evap_temp: h('rundataevaporationtemp'),
+        suction_temp: h('rundatacompressorinlettemp'),
+        hot_gas: h('rundatacompressoroutlettemp'),
+        high_pressure: h('rundatahighpressure'),
+        eev: h('rundataeevpositionabs'),
+        superheat: h('rundataoverheatingactualvalue'),
+      };
+    },
+    // Lifetime counters per mode; today, month … come from their long-term statistics.
+    tiles: (p, i, ctx) => {
+      const x = p.replace(/[^a-z0-9_]/g, '');
+      const t = (name) => ({ total: ctx.match(new RegExp(`^sensor\\.(?:.+_)?${x}_hmu_${name}$`), 'mqtt') });
+      return {
+        energy: t('statelectricenergysum'), energy_heating: t('statelectricenergysumhc'), energy_dhw: t('statelectricenergysumhwc'),
+        energy_cooling: t('statelectricenergysumcool'), env_energy: t('statenvironmentenergysum'),
+        starts: t('runstatscompressorstarts'), hours: t('runstatscompressorhours'),
+      };
+    },
+    errors: (p, i, ctx) => [ctx.match(new RegExp(`^sensor\\.(?:.+_)?${p.replace(/[^a-z0-9_]/g, '')}_hmu_currenterror_error$`), 'mqtt')].filter(Boolean),
+    // Pre-run, overrun and shutdown keep the mode of their phase; the compressor speed tells whether it runs.
+    // Fault codes (fan1_blocked, building_circuit_flow_too_low …) stay unmapped and show as text.
+    mode_map: {
+      standby: 'idle', frost_protect: 'frost', compressor_oil_heating_active: 'idle', air_purging_program_active: 'circulate',
+      deicing_active: 'defrost',
+      heat_prerun: 'heating', heat_compressor_active: 'heating', heat_overrun: 'heating', heat_compressor_shutdown: 'heating',
+      heat_immersion_heater_active: 'heating', heat_immersion_heater_shutdown: 'heating',
+      heat_compressor_blocked: 'blocked', heat_immersion_heater_blocked: 'blocked',
+      hwc_prerun: 'dhw', hwc_compressor_active: 'dhw', hwc_overrun: 'dhw', hwc_immersion_heater_active: 'dhw', hwc_immersion_heater_shutdown: 'dhw',
+      hwc_compressor_blocked: 'blocked', hwc_immersion_heater_blocked: 'blocked',
+      cool_prerun: 'cooling', cool_compressor_active: 'cooling', cool_overrun: 'cooling', cool_compressor_shutdown: 'cooling',
+      cool_compressor_blocked: 'blocked',
     },
   },
 
@@ -440,15 +738,20 @@ const HFC_I18N = {
     not_found: 'No entities of this preset found. Check the integration and the prefix, or open the card editor.',
     title: 'Heat pump', heat_pump: 'Heat pump', dhw: 'Hot water', buffer: 'Buffer', heating_circuit: 'Heating circuit',
     house: 'Rooms', running: 'running', compressor_off: 'Compressor off', source_in: 'Air inlet', outdoor: 'Outdoor',
+    energy_missing: 'Energy dashboard: no power sensor for {sources}; energy counters alone cannot show live flow.',
     brine_in: 'Brine in', brine_out: 'Brine out', well_in: 'Well in', well_out: 'Well out',
-    details: 'Details', sec_operation: 'Operation', sec_refrigerant: 'Refrigerant circuit', sec_more: 'More',
+    details: 'Details', sec_operation: 'Operation', sec_hydraulic: 'Hydraulic pressures', sec_refrigerant: 'Refrigerant circuit', sec_cutouts: 'Cut-outs (number of events)', sec_more: 'More',
+    diagnostic_copy: 'Copy diagnostic report', diagnostic_copied: 'Diagnostic report copied', diagnostic_failed: 'Could not copy diagnostic report',
+    fullscreen_open: 'Open full screen', fullscreen_close: 'Close full screen',
     det: {
       hours: 'Compressor hours', starts_total: 'Compressor starts total', aux_hours: 'Heater hours', energy_total: 'Electricity total',
-      heat_total: 'Heat total', cop_total: 'COP total', compressor_speed: 'Compressor', evap_temp: 'Evaporation', cond_temp: 'Condensation',
+      cutout_high_pressure: 'High-pressure cut-outs', cutout_low_pressure: 'Low-pressure cut-outs', cutout_temperature: 'Temperature cut-outs',
+      env_energy: 'Environmental energy total', heat_total: 'Heat total', cop_total: 'COP total', compressor_speed: 'Compressor', evap_temp: 'Evaporation', cond_temp: 'Condensation',
       suction_temp: 'Suction gas', hot_gas: 'Hot gas', liquid_temp: 'Liquid line', low_pressure: 'Low pressure', high_pressure: 'High pressure',
       eev: 'Expansion valve', superheat: 'Superheat', subcooling: 'Subcooling',
     },
-    source_flow: 'Source', target: 'Target', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW', solar: 'Solar',
+    source_flow: 'Source', target: 'Target', middle: 'middle', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW', solar: 'Solar',
+    brine_pressure: 'Brine pressure', hc_pressure: 'Heating pressure', pressure_normal: 'normal', pressure_warning: 'warning', pressure_critical: 'critical',
     timeline_title: 'Last {h} hours', timeline_gap: 'No data', timeline_aria: 'Operating mode of the last {h} hours. Arrow keys select a period.',
     programs: { eco: 'Eco', night: 'Night', party: 'Party', holiday: 'Holiday' },
     valve_heating: 'Heating', valve_cooling: 'Cooling', pv: 'PV', battery: 'Battery', grid: 'Grid',
@@ -456,13 +759,13 @@ const HFC_I18N = {
     stat_starts: 'Starts today', stat_spread: 'Spread', stat_volume: 'Flow rate', stat_heat: 'Heat output', pv_share: 'PV',
     tiles: {
       cop_live: 'COP live', cop_heating: 'COP heating', cop_dhw: 'COP DHW', cop_cooling: 'EER cooling', cop_total: 'COP total', spf: 'SPF (year)',
-      energy: 'Electricity', energy_heating: 'Electricity heating', energy_dhw: 'Electricity DHW', energy_cooling: 'Electricity cooling',
+      energy: 'Electricity', env_energy: 'Environmental energy', energy_heating: 'Electricity heating', energy_dhw: 'Electricity DHW', energy_cooling: 'Electricity cooling',
       energy_defrost: 'Electricity defrost', energy_standby: 'Standby', energy_aux: 'Electricity heater',
       heat: 'Heat', heat_heating: 'Heat heating', heat_dhw: 'Heat DHW', heat_cooling: 'Cooling output', heat_defrost: 'Heat defrost',
       starts: 'Compressor starts', cycles_heating: 'Heating cycles', cycles_dhw: 'DHW cycles', cycles_cooling: 'Cooling cycles', defrosts: 'Defrosts',
       hours: 'Compressor hours', hours_per_start: 'Runtime per start', load_classes: 'Load classes 1-5', aux_hours: 'Heater hours', aux_starts: 'Heater starts',
       spread: 'Spread', volume: 'Flow rate', heat_estimated: 'Heat output', power: 'Power', heat_live: 'Heat output', compressor_speed: 'Compressor',
-      source_spread: 'Source spread', outdoor: 'Outdoor', dhw_top: 'DHW tank', room: 'Room', pv_share: 'PV share today',
+      source_spread: 'Source spread', outdoor: 'Outdoor', dhw_top: 'DHW tank', room: 'Room', brine_pressure: 'Brine pressure', hc_pressure: 'Heating pressure', pv_share: 'PV share today',
       pv_production: 'PV yield', solar_thermal: 'Solar thermal', cost: 'Cost',
     },
     periods: { now: 'now', today: 'today', yesterday: 'yesterday', week: 'week', month: 'month', year: 'year', total: 'total' },
@@ -475,15 +778,20 @@ const HFC_I18N = {
     not_found: 'Keine Entitäten dieser Voreinstellung gefunden. Integration und Präfix prüfen oder den Karteneditor öffnen.',
     title: 'Wärmepumpe', heat_pump: 'Wärmepumpe', dhw: 'Warmwasser', buffer: 'Puffer', heating_circuit: 'Heizkreis',
     house: 'Wohnräume', running: 'läuft', compressor_off: 'Verdichter aus', source_in: 'Luft-Eintritt', outdoor: 'Außen',
+    energy_missing: 'Energie-Dashboard: kein Leistungssensor für {sources}; Energiezähler allein zeigen keinen aktuellen Fluss.',
     brine_in: 'Sole ein', brine_out: 'Sole aus', well_in: 'Brunnen ein', well_out: 'Brunnen aus',
-    details: 'Details', sec_operation: 'Betrieb', sec_refrigerant: 'Kältekreis', sec_more: 'Weitere',
+    details: 'Details', sec_operation: 'Betrieb', sec_hydraulic: 'Hydraulikdrücke', sec_refrigerant: 'Kältekreis', sec_cutouts: 'Abschaltungen (Anzahl der Ereignisse)', sec_more: 'Weitere',
+    diagnostic_copy: 'Diagnosebericht kopieren', diagnostic_copied: 'Diagnosebericht kopiert', diagnostic_failed: 'Diagnosebericht konnte nicht kopiert werden',
+    fullscreen_open: 'Vollbild öffnen', fullscreen_close: 'Vollbild schließen',
     det: {
       hours: 'Betriebsstunden Verdichter', starts_total: 'Verdichterstarts gesamt', aux_hours: 'Betriebsstunden Heizstab', energy_total: 'Strom gesamt',
-      heat_total: 'Wärme gesamt', cop_total: 'COP gesamt', compressor_speed: 'Verdichter', evap_temp: 'Verdampfung', cond_temp: 'Kondensation',
+      cutout_high_pressure: 'Hochdruck-Abschaltungen', cutout_low_pressure: 'Niederdruck-Abschaltungen', cutout_temperature: 'Temperatur-Abschaltungen',
+      env_energy: 'Umweltenergie gesamt', heat_total: 'Wärme gesamt', cop_total: 'COP gesamt', compressor_speed: 'Verdichter', evap_temp: 'Verdampfung', cond_temp: 'Kondensation',
       suction_temp: 'Sauggas', hot_gas: 'Heißgas', liquid_temp: 'Flüssigkeitsleitung', low_pressure: 'Niederdruck', high_pressure: 'Hochdruck',
       eev: 'Expansionsventil', superheat: 'Überhitzung', subcooling: 'Unterkühlung',
     },
-    source_flow: 'Quelle', target: 'Soll', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW', solar: 'Solar',
+    source_flow: 'Quelle', target: 'Soll', middle: 'Mitte', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW', solar: 'Solar',
+    brine_pressure: 'Soledruck', hc_pressure: 'Heizungsdruck', pressure_normal: 'normal', pressure_warning: 'Warnung', pressure_critical: 'kritisch',
     timeline_title: 'Letzte {h} Stunden', timeline_gap: 'Keine Daten', timeline_aria: 'Betriebsart der letzten {h} Stunden. Mit den Pfeiltasten einen Zeitraum wählen.',
     programs: { eco: 'Eco', night: 'Nacht', party: 'Party', holiday: 'Urlaub' },
     valve_heating: 'Heizen', valve_cooling: 'Kühlen', pv: 'PV', battery: 'Akku', grid: 'Netz',
@@ -491,13 +799,13 @@ const HFC_I18N = {
     stat_starts: 'Starts heute', stat_spread: 'Spreizung', stat_volume: 'Volumenstrom', stat_heat: 'Wärmeleistung', pv_share: 'PV',
     tiles: {
       cop_live: 'COP live', cop_heating: 'COP Heizen', cop_dhw: 'COP WW', cop_cooling: 'EER Kühlen', cop_total: 'COP gesamt', spf: 'JAZ',
-      energy: 'Strom', energy_heating: 'Strom Heizen', energy_dhw: 'Strom WW', energy_cooling: 'Strom Kühlen',
+      energy: 'Strom', env_energy: 'Umweltenergie', energy_heating: 'Strom Heizen', energy_dhw: 'Strom WW', energy_cooling: 'Strom Kühlen',
       energy_defrost: 'Strom Abtauen', energy_standby: 'Standby', energy_aux: 'Strom Heizstab',
       heat: 'Wärme', heat_heating: 'Wärme Heizen', heat_dhw: 'Wärme WW', heat_cooling: 'Kälte', heat_defrost: 'Wärme Abtauen',
       starts: 'Verdichterstarts', cycles_heating: 'Heizzyklen', cycles_dhw: 'WW-Zyklen', cycles_cooling: 'Kühlzyklen', defrosts: 'Abtauungen',
       hours: 'Verdichterstunden', hours_per_start: 'Laufzeit pro Start', load_classes: 'Lastklassen 1-5', aux_hours: 'Heizstab-Stunden', aux_starts: 'Heizstab-Starts',
       spread: 'Spreizung', volume: 'Volumenstrom', heat_estimated: 'Wärmeleistung', power: 'Leistung', heat_live: 'Wärmeleistung', compressor_speed: 'Verdichter',
-      source_spread: 'Spreizung Quelle', outdoor: 'Außen', dhw_top: 'WW-Speicher', room: 'Raum', pv_share: 'PV-Anteil heute',
+      source_spread: 'Spreizung Quelle', outdoor: 'Außen', dhw_top: 'WW-Speicher', room: 'Raum', brine_pressure: 'Soledruck', hc_pressure: 'Heizungsdruck', pv_share: 'PV-Anteil heute',
       pv_production: 'PV-Ertrag', solar_thermal: 'Solarthermie', cost: 'Kosten',
     },
     periods: { now: 'aktuell', today: 'heute', yesterday: 'gestern', week: 'Woche', month: 'Monat', year: 'Jahr', total: 'gesamt' },
@@ -508,22 +816,37 @@ const HFC_I18N = {
   },
 };
 
+// Translation objects are a public configuration surface. Merge them recursively so a custom language only needs to
+// provide the labels it changes; every missing leaf falls back to English (and then to a built-in language, if present).
+const hfcTextMerge = (...parts) => {
+  const out = {};
+  parts.filter((p) => p && typeof p === 'object' && !Array.isArray(p)).forEach((part) => Object.entries(part).forEach(([key, value]) => {
+    if (['__proto__', 'constructor', 'prototype'].includes(key)) return;
+    out[key] = value && typeof value === 'object' && !Array.isArray(value) ? hfcTextMerge(out[key], value) : value;
+  }));
+  return out;
+};
+
 const HFC_EDITOR = {
   en: {
     preset: 'Preset', prefix: 'Prefix (empty = auto-detect)', device: 'Device (optional, restricts the preset)',
     title: 'Title', language: 'Language', power_threshold: 'Running above (W)', hc_type: 'Heat emitter',
     power_sources: 'PV / battery / grid', ps_auto: 'Energy dashboard, unless set below', ps_manual: 'Only the sensors below',
     source_type: 'Heat source', src_air: 'Air', src_brine: 'Ground (brine)', src_water: 'Groundwater',
-    hc_count: 'Heating circuits', hc2_type: 'Circuit 2 emitter', hc3_type: 'Circuit 3 emitter',
-    unit_style: 'Unit drawing', unit_auto: 'Automatic (from the preset)', unit_generic: 'Generic (fan)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus',
+    hc_count: 'Heating circuits', hc2_type: 'Circuit 2 emitter', hc3_type: 'Circuit 3 emitter', hc4_type: 'Circuit 4 emitter', hc5_type: 'Circuit 5 emitter', hc6_type: 'Circuit 6 emitter',
+    unit_style: 'Unit drawing', unit_auto: 'Automatic (from the preset)', unit_generic: 'Generic (fan)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus', unit_panasonic: 'Panasonic Aquarea', unit_viessmann: 'Viessmann Vitocal', unit_bosch: 'Bosch / Buderus', unit_saunier: 'Saunier Duval GeniaAir', unit_samsung: 'Samsung EHS Mono',
     unit_size: 'Vaillant size', size_small: '3.5 / 5.5 kW (1 fan, low)', size_medium: '7.5 kW (1 fan)', size_large: '10.5 / 12.5 kW (2 fans)',
-    timeline: 'Timeline of the operating mode', timeline_hours: 'Timeline length (hours)',
+    timeline: 'Timeline of the operating mode', timeline_hours: 'Timeline length (hours)', timeline_marks: 'Show the badges (e.g. Boost) as extra lanes',
     layout: 'Layout', layout_default: 'Default', layout_compact: 'Compact (narrow columns)', layout_wide: 'Wide (tiles beside the schematic)', layout_wall: 'Wall display (large, controls fade out)',
+    animations: 'Animations', animations_auto: 'Automatic (respect reduced motion)', animations_always: 'Always', animations_off: 'Off',
+    flow_speed: 'Animation speed', source_spread: 'Show source spread',
+    theme: 'Card theme', theme_auto: 'Automatic (dashboard)', theme_night: 'Night', theme_contrast: 'High contrast', fullscreen: 'Full-screen button',
     wall_timeout: 'Hide controls after (seconds, 0 = never)',
-    hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name',
-    sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit',
+    hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name', hc4_name: 'Circuit 4 name', hc5_name: 'Circuit 5 name', hc6_name: 'Circuit 6 name',
+    sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_hc4: 'Heating circuit 4', sec_hc5: 'Heating circuit 5', sec_hc6: 'Heating circuit 6', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit', sec_cutouts: 'Details: cut-out counters',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
     from_preset: 'Found by the preset',
+    sum_help: 'Sum of these entities',
     sec_advanced: 'Advanced',
     tiles_custom: 'Own tile selection', tiles: 'Tiles (drag to sort)',
     tiles_custom_help: 'Off: default tiles. On: pick tiles and periods from what this installation provides; an empty list hides the row.',
@@ -531,30 +854,39 @@ const HFC_EDITOR = {
     price_fixed: 'Electricity price per kWh', price_entity: 'Electricity price entity',
     price_help: 'Enables the cost tile. With an entity that has long-term statistics (e.g. a dynamic tariff), the cost is billed per hour.',
     untested: 'untested',
-    untested_help: 'Not yet tested on a real installation. Please report whether it works: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
+    untested_help: 'Not yet tested on a real installation. Please report whether it works: github.com/Sturmi77/heatpump-hydraulic-card/issues (Preset feedback).',
     warn_title: 'Missing in the card',
     warn_running: 'No operating mode, compressor, status or power: the card cannot tell whether the heat pump runs.',
     warn_power: 'No electrical power: no live COP, and no PV / battery / grid split from the Energy dashboard.',
+    warn_energy_sources: 'Energy dashboard: no power sensor for {sources}; energy counters alone cannot show live flow.',
     warn_temps: 'No flow or return temperature: no spread and no estimated heat output.',
     warn_heat: 'No heat output and no flow rate: no live COP.',
     preset_help: 'Found entities are filled in below. Pick another entity to override one, clear a field to hide it.',
     from_energy: 'Empty: taken from the Energy dashboard',
+    errors: 'Error entities', error_ok_text: 'Text states that mean no error',
+    errors_help: 'Active for a number other than 0 or state on. Text needs the no-error states below; unknown, unavailable, off and empty are ignored.',
+    error_ok_help: 'Comma-separated, case-insensitive; for example: No Error, OK. Any other known text then shows the error chip.',
+    total_cop_help: 'Total heat, environmental energy and electricity must cover the same time range. Without total heat, COP uses environmental energy plus electricity.',
+    language_help: 'Additional languages and custom labels are configured with texts in YAML; missing labels fall back to English.',
     detected: 'Detected', entities_found: 'entities', not_detected: 'Not found in this Home Assistant - check the integration, the prefix or choose another preset',
     program: 'Heating program (eco, night, party, holiday)', solar_collector: 'Solar collector temperature', solar_pump: 'Solar pump running (binary)',
     source_out: 'Source outlet temperature', heater: 'Backup / inline heater active',
     dhw_heater: 'DHW heater rod active', buffer_heater: 'Buffer heater rod active',
-    hc_underfloor: 'Underfloor heating', hc_radiator: 'Radiators',
+    hc_underfloor: 'Underfloor heating', hc_radiator: 'Panel radiators', hc_column: 'Column radiators',
+    brine_pressure_min: 'Brine pressure warning below', brine_pressure_crit: 'Brine pressure critical below', brine_pressure_max: 'Brine pressure warning above',
+    hc_pressure_min: 'Heating pressure warning below', hc_pressure_crit: 'Heating pressure critical below', hc_pressure_max: 'Heating pressure warning above',
     sec_hp: 'Heat pump', sec_storage: 'Storage', sec_hc: 'Heating circuit & house', sec_power: 'Power sources', sec_stats: 'Statistics',
     mode: 'Operating mode', status: 'Status / sub-state', compressor: 'Compressor running (binary or frequency)', defrost: 'Defrost active (binary)', power: 'Electrical power',
     heat: 'Heat output', flow: 'Flow temperature', return: 'Return temperature', volume: 'Flow rate heating side',
     source_volume: 'Flow rate source side', source_in: 'Source / air inlet temperature', outdoor: 'Outdoor temperature',
     valve: 'Diverter valve on DHW (binary or Tank/Room)',
-    dhw_top: 'DHW tank top', dhw_bottom: 'DHW tank bottom', dhw_target: 'DHW target', dhw_mode: 'DHW mode',
-    circulation: 'Circulation pump', buffer_top: 'Buffer top', buffer_bottom: 'Buffer bottom', buffer_mode: 'Buffer mode',
+    dhw_top: 'DHW tank top', dhw_middle: 'DHW tank middle', dhw_bottom: 'DHW tank bottom', dhw_target: 'DHW target', dhw_mode: 'DHW mode',
+    circulation: 'Circulation pump', buffer_top: 'Buffer top', buffer_middle: 'Buffer middle', buffer_bottom: 'Buffer bottom', buffer_mode: 'Buffer mode',
     hc_flow: 'Circuit flow temperature', hc_return: 'Circuit return temperature', hc_setpoint: 'Circuit flow target',
-    hc_mode: 'Circuit mode', hc_pump: 'Circuit pump running (binary)', hc_volume: 'Circuit flow rate',
+    hc_mode: 'Circuit mode', hc_pump: 'Circuit pump running (binary)', hc_volume: 'Circuit flow rate', hc_pressure: 'Heating circuit pressure', brine_pressure: 'Brine circuit pressure',
+    cutout_high_pressure: 'High-pressure cut-outs (count of events, not a pressure)', cutout_low_pressure: 'Low-pressure cut-outs (count of events, not a pressure)', cutout_temperature: 'Temperature cut-outs (count of events, not a temperature)',
     room: 'Room temperature', room_target: 'Room target',
-    pv: 'Power from PV (W)', battery: 'Power from battery (W)', grid: 'Power from grid (W)',
+    env_energy: 'Environmental energy total', pv: 'Power from PV (W)', battery: 'Power from battery (W)', grid: 'Power from grid (W)',
     cop_heating_today: 'COP heating today', cop_dhw_today: 'COP DHW today', energy_today: 'Energy today (kWh)',
     pv_share_today: 'PV share today (%)', starts_today: 'Compressor starts today',
   },
@@ -563,16 +895,20 @@ const HFC_EDITOR = {
     title: 'Titel', language: 'Sprache', power_threshold: 'Läuft ab (W)', hc_type: 'Wärmeabgabe',
     power_sources: 'PV / Akku / Netz', ps_auto: 'Energie-Dashboard, außer unten gesetzt', ps_manual: 'Nur die Sensoren unten',
     source_type: 'Wärmequelle', src_air: 'Luft', src_brine: 'Erdreich (Sole)', src_water: 'Grundwasser',
-    hc_count: 'Heizkreise', hc2_type: 'Wärmeabgabe Heizkreis 2', hc3_type: 'Wärmeabgabe Heizkreis 3',
-    unit_style: 'Geräte-Zeichnung', unit_auto: 'Automatisch (aus der Voreinstellung)', unit_generic: 'Allgemein (Lüfter)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus',
+    hc_count: 'Heizkreise', hc2_type: 'Wärmeabgabe Heizkreis 2', hc3_type: 'Wärmeabgabe Heizkreis 3', hc4_type: 'Wärmeabgabe Heizkreis 4', hc5_type: 'Wärmeabgabe Heizkreis 5', hc6_type: 'Wärmeabgabe Heizkreis 6',
+    unit_style: 'Geräte-Zeichnung', unit_auto: 'Automatisch (aus der Voreinstellung)', unit_generic: 'Allgemein (Lüfter)', unit_lambda: 'Lambda EU-L', unit_vaillant: 'Vaillant aroTHERM plus', unit_panasonic: 'Panasonic Aquarea', unit_viessmann: 'Viessmann Vitocal', unit_bosch: 'Bosch / Buderus', unit_saunier: 'Saunier Duval GeniaAir', unit_samsung: 'Samsung EHS Mono',
     unit_size: 'Vaillant-Größe', size_small: '3,5 / 5,5 kW (1 Lüfter, niedrig)', size_medium: '7,5 kW (1 Lüfter)', size_large: '10,5 / 12,5 kW (2 Lüfter)',
-    timeline: 'Zeitleiste der Betriebsart', timeline_hours: 'Länge der Zeitleiste (Stunden)',
+    timeline: 'Zeitleiste der Betriebsart', timeline_hours: 'Länge der Zeitleiste (Stunden)', timeline_marks: 'Badges (z. B. Boost) als zusätzliche Spuren zeigen',
     layout: 'Layout', layout_default: 'Standard', layout_compact: 'Kompakt (schmale Spalten)', layout_wide: 'Breit (Kacheln neben dem Schema)', layout_wall: 'Wanddisplay (groß, Bedienelemente blenden aus)',
+    animations: 'Animationen', animations_auto: 'Automatisch (reduzierte Bewegung beachten)', animations_always: 'Immer', animations_off: 'Aus',
+    flow_speed: 'Animationsgeschwindigkeit', source_spread: 'Quellenspreizung anzeigen',
+    theme: 'Kartendarstellung', theme_auto: 'Automatisch (Dashboard)', theme_night: 'Nacht', theme_contrast: 'Hoher Kontrast', fullscreen: 'Vollbild-Schaltfläche',
     wall_timeout: 'Bedienelemente ausblenden nach (Sekunden, 0 = nie)',
-    hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3',
-    sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis',
+    hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3', hc4_name: 'Name Heizkreis 4', hc5_name: 'Name Heizkreis 5', hc6_name: 'Name Heizkreis 6',
+    sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_hc4: 'Heizkreis 4', sec_hc5: 'Heizkreis 5', sec_hc6: 'Heizkreis 6', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis', sec_cutouts: 'Details: Abschaltzähler',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
     from_preset: 'Von der Voreinstellung gefunden',
+    sum_help: 'Summe dieser Entitäten',
     sec_advanced: 'Erweitert',
     tiles_custom: 'Eigene Kachelauswahl', tiles: 'Kacheln (zum Sortieren ziehen)',
     tiles_custom_help: 'Aus: Standardkacheln. An: Kacheln und Zeiträume aus dem wählen, was diese Anlage liefert; eine leere Liste blendet die Zeile aus.',
@@ -580,50 +916,72 @@ const HFC_EDITOR = {
     price_fixed: 'Strompreis je kWh', price_entity: 'Strompreis-Entität',
     price_help: 'Schaltet die Kostenkachel frei. Mit einer Entität mit Langzeitstatistik (z. B. dynamischer Tarif) werden die Kosten stundengenau abgerechnet.',
     untested: 'ungetestet',
-    untested_help: 'Noch nicht mit einer echten Anlage getestet. Bitte melden, ob es funktioniert: github.com/Sturmi77/heatpump-flow-card/issues (Preset feedback).',
+    untested_help: 'Noch nicht mit einer echten Anlage getestet. Bitte melden, ob es funktioniert: github.com/Sturmi77/heatpump-hydraulic-card/issues (Preset feedback).',
     warn_title: 'Fehlt in der Karte',
     warn_running: 'Keine Betriebsart, kein Verdichter, kein Status und keine Leistung: Die Karte kann nicht erkennen, ob die Wärmepumpe läuft.',
     warn_power: 'Keine Leistungsaufnahme: kein Live-COP und keine Aufteilung PV / Akku / Netz aus dem Energie-Dashboard.',
+    warn_energy_sources: 'Energie-Dashboard: kein Leistungssensor für {sources}; Energiezähler allein zeigen keinen aktuellen Fluss.',
     warn_temps: 'Kein Vor- oder Rücklauf: keine Spreizung und keine geschätzte Wärmeleistung.',
     warn_heat: 'Keine Wärmeleistung und kein Volumenstrom: kein Live-COP.',
     preset_help: 'Gefundene Entitäten sind unten eingetragen. Andere Entität wählen zum Überschreiben, Feld leeren zum Ausblenden.',
     from_energy: 'Leer: aus dem Energie-Dashboard',
+    errors: 'Fehler-Entitäten', error_ok_text: 'Textzustände ohne Fehler',
+    errors_help: 'Aktiv bei einer Zahl ungleich 0 oder Zustand on. Text braucht die fehlerfreien Zustände unten; unknown, unavailable, off und leer werden ignoriert.',
+    error_ok_help: 'Kommagetrennt, ohne Beachtung der Groß-/Kleinschreibung; zum Beispiel: No Error, OK. Jeder andere bekannte Text zeigt dann den Fehler-Chip.',
+    total_cop_help: 'Gesamtwärme, Umweltenergie und Gesamtstrom müssen denselben Zeitraum abdecken. Ohne Gesamtwärme nutzt der COP Umweltenergie plus Strom.',
+    language_help: 'Weitere Sprachen und eigene Beschriftungen werden mit texts im YAML konfiguriert; fehlende Texte fallen auf Englisch zurück.',
     detected: 'Erkannt', entities_found: 'Entitäten', not_detected: 'In diesem Home Assistant nicht gefunden - Integration und Präfix prüfen oder andere Voreinstellung wählen',
     program: 'Heizprogramm (Eco, Nacht, Party, Urlaub)', solar_collector: 'Kollektortemperatur Solarthermie', solar_pump: 'Solarpumpe läuft (binär)',
     source_out: 'Quelle Austritt', heater: 'Heizstab / Zusatzheizer aktiv',
     dhw_heater: 'Heizstab Warmwasser aktiv', buffer_heater: 'Heizstab Puffer aktiv',
-    hc_underfloor: 'Flächenheizung', hc_radiator: 'Heizkörper',
+    hc_underfloor: 'Flächenheizung', hc_radiator: 'Plattenheizkörper', hc_column: 'Gliederheizkörper',
+    brine_pressure_min: 'Soledruck Warnung unter', brine_pressure_crit: 'Soledruck kritisch unter', brine_pressure_max: 'Soledruck Warnung über',
+    hc_pressure_min: 'Heizungsdruck Warnung unter', hc_pressure_crit: 'Heizungsdruck kritisch unter', hc_pressure_max: 'Heizungsdruck Warnung über',
     sec_hp: 'Wärmepumpe', sec_storage: 'Speicher', sec_hc: 'Heizkreis & Haus', sec_power: 'Stromquellen', sec_stats: 'Kennzahlen',
     mode: 'Betriebsart', status: 'Status / Unterzustand', compressor: 'Verdichter läuft (binär oder Frequenz)', defrost: 'Abtauen aktiv (binär)', power: 'Leistungsaufnahme',
     heat: 'Wärmeleistung', flow: 'Vorlauftemperatur', return: 'Rücklauftemperatur', volume: 'Volumenstrom Heizseite',
     source_volume: 'Volumenstrom Quelle', source_in: 'Quelle / Luft-Eintritt', outdoor: 'Außentemperatur',
     valve: 'Umschaltventil auf WW (binär oder Tank/Room)',
-    dhw_top: 'WW-Speicher oben', dhw_bottom: 'WW-Speicher unten', dhw_target: 'WW-Soll', dhw_mode: 'WW-Betriebsart',
-    circulation: 'Zirkulationspumpe', buffer_top: 'Puffer oben', buffer_bottom: 'Puffer unten', buffer_mode: 'Puffer-Betriebsart',
+    dhw_top: 'WW-Speicher oben', dhw_middle: 'WW-Speicher Mitte', dhw_bottom: 'WW-Speicher unten', dhw_target: 'WW-Soll', dhw_mode: 'WW-Betriebsart',
+    circulation: 'Zirkulationspumpe', buffer_top: 'Puffer oben', buffer_middle: 'Puffer Mitte', buffer_bottom: 'Puffer unten', buffer_mode: 'Puffer-Betriebsart',
     hc_flow: 'Heizkreis-Vorlauf', hc_return: 'Heizkreis-Rücklauf', hc_setpoint: 'Heizkreis-Vorlauf-Soll',
-    hc_mode: 'Heizkreis-Betriebsart', hc_pump: 'Heizkreispumpe läuft (binär)', hc_volume: 'Volumenstrom Heizkreis',
+    hc_mode: 'Heizkreis-Betriebsart', hc_pump: 'Heizkreispumpe läuft (binär)', hc_volume: 'Volumenstrom Heizkreis', hc_pressure: 'Heizkreis-Druck', brine_pressure: 'Solekreis-Druck',
+    cutout_high_pressure: 'Hochdruck-Abschaltungen (Anzahl der Ereignisse, kein Druck)', cutout_low_pressure: 'Niederdruck-Abschaltungen (Anzahl der Ereignisse, kein Druck)', cutout_temperature: 'Temperatur-Abschaltungen (Anzahl der Ereignisse, keine Temperatur)',
     room: 'Raumtemperatur', room_target: 'Raum-Soll',
-    pv: 'Strom aus PV (W)', battery: 'Strom aus Akku (W)', grid: 'Strom aus Netz (W)',
+    env_energy: 'Umweltenergie gesamt', pv: 'Strom aus PV (W)', battery: 'Strom aus Akku (W)', grid: 'Strom aus Netz (W)',
     cop_heating_today: 'COP Heizen heute', cop_dhw_today: 'COP WW heute', energy_today: 'Strom heute (kWh)',
     pv_share_today: 'PV-Anteil heute (%)', starts_today: 'Verdichterstarts heute',
   },
 };
 
+// Heating circuits the card can draw; circuit 1 uses the plain hc_ keys, circuits 2 to 6 hc2_ to hc6_.
+const HFC_MAX_HC = 6;
+const hfcHcCount = (config) => Math.min(Math.max(Math.round(+config?.hc_count) || 1, 1), HFC_MAX_HC);
+
 const HFC_ENTITY_GROUPS = {
-  sec_hp: ['mode', 'status', 'compressor', 'defrost', 'power', 'heat', 'flow', 'return', 'volume', 'source_volume', 'source_in', 'source_out', 'outdoor', 'valve', 'heater'],
-  sec_storage: ['dhw_top', 'dhw_bottom', 'dhw_target', 'dhw_mode', 'circulation', 'dhw_heater', 'buffer_top', 'buffer_bottom', 'buffer_mode', 'buffer_heater', 'solar_collector', 'solar_pump'],
-  sec_hc: ['hc_flow', 'hc_return', 'hc_setpoint', 'hc_mode', 'hc_pump', 'hc_volume', 'room', 'room_target', 'program'],
+  sec_hp: ['mode', 'status', 'compressor', 'defrost', 'power', 'heat', 'flow', 'return', 'volume', 'source_volume', 'source_in', 'source_out', 'brine_pressure', 'outdoor', 'valve', 'heater'],
+  sec_storage: ['dhw_top', 'dhw_middle', 'dhw_bottom', 'dhw_target', 'dhw_mode', 'circulation', 'dhw_heater', 'buffer_top', 'buffer_middle', 'buffer_bottom', 'buffer_mode', 'buffer_heater', 'solar_collector', 'solar_pump'],
+  sec_hc: ['hc_flow', 'hc_return', 'hc_setpoint', 'hc_mode', 'hc_pump', 'hc_volume', 'hc_pressure', 'room', 'room_target', 'program'],
   sec_hc2: ['hc2_flow', 'hc2_return', 'hc2_setpoint', 'hc2_mode', 'hc2_pump', 'hc2_volume'],
   sec_hc3: ['hc3_flow', 'hc3_return', 'hc3_setpoint', 'hc3_mode', 'hc3_pump', 'hc3_volume'],
+  sec_hc4: ['hc4_flow', 'hc4_return', 'hc4_setpoint', 'hc4_mode', 'hc4_pump', 'hc4_volume'],
+  sec_hc5: ['hc5_flow', 'hc5_return', 'hc5_setpoint', 'hc5_mode', 'hc5_pump', 'hc5_volume'],
+  sec_hc6: ['hc6_flow', 'hc6_return', 'hc6_setpoint', 'hc6_mode', 'hc6_pump', 'hc6_volume'],
   sec_power: ['pv', 'battery', 'grid'],
-  sec_details: ['hours', 'starts_total', 'aux_hours', 'energy_total', 'heat_total'],
+  sec_details: ['hours', 'starts_total', 'aux_hours', 'energy_total', 'env_energy', 'heat_total'],
   sec_refrigerant: ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev', 'superheat', 'subcooling'],
+  sec_cutouts: ['cutout_high_pressure', 'cutout_low_pressure', 'cutout_temperature'],
   sec_stats: ['cop_heating_today', 'cop_dhw_today', 'energy_today', 'pv_share_today', 'starts_today'],
 };
+const HFC_DIAGNOSTIC_KEYS = [...new Set(Object.values(HFC_ENTITY_GROUPS).flat())];
 // Entity domains usable as quick controls and the service each one calls.
 const HFC_CONTROL_DOMAINS = ['switch', 'input_boolean', 'light', 'fan', 'automation', 'button', 'input_button', 'script', 'scene',
   'select', 'input_select', 'water_heater', 'climate', 'number', 'input_number'];
-const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'hc2_pump', 'hc3_pump', 'circulation', 'defrost', 'heater', 'dhw_heater', 'buffer_heater', 'solar_pump'];
+const HFC_BINARY_KEYS = ['compressor', 'valve', 'hc_pump', 'hc2_pump', 'hc3_pump', 'hc4_pump', 'hc5_pump', 'hc6_pump', 'circulation', 'defrost', 'heater', 'dhw_heater', 'buffer_heater', 'solar_pump'];
+// Climate and water heater entities keep their temperatures in attributes: the reading in `current_temperature`, the target in
+// `temperature`. Keys ending in _target or _setpoint read the target, so one thermostat can serve as dhw_top and dhw_target.
+const hfcTempAttr = (id, key) => (['climate', 'water_heater'].includes(String(id || '').split('.')[0])
+  ? (/_(target|setpoint)$/.test(key || '') ? 'temperature' : 'current_temperature') : null);
 
 // Stat tile catalog for the `tiles` option. kind: cop | energy (kWh, or W for period "now") | count | hours | classes | cost.
 // legacy: entity key of the default tiles that serves as "today"; ratio: computed from two other tiles when the integration
@@ -634,9 +992,12 @@ const HFC_STAT_PERIODS = { today: ['day', 0], yesterday: ['day', -1], week: ['we
 // Home Assistant actions a tile can carry (more-info, navigate, url, toggle, perform-action …).
 const HFC_ACTIONS = ['tap_action', 'hold_action', 'double_tap_action'];
 const HFC_LAYOUTS = ['default', 'compact', 'wide', 'wall'];
+const HFC_ANIMATIONS = ['auto', 'always', 'off'];
+const HFC_THEMES = ['auto', 'night', 'contrast'];
 // Drawing of the outdoor unit: `auto` takes the style of the preset; `unit_size` picks the Vaillant aroTHERM plus class.
-const HFC_UNIT_STYLES = ['auto', 'generic', 'lambda', 'vaillant'];
+const HFC_UNIT_STYLES = ['auto', 'generic', 'lambda', 'vaillant', 'panasonic', 'viessmann', 'bosch', 'saunier', 'samsung'];
 const HFC_UNIT_SIZES = ['small', 'medium', 'large'];
+const HFC_EMITTERS = ['underfloor', 'radiator', 'column'];
 // Wall display: seconds the quick controls and the details toggle stay visible after the last touch or mouse move.
 const HFC_WALL_TIMEOUT = 10;
 // Heating program shown as a chip: the first pattern that matches the raw state of the `program` entity (or the circuit mode) wins.
@@ -672,7 +1033,7 @@ const HFC_TILES = {
   cop_cooling: { kind: 'cop', ratio: ['heat_cooling', 'energy_cooling'] },
   cop_total: { kind: 'cop', ratio: ['heat', 'energy'] },
   spf: { kind: 'cop', ratio: ['heat', 'energy'], periods: ['year'], noSuffix: true },
-  energy: { kind: 'energy', legacy: 'energy_today' },
+  energy: { kind: 'energy', legacy: 'energy_today' }, env_energy: { kind: 'energy' },
   energy_heating: { kind: 'energy' }, energy_dhw: { kind: 'energy' }, energy_cooling: { kind: 'energy' },
   energy_defrost: { kind: 'energy' }, energy_standby: { kind: 'energy' }, energy_aux: { kind: 'energy' },
   heat: { kind: 'energy' }, heat_heating: { kind: 'energy' }, heat_dhw: { kind: 'energy' }, heat_cooling: { kind: 'energy' }, heat_defrost: { kind: 'energy' },
@@ -684,6 +1045,7 @@ const HFC_TILES = {
   aux_hours: { kind: 'hours' }, aux_starts: { kind: 'count' },
   spread: { live: true }, volume: { live: true }, heat_estimated: { live: true }, power: { live: true }, heat_live: { live: true },
   compressor_speed: { live: true }, source_spread: { live: true }, outdoor: { live: true }, dhw_top: { live: true }, room: { live: true },
+  brine_pressure: { live: true }, hc_pressure: { live: true },
   pv_share: { live: true },
   pv_production: { kind: 'energy' }, solar_thermal: { kind: 'energy' },
   cost: { kind: 'cost', periods: ['today', 'yesterday', 'week', 'month', 'year', 'total'] },
@@ -705,6 +1067,7 @@ class HeatpumpFlowCard extends HTMLElement {
         && reg[e]?.translation_key === tk && onDevice(e)),
       // Without a registry entry (YAML entities) the platform cannot be checked; accept the pattern match.
       match: (re, platform) => ids.find((e) => re.test(e) && (!reg[e] || !platform || reg[e].platform === platform) && onDevice(e)),
+      state: (id) => states[id]?.state,
     };
   }
 
@@ -714,10 +1077,10 @@ class HeatpumpFlowCard extends HTMLElement {
       if (hass && preset.detect(ctx) !== undefined) {
         const stub = { preset: name };
         // Further circuits count when the preset finds a different, reporting flow or mode entity for them.
-        const base = HeatpumpFlowCard._resolve({ preset: name, hc_count: 3 }, hass).fromPreset;
+        const base = HeatpumpFlowCard._resolve({ preset: name, hc_count: HFC_MAX_HC }, hass).fromPreset;
         const live = (id) => id && hass.states[id] && !['unknown', 'unavailable'].includes(hass.states[id].state);
         let n = 1;
-        while (n < 3 && preset.auto_circuits !== false && ['flow', 'mode', 'pump'].some((k) => live(base[`hc${n + 1}_${k}`]) && base[`hc${n + 1}_${k}`] !== base[`hc_${k}`])) n++;
+        while (n < HFC_MAX_HC && preset.auto_circuits !== false && ['flow', 'mode', 'pump'].some((k) => live(base[`hc${n + 1}_${k}`]) && base[`hc${n + 1}_${k}`] !== base[`hc_${k}`])) n++;
         if (n > 1) stub.hc_count = n;
         if (preset.source_type) { const st = preset.source_type(base, hass); if (st && st !== 'air') stub.source_type = st; }
         return stub;
@@ -734,13 +1097,18 @@ class HeatpumpFlowCard extends HTMLElement {
   static _formSchema(config, tiles) {
     const lang = (document.querySelector('home-assistant')?.hass?.locale?.language || navigator.language || 'en').slice(0, 2);
     const L = HFC_EDITOR[lang] || HFC_EDITOR.en;
-    const hcCount = config ? Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3) : 3;
-    const keep = (name) => !(/^hc2_/.test(name) && hcCount < 2) && !(/^hc3_/.test(name) && hcCount < 3);
+    const hcCount = config ? hfcHcCount(config) : HFC_MAX_HC;
+    const customLanguages = Object.keys(config?.texts || {}).filter((v) => !['en', 'de'].includes(v));
+    const languageOptions = [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' },
+      ...customLanguages.map((value) => ({ value, label: value }))];
+    const keep = (name) => { const m = /^hc([2-6])_/.exec(name); return !m || +m[1] <= hcCount; };
     const groups = Object.entries(HFC_ENTITY_GROUPS).filter(([sec]) => keep(sec.replace('sec_', '') + '_'));
-    const hcTypeSel = (name) => ({ name, selector: { select: { mode: 'dropdown', options: [{ value: 'underfloor', label: L.hc_underfloor }, { value: 'radiator', label: L.hc_radiator }] } } });
+    const hcTypeSel = (name) => ({ name, selector: { select: { mode: 'dropdown', options: HFC_EMITTERS.map((value) => ({ value, label: L[`hc_${value}`] })) } } });
+    // A YAML list (sum of several entities) keeps a picker for several entities.
     const entitySchema = (key) => ({
       name: key,
-      selector: { entity: HFC_BINARY_KEYS.includes(key) ? { domain: ['binary_sensor', 'switch', 'input_boolean', 'sensor'] } : {} },
+      selector: { entity: HFC_BINARY_KEYS.includes(key) ? { domain: ['binary_sensor', 'switch', 'input_boolean', 'sensor'] }
+        : Array.isArray(config?.entities?.[key]) ? { multiple: true } : {} },
     });
     return {
       schema: [
@@ -752,9 +1120,10 @@ class HeatpumpFlowCard extends HTMLElement {
           type: 'grid', name: '', schema: [
             { name: 'title', selector: { text: {} } },
             hcTypeSel('hc_type'),
-            { name: 'hc_count', selector: { number: { min: 1, max: 3, step: 1, mode: 'box' } } },
+            { name: 'hc_count', selector: { number: { min: 1, max: HFC_MAX_HC, step: 1, mode: 'box' } } },
             { name: 'layout', selector: { select: { mode: 'dropdown', options: HFC_LAYOUTS.map((v) => ({ value: v, label: L[`layout_${v}`] })) } } },
-            ...['hc2_type', 'hc3_type'].filter(keep).map(hcTypeSel),
+             { name: 'theme', selector: { select: { mode: 'dropdown', options: HFC_THEMES.map((v) => ({ value: v, label: L[`theme_${v}`] })) } } },
+            ...['hc2_type', 'hc3_type', 'hc4_type', 'hc5_type', 'hc6_type'].filter(keep).map(hcTypeSel),
           ],
         },
         {
@@ -782,24 +1151,64 @@ class HeatpumpFlowCard extends HTMLElement {
               { name: 'device', selector: { device: {} } },
               { name: 'source_type', selector: { select: { mode: 'dropdown', options: ['air', 'brine', 'water'].map((v) => ({ value: v, label: L[`src_${v}`] })) } } },
               { name: 'power_sources', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: L.ps_auto }, { value: 'manual', label: L.ps_manual }] } } },
+              { name: 'errors', selector: { entity: { multiple: true } } },
+              { name: 'error_ok_text', selector: { text: {} } },
               { name: 'power_threshold', selector: { number: { min: 0, max: 2000, step: 10, mode: 'box', unit_of_measurement: 'W' } } },
-              { name: 'language', selector: { select: { mode: 'dropdown', options: [{ value: 'auto', label: 'Auto' }, { value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' }] } } },
-              ...['hc_name', 'hc2_name', 'hc3_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
+              { name: 'animations', selector: { select: { mode: 'dropdown', options: HFC_ANIMATIONS.map((v) => ({ value: v, label: L[`animations_${v}`] })) } } },
+              { name: 'flow_speed', selector: { number: { min: 0.2, max: 3, step: 0.1, mode: 'slider' } } },
+              { name: 'source_spread', selector: { boolean: {} } },
+              ...['brine_pressure_min', 'brine_pressure_crit', 'brine_pressure_max', 'hc_pressure_min', 'hc_pressure_crit', 'hc_pressure_max']
+                .map((name) => ({ name, selector: { number: { min: 0, max: 20, step: 0.1, mode: 'box', unit_of_measurement: 'bar' } } })),
+              { name: 'language', selector: { select: { mode: 'dropdown', options: languageOptions } } },
+              { name: 'fullscreen', selector: { boolean: {} } },
+              ...['hc_name', 'hc2_name', 'hc3_name', 'hc4_name', 'hc5_name', 'hc6_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
               { name: 'unit_style', selector: { select: { mode: 'dropdown', options: HFC_UNIT_STYLES.map((v) => ({ value: v, label: L[`unit_${v}`] })) } } },
               ...(config && (config.unit_style === 'vaillant' || ((!config.unit_style || config.unit_style === 'auto') && config.preset === 'vaillant'))
                 ? [{ name: 'unit_size', selector: { select: { mode: 'dropdown', options: HFC_UNIT_SIZES.map((v) => ({ value: v, label: L[`size_${v}`] })) } } }] : []),
               { name: 'timeline', selector: { boolean: {} } },
-              ...(config && config.timeline ? [{ name: 'timeline_hours', selector: { number: { min: 3, max: 72, step: 1, mode: 'box', unit_of_measurement: 'h' } } }] : []),
+              ...(config && config.timeline ? [{ name: 'timeline_hours', selector: { number: { min: 3, max: 72, step: 1, mode: 'box', unit_of_measurement: 'h' } } }, { name: 'timeline_marks', selector: { boolean: {} } }] : []),
               { name: 'details_open', selector: { boolean: {} } },
               ...(config && config.layout === 'wall' ? [{ name: 'wall_timeout', selector: { number: { min: 0, max: 600, step: 1, mode: 'box', unit_of_measurement: 's' } } }] : []),
             ],
           }],
         },
       ],
-      // Keys of circuits 2 and 3 reuse the labels of circuit 1 (hc2_flow → hc_flow).
-      computeLabel: (s) => L[s.name] || L[String(s.name).replace(/^hc[23]_/, 'hc_')] || (HFC_I18N[lang] || HFC_I18N.en).det[s.name] || s.name,
+      // Keys of circuits 2 to 6 reuse the labels of circuit 1 (hc2_flow → hc_flow).
+      computeLabel: (s) => L[s.name] || L[String(s.name).replace(/^hc[2-6]_/, 'hc_')] || (HFC_I18N[lang] || HFC_I18N.en).det[s.name] || s.name,
       L,
     };
+  }
+
+  static _language(config, hass) {
+    const raw = String(config?.language && config.language !== 'auto'
+      ? config.language : (hass?.locale?.language || hass?.language || navigator.language || 'en')).toLowerCase().replace('_', '-');
+    const exact = raw; const base = raw.split('-')[0]; const custom = config?.texts || {};
+    if (HFC_I18N[exact] || custom[exact]) return exact;
+    if (HFC_I18N[base] || custom[base]) return base;
+    return 'en';
+  }
+
+  static _texts(config, hass) {
+    const lang = HeatpumpFlowCard._language(config, hass);
+    const base = lang.split('-')[0]; const custom = config?.texts || {};
+    return hfcTextMerge(HFC_I18N.en, HFC_I18N[base], HFC_I18N[lang], custom[base], custom[lang]);
+  }
+
+  static _validateTexts(texts) {
+    if (!texts || typeof texts !== 'object' || Array.isArray(texts)) throw new Error('texts must map language codes to text objects');
+    const visit = (value, reference, path) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} must be an object`);
+      Object.entries(value).forEach(([key, child]) => {
+        if (!Object.prototype.hasOwnProperty.call(reference, key)) throw new Error(`Unknown text key "${path}.${key}"`);
+        const expected = reference[key];
+        if (expected && typeof expected === 'object') visit(child, expected, `${path}.${key}`);
+        else if (typeof child !== 'string') throw new Error(`${path}.${key} must be text`);
+      });
+    };
+    Object.entries(texts).forEach(([lang, value]) => {
+      if (!/^[a-z]{2,8}(?:-[a-z0-9]{2,8})*$/.test(lang)) throw new Error(`Invalid language code "${lang}" in texts (use lowercase, for example nl or pt-br)`);
+      visit(value, HFC_I18N.en, `texts.${lang}`);
+    });
   }
 
   setConfig(config) {
@@ -807,8 +1216,8 @@ class HeatpumpFlowCard extends HTMLElement {
     if (config.preset && config.preset !== 'none' && !HFC_PRESETS[config.preset]) {
       throw new Error(`Unknown preset "${config.preset}". Available: ${Object.keys(HFC_PRESETS).join(', ')}`);
     }
-    ['hc_type', 'hc2_type', 'hc3_type'].forEach((k) => {
-      if (config[k] && !['underfloor', 'radiator'].includes(config[k])) throw new Error(`${k} must be "underfloor" or "radiator"`);
+    ['hc_type', 'hc2_type', 'hc3_type', 'hc4_type', 'hc5_type', 'hc6_type'].forEach((k) => {
+      if (config[k] && !HFC_EMITTERS.includes(config[k])) throw new Error(`${k} must be one of: ${HFC_EMITTERS.join(', ')}`);
     });
     if (config.source_type && !['air', 'brine', 'water'].includes(config.source_type)) {
       throw new Error('source_type must be "air", "brine" or "water"');
@@ -824,11 +1233,39 @@ class HeatpumpFlowCard extends HTMLElement {
     if (config.layout !== undefined && config.layout !== null && !HFC_LAYOUTS.includes(config.layout)) {
       throw new Error(`layout must be one of: ${HFC_LAYOUTS.join(', ')}`);
     }
+    if (config.animations !== undefined && config.animations !== null && !HFC_ANIMATIONS.includes(config.animations)) {
+      throw new Error(`animations must be one of: ${HFC_ANIMATIONS.join(', ')}`);
+    }
+    if (config.theme !== undefined && config.theme !== null && !HFC_THEMES.includes(config.theme)) {
+      throw new Error(`theme must be one of: ${HFC_THEMES.join(', ')}`);
+    }
+    if (config.fullscreen !== undefined && config.fullscreen !== null && typeof config.fullscreen !== 'boolean') {
+      throw new Error('fullscreen must be true or false');
+    }
+    if (config.texts !== undefined && config.texts !== null) HeatpumpFlowCard._validateTexts(config.texts);
+    if (config.flow_speed !== undefined && config.flow_speed !== null && config.flow_speed !== '' && !(+config.flow_speed >= 0.2 && +config.flow_speed <= 3)) {
+      throw new Error('flow_speed must be a number from 0.2 to 3');
+    }
+    if (config.source_spread !== undefined && config.source_spread !== null && typeof config.source_spread !== 'boolean') {
+      throw new Error('source_spread must be true or false');
+    }
+    ['brine_pressure_min', 'brine_pressure_crit', 'brine_pressure_max', 'hc_pressure_min', 'hc_pressure_crit', 'hc_pressure_max'].forEach((key) => {
+      if (config[key] !== undefined && config[key] !== null && config[key] !== '' && !(Number.isFinite(+config[key]) && +config[key] >= 0)) throw new Error(`${key} must be a number of bar, 0 or more`);
+    });
+    ['brine', 'hc'].forEach((kind) => {
+      const critical = config[`${kind}_pressure_crit`]; const minimum = config[`${kind}_pressure_min`]; const maximum = config[`${kind}_pressure_max`];
+      if (critical !== undefined && critical !== null && critical !== '' && minimum !== undefined && minimum !== null && minimum !== '' && +critical > +minimum) throw new Error(`${kind}_pressure_crit must be less than or equal to ${kind}_pressure_min`);
+      if (minimum !== undefined && minimum !== null && minimum !== '' && maximum !== undefined && maximum !== null && maximum !== '' && +minimum > +maximum) throw new Error(`${kind}_pressure_min must be less than or equal to ${kind}_pressure_max`);
+    });
     if (config.wall_timeout !== undefined && config.wall_timeout !== null && !(+config.wall_timeout >= 0)) {
       throw new Error('wall_timeout must be a number of seconds, 0 or more');
     }
     if (config.timeline !== undefined && config.timeline !== null && typeof config.timeline !== 'boolean') throw new Error('timeline must be true or false');
     if (config.timeline_hours !== undefined && config.timeline_hours !== null && !(+config.timeline_hours > 0)) throw new Error('timeline_hours must be a number of hours above 0 (3 to 72)');
+    if (config.timeline_marks !== undefined && config.timeline_marks !== null && typeof config.timeline_marks !== 'boolean') {
+      if (!Array.isArray(config.timeline_marks)) throw new Error('timeline_marks must be true or a list of entities');
+      config.timeline_marks.forEach((m) => { if (!(typeof m === 'string' ? m : m && m.entity)) throw new Error('timeline_marks: every entry needs an entity'); });
+    }
     if (config.unit_style !== undefined && config.unit_style !== null && !HFC_UNIT_STYLES.includes(config.unit_style)) {
       throw new Error(`unit_style must be one of: ${HFC_UNIT_STYLES.join(', ')}`);
     }
@@ -837,6 +1274,12 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     if (config.program_map !== undefined && config.program_map !== null && (typeof config.program_map !== 'object' || Array.isArray(config.program_map))) {
       throw new Error(`program_map must map raw states to ${HFC_PROGRAMS.join(', ')} or none`);
+    }
+    if (config.errors !== undefined && (!Array.isArray(config.errors) || config.errors.some((id) => typeof id !== 'string'))) {
+      throw new Error('errors must be a list of entity ids');
+    }
+    if (config.error_ok !== undefined && (!Array.isArray(config.error_ok) || config.error_ok.some((state) => typeof state !== 'string'))) {
+      throw new Error('error_ok must be a list of text states');
     }
     if (config.compressor_speed_max !== undefined && config.compressor_speed_max !== null && !(+config.compressor_speed_max > 0)) {
       throw new Error('compressor_speed_max must be a number above 0 (the Hz or rpm that count as full speed)');
@@ -850,7 +1293,9 @@ class HeatpumpFlowCard extends HTMLElement {
       if (s.price !== undefined && s.price !== null && !['number', 'string'].includes(typeof s.price)) throw new Error('price must be a number or an entity');
       HFC_ACTIONS.forEach((a) => { if (s[a] !== undefined && (!s[a] || typeof s[a] !== 'object')) throw new Error(`${a} must be an action, e.g. {action: navigate, navigation_path: /energy}`); });
     });
+    if (config.fullscreen === false && this._fullscreenOpen) this._closeFullscreen(false, false);
     this._config = config;
+    this._textCache = null;
     const preset = HFC_PRESETS[config.preset];
     this._preset = preset;
     this._idx = { hp: 1, dhw: 1, buffer: 1, hc: 1, ...(preset?.index || {}), ...(config.index || {}) };
@@ -863,11 +1308,16 @@ class HeatpumpFlowCard extends HTMLElement {
     this._runningStates = config.running_states || preset?.running_states || [];
     this._statusLabels = preset?.status_labels || {};
     this._statLabels = preset?.stat_labels || {};
+    this._errorOk = (config.error_ok || preset?.error_ok || []).map((state) => state.trim().toLowerCase()).filter(Boolean);
     this._badges = config.badges || [];
     this._layout = HFC_LAYOUTS.includes(config.layout) ? config.layout : 'default';
+    this._animations = HFC_ANIMATIONS.includes(config.animations) ? config.animations : 'auto';
+    this._theme = HFC_THEMES.includes(config.theme) ? config.theme : 'auto';
+    this._flowSpeed = +config.flow_speed >= 0.2 && +config.flow_speed <= 3 ? +config.flow_speed : 1;
+    this._sourceSpread = config.source_spread !== false;
     this._hcType = config.hc_type || preset?.hc_type || 'underfloor';
-    this._hcCount = Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3);
-    this._hcTypes = [this._hcType, config.hc2_type || 'underfloor', config.hc3_type || 'underfloor'];
+    this._hcCount = hfcHcCount(config);
+    this._hcTypes = [this._hcType, ...[2, 3, 4, 5, 6].map((n) => config[`hc${n}_type`] || 'underfloor')];
     this._sourceType = config.source_type || 'air';
     this._threshold = Number.isFinite(+config.power_threshold) && config.power_threshold !== '' && config.power_threshold !== undefined ? +config.power_threshold : 100;
     this._needsBuild = true;
@@ -884,8 +1334,8 @@ class HeatpumpFlowCard extends HTMLElement {
   static _resolve(config, hass) {
     const preset = HFC_PRESETS[config.preset];
     const idx = { hp: 1, dhw: 1, buffer: 1, hc: 1, ...(preset?.index || {}), ...(config.index || {}) };
-    const hcCount = Math.min(Math.max(Math.round(+config.hc_count) || 1, 1), 3);
-    const ctx = HeatpumpFlowCard._ctx(hass, config.device, idx);
+    const hcCount = hfcHcCount(config);
+    const ctx =HeatpumpFlowCard._ctx(hass, config.device, idx);
     let prefix = config.prefix;
     let ready = true;
     if (preset && (prefix === undefined || prefix === null || prefix === '' || prefix === 'auto')) {
@@ -902,15 +1352,23 @@ class HeatpumpFlowCard extends HTMLElement {
     if (preset) Object.entries(preset.entities(prefix, idx, ctx)).forEach(([k, v]) => take(k, v));
     for (let n = 2; preset && n <= hcCount; n++) {
       const rawN = preset.entities(prefix, { ...idx, hc: idx.hc + n - 1 }, ctx);
-      Object.entries(rawN).filter(([k]) => k.startsWith('hc_')).forEach(([k, v]) => take(`hc${n}_${k.slice(3)}`, v));
+      // hc_pressure is the pressure of the whole heating system, drawn at circuit 1 only.
+      Object.entries(rawN).filter(([k]) => k.startsWith('hc_') && k !== 'hc_pressure').forEach(([k, v]) => take(`hc${n}_${k.slice(3)}`, v));
     }
     const e = { ...fromPreset };
+    const sums = {};
     // User entities override the preset; null or "none" removes a preset entity.
+    // A list adds the values of its entities (power, heat and the power sources), e.g. two S0 meters; the first one stands for the key.
     Object.entries(config.entities || {}).forEach(([k, v]) => {
       if (v === null || v === 'none') delete e[k];
-      else if (v) e[k] = v;
+      else if (Array.isArray(v)) {
+        const ids = v.filter(Boolean);
+        if (ids.length) e[k] = ids[0];
+        if (ids.length > 1) sums[k] = ids;
+      } else if (v) e[k] = v;
     });
-    const errors = config.errors || (preset && preset.errors ? preset.errors(prefix, idx, ctx) : []);
+    const presetErrors = preset && preset.errors ? preset.errors(prefix, idx, ctx) : [];
+    const errors = config.errors !== undefined ? config.errors : presetErrors;
     // Stat tile entities: { tile: { period: entity } }, only entities that exist.
     const tiles = {};
     if (preset && preset.tiles) {
@@ -919,12 +1377,60 @@ class HeatpumpFlowCard extends HTMLElement {
         if (hit) (tiles[k] = tiles[k] || {})[period] = hit;
       }));
     }
-    return { preset, prefix, ready, idx, fromPreset, entities: e, errors, tiles };
+    // Total counters configured directly are also tile sources. Their calendar periods come from long-term statistics.
+    [['energy_total', 'energy'], ['env_energy', 'env_energy'], ['heat_total', 'heat']].forEach(([entityKey, tileKey]) => {
+      if (e[entityKey] && hass.states[e[entityKey]]) (tiles[tileKey] = tiles[tileKey] || {}).total = e[entityKey];
+    });
+    return { preset, prefix, ready, idx, fromPreset, entities: e, sums, presetErrors, errors, tiles };
+  }
+
+  // Plain-text support report. It is created locally and contains only the mappings used by this card, never registry
+  // dumps, credentials or network data. Entity ids may still contain personal names, so the report starts with a warning.
+  static _diagnosticReport(config, hass) {
+    config = config || {};
+    const r = HeatpumpFlowCard._resolve(config, hass);
+    const clean = (value) => String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim();
+    const entityLine = (key, id) => {
+      if (!id) return `- ${key}: not mapped`;
+      const st = hass.states[id];
+      if (!st) return `- ${key}: ${id} = unavailable (entity not found)`;
+      const unit = clean(st.attributes?.unit_of_measurement);
+      const attr = hfcTempAttr(id, key);
+      return `- ${key}: ${id} = ${clean(st.state) || '(empty)'}${unit ? ` ${unit}` : ''}${attr ? ` (${attr} ${clean(st.attributes?.[attr]) || '(empty)'})` : ''}`;
+    };
+    const keys = [...HFC_DIAGNOSTIC_KEYS, ...Object.keys(r.entities).filter((key) => !HFC_DIAGNOSTIC_KEYS.includes(key))];
+    const lines = [
+      'Heat Pump Hydraulic Card diagnostic report',
+      'Privacy: entity ids can contain personal names. Review this text before sharing it.',
+      '',
+      `Card version: ${HFC_VERSION}`,
+      `Loaded from: ${clean(HFC_SCRIPT_URL.replace(/[?#].*$/, '')) || 'unknown'}`,
+      `Home Assistant: ${clean(hass.config?.version) || 'unknown'}`,
+      `Browser language: ${clean(navigator.language) || 'unknown'}`,
+      `Card language: ${HeatpumpFlowCard._language(config, hass)}`,
+      `Preset: ${clean(config.preset) || 'none'}`,
+      `Preset detected: ${r.preset ? (r.ready ? 'yes' : 'no') : 'not used'}`,
+      `Prefix: ${r.prefix || '(none)'}`,
+      `Source type: ${config.source_type || 'air'}`,
+      `Heating circuits: ${hfcHcCount(config)}`,
+      `Layout: ${config.layout || 'default'}`,
+      '',
+      'Entity mappings:',
+      ...keys.flatMap((key) => (r.sums[key] ? r.sums[key].map((id, n) => entityLine(`${key} (sum ${n + 1})`, id)) : [entityLine(key, r.entities[key])])),
+      '',
+      'Error entities:',
+      ...(r.errors?.length ? r.errors.map((id, n) => entityLine(`error_${n + 1}`, id)) : ['- none']),
+      '',
+      'Quick controls:',
+      ...((config.controls || []).length ? (config.controls || []).map((c, n) => entityLine(`control_${n + 1}`, typeof c === 'string' ? c : c?.entity)) : ['- none']),
+    ];
+    return lines.join('\n');
   }
 
   _build() {
     const r = HeatpumpFlowCard._resolve(this._config, this._hass);
     this._e = r.entities;
+    this._sums = r.sums;
     this._errors = r.errors;
     this._tileMap = r.tiles;
     // An action for a key without an entity does nothing; say so once instead of failing silently.
@@ -936,6 +1442,25 @@ class HeatpumpFlowCard extends HTMLElement {
     this._lastTry = Date.now();
   }
 
+  static _energyInfo(prefs) {
+    const sources = prefs?.energy_sources || [];
+    const rate = (src) => {
+      const pc = src.power_config;
+      if (pc && (pc.stat_rate_from || pc.stat_rate_to)) return { from: pc.stat_rate_from, to: pc.stat_rate_to };
+      if (pc && pc.stat_rate) return { id: pc.stat_rate, inv: !!pc.stat_rate_inverted };
+      return src.stat_rate ? { id: src.stat_rate } : null;
+    };
+    const configured = {}; const missing = [];
+    const of = (type) => {
+      const found = sources.filter((s) => s.type === type);
+      const rates = found.map(rate).filter(Boolean);
+      configured[type] = found.length > 0;
+      if (found.length > rates.length) missing.push(type);
+      return rates;
+    };
+    return { energy: { solar: of('solar'), battery: of('battery'), grid: of('grid') }, configured, missing };
+  }
+
   // PV / battery / grid power from the Energy dashboard (its "stat_rate" power sensors), loaded once per page.
   // Conventions of the Energy dashboard: battery positive = discharging, grid positive = import.
   _loadEnergy() {
@@ -943,17 +1468,12 @@ class HeatpumpFlowCard extends HTMLElement {
     this._energyReq = true;
     HeatpumpFlowCard._energyPrefs = HeatpumpFlowCard._energyPrefs || this._hass.callWS({ type: 'energy/get_prefs' });
     HeatpumpFlowCard._energyPrefs.then((prefs) => {
-      const rate = (src) => {
-        const pc = src.power_config;
-        if (pc && (pc.stat_rate_from || pc.stat_rate_to)) return { from: pc.stat_rate_from, to: pc.stat_rate_to };
-        if (pc && pc.stat_rate) return { id: pc.stat_rate, inv: !!pc.stat_rate_inverted };
-        return src.stat_rate ? { id: src.stat_rate } : null;
-      };
-      const of = (type) => (prefs?.energy_sources || []).filter((s) => s.type === type).map(rate).filter(Boolean);
-      const energy = { solar: of('solar'), battery: of('battery'), grid: of('grid') };
+      const { energy, configured, missing } = HeatpumpFlowCard._energyInfo(prefs);
       this._energy = energy.solar.length || energy.battery.length || energy.grid.length ? energy : null;
-      if (this._energy && this._hass) { this._rendered = false; this.hass = this._hass; }
-    }).catch(() => { this._energy = null; });
+      this._energyConfigured = configured;
+      this._energyMissing = missing;
+      if (this._hass) { this._rendered = false; this.hass = this._hass; }
+    }).catch(() => { this._energy = null; this._energyConfigured = {}; this._energyMissing = []; });
   }
 
   // Manual pv/battery/grid entities win; otherwise the Energy dashboard is used (needs the heat pump power).
@@ -977,15 +1497,28 @@ class HeatpumpFlowCard extends HTMLElement {
   // PV first covers battery charging and export. Returns W per source, or null while a sensor is unavailable.
   _energySplit() {
     const sum = (list) => list.reduce((a, r) => a + this._rateW(r), 0);
-    const pv = sum(this._energy.solar); const bat = sum(this._energy.battery); const grid = sum(this._energy.grid);
-    if (![pv, bat, grid].every(Number.isFinite)) return null;
+    const values = {}; const unknown = [];
+    [['pv', 'solar'], ['battery', 'battery'], ['grid', 'grid']].forEach(([key, type]) => {
+      const value = sum(this._energy[type] || []);
+      const incomplete = this._energyMissing?.includes(type);
+      if (incomplete || (this._energyConfigured?.[type] && !Number.isFinite(value))) unknown.push(key);
+      values[key] = Number.isFinite(value) && !incomplete ? value : 0;
+    });
+    if (unknown.length > 1) return null;
+    const pv = values.pv; const bat = values.battery; const grid = values.grid;
     const charge = Math.max(-bat, 0); const discharge = Math.max(bat, 0);
     const imp = Math.max(grid, 0); const exp = Math.max(-grid, 0);
     const pvHome = Math.max(Math.max(pv, 0) - charge - exp, 0);
-    const total = pvHome + discharge + imp;
     const hp = Math.max(this._w('power'), 0);
+    if (!Number.isFinite(hp) || hp <= 50) return { pv: 0, battery: 0, grid: 0 };
+    const shares = { pv: pvHome, battery: discharge, grid: imp };
+    if (unknown.length === 1) {
+      const known = Object.entries(shares).filter(([key]) => key !== unknown[0]).reduce((total, [, value]) => total + value, 0);
+      shares[unknown[0]] = Math.max(hp - known, 0);
+    }
+    const total = shares.pv + shares.battery + shares.grid;
     if (!(total > 50) || !Number.isFinite(hp)) return { pv: 0, battery: 0, grid: 0 };
-    return { pv: hp * pvHome / total, battery: hp * discharge / total, grid: hp * imp / total };
+    return { pv: hp * shares.pv / total, battery: hp * shares.battery / total, grid: hp * shares.grid / total };
   }
 
   getCardSize() { return 9 + (this._hcCount || 1) * 3 - 3; }
@@ -1013,31 +1546,71 @@ class HeatpumpFlowCard extends HTMLElement {
     this._failed = true;
     this._rendered = false;
     const msg = this._esc(err && err.message ? err.message : String(err));
-    this.shadowRoot.innerHTML = `<style>${HeatpumpFlowCard.styles}</style><ha-card><div class="hint">Heatpump Flow Card: ${msg}<br>Details in the browser console. Please report it: github.com/Sturmi77/heatpump-flow-card/issues</div></ha-card>`;
+    this.shadowRoot.innerHTML = `<style>${HeatpumpFlowCard.styles}</style><ha-card><div class="hint">Heatpump Flow Card: ${msg}<br>Details in the browser console. Please report it: github.com/Sturmi77/heatpump-hydraulic-card/issues</div></ha-card>`;
   }
 
   /* ---------- helpers ---------- */
-  get _lang() {
-    const l = this._config?.language && this._config.language !== 'auto'
-      ? this._config.language : (this._hass?.locale?.language || this._hass?.language || 'en');
-    return HFC_I18N[l.slice(0, 2)] ? l.slice(0, 2) : 'en';
+  get _lang() { return HeatpumpFlowCard._language(this._config, this._hass); }
+  get _i() {
+    const lang = this._lang; const texts = this._config?.texts;
+    if (!this._textCache || this._textCache.lang !== lang || this._textCache.texts !== texts) {
+      this._textCache = { lang, texts, value: HeatpumpFlowCard._texts(this._config, this._hass) };
+    }
+    return this._textCache.value;
   }
-  get _i() { return HFC_I18N[this._lang]; }
   _st(key) { const id = this._e[key]; return id && this._hass ? this._hass.states[id] : undefined; }
   _has(key) { return !!this._st(key); }
   _s(key) { return this._st(key)?.state; }
-  _n(key) { const v = parseFloat(this._s(key)); return Number.isFinite(v) ? v : NaN; }
+  _n(key) {
+    const attr = hfcTempAttr(this._e[key], key);
+    const v = parseFloat(attr ? this._st(key)?.attributes?.[attr] : this._s(key));
+    return Number.isFinite(v) ? v : NaN;
+  }
   _unit(key) { return String(this._st(key)?.attributes?.unit_of_measurement || '').toLowerCase(); }
-  // Unit-aware readings: power in W, heat in kW, flow rates in l/h.
-  _w(key) { const v = this._n(key); return this._unit(key) === 'kw' ? v * 1000 : v; }
-  _kw(key) { const v = this._n(key); return this._unit(key) === 'w' ? v / 1000 : v; }
+  // Unit-aware readings: power in W, heat in kW, flow rates in l/h. A list of entities gives the sum of the members that report a number.
+  _w(key) { return this._sum(key, 'kw', (v) => v * 1000); }
+  _kw(key) { return this._sum(key, 'w', (v) => v / 1000); }
+  _sum(key, unit, convert) {
+    const read = (st) => { const v = parseFloat(st?.state); return String(st?.attributes?.unit_of_measurement || '').toLowerCase() === unit ? convert(v) : v; };
+    if (!this._sums?.[key]) { const v = read(this._st(key)); return Number.isFinite(v) ? v : NaN; }
+    const values = this._sums[key].map((id) => read(this._hass?.states[id])).filter(Number.isFinite);
+    return values.length ? values.reduce((a, b) => a + b, 0) : NaN;
+  }
   _lh(key) {
     const v = this._n(key); const u = this._unit(key).replace('³', '3');
     if (u === 'm3/h') return v * 1000;
     if (u === 'l/min') return v * 60;
     return v;
   }
-  _on(key) { return ['on', 'true', 'open', '1'].includes(String(this._s(key)).toLowerCase()); }
+  // Hydraulic pressure normalized to bar. Unknown or missing units are treated as bar for simple numeric helpers.
+  _pressure(key) {
+    const v = this._n(key); const u = this._unit(key).replace(/\s/g, '');
+    if (!Number.isFinite(v)) return NaN;
+    if (u === 'pa') return v / 100000;
+    if (u === 'hpa') return v / 1000;
+    if (u === 'kpa') return v / 100;
+    if (u === 'mpa') return v * 10;
+    if (u === 'psi') return v * 0.0689476;
+    return v;
+  }
+  _pressureState(kind, value) {
+    if (!Number.isFinite(value)) return 'normal';
+    const c = +this._config[`${kind}_pressure_crit`]; const min = +this._config[`${kind}_pressure_min`]; const max = +this._config[`${kind}_pressure_max`];
+    if (this._config[`${kind}_pressure_crit`] !== undefined && this._config[`${kind}_pressure_crit`] !== '' && value <= c) return 'critical';
+    if ((this._config[`${kind}_pressure_min`] !== undefined && this._config[`${kind}_pressure_min`] !== '' && value < min)
+      || (this._config[`${kind}_pressure_max`] !== undefined && this._config[`${kind}_pressure_max`] !== '' && value > max)) return 'warning';
+    return 'normal';
+  }
+  _pressureText(key) { const v = this._pressure(key); return Number.isFinite(v) ? `${this._fmt(v, 1)} bar` : '–'; }
+  _updatePressure(key, kind, groupId, textId, label) {
+    const group = this._$(groupId); if (!group) return;
+    const value = this._pressure(key); const state = this._pressureState(kind, value);
+    group.classList.toggle('warning', state === 'warning'); group.classList.toggle('critical', state === 'critical');
+    const glyph = state === 'critical' ? '⚠ ' : state === 'warning' ? '! ' : '';
+    this._txt(textId, `${glyph}${label} ${this._pressureText(key)}`);
+    group.dataset.a11y = `${label}: ${this._pressureText(key)}, ${this._i[`pressure_${state}`]}`;
+  }
+  _on(key) { return ['on', 'true', 'open', '1', 'ein'].includes(String(this._s(key)).toLowerCase()); }
   // Compressor modulation 0..1 from `compressor_speed` (percent; Hz or rpm against `compressor_speed_max`), NaN without a usable value.
   _speedFraction() {
     const v = this._n('compressor_speed');
@@ -1065,7 +1638,7 @@ class HeatpumpFlowCard extends HTMLElement {
   _level(key) {
     if (!this._has(key)) return 0;
     const s = String(this._s(key)).toLowerCase();
-    if (['on', 'true', 'open'].includes(s)) return 1;
+    if (['on', 'true', 'open', 'ein'].includes(s)) return 1;
     const v = parseFloat(s);
     if (!Number.isFinite(v) || v <= 0) return 0;
     return ['w', 'kw', '%'].includes(this._unit(key)) ? 1 : Math.min(Math.round(v), 3);
@@ -1078,7 +1651,7 @@ class HeatpumpFlowCard extends HTMLElement {
   }
   _t(v) { return Number.isFinite(v) ? `${this._fmt(v)} °C` : '– °C'; }
   _modeLabel(m, raw) { return this._i.modes[m] || raw || '–'; }
-  _statLabel(key, fallback) { return this._statLabels[key]?.[this._lang] || fallback; }
+  _statLabel(key, fallback) { return this._statLabels[key]?.[this._lang] || this._statLabels[key]?.en || fallback; }
   // Colour scales follow hydraulic convention: flow red/orange, return blue, tanks blue (cold) → red (hot).
   // The end colours are the --hfc-*-cold / --hfc-*-hot variables, mixed in the browser.
   _mix(cold, hot, t, lo, hi) {
@@ -1141,12 +1714,14 @@ class HeatpumpFlowCard extends HTMLElement {
   // Which optional blocks exist – the SVG is rebuilt only when this changes.
   _layoutSignature() {
     if (!this._hass || !this._e) return '';
+    const buffer = this._has('buffer_top') || this._has('buffer_mode');
     const parts = {
       power: this._powerMode(),
       sources: this._powerMode() === 'energy' ? [this._energy.solar.length, this._energy.battery.length, this._energy.grid.length].join() : '',
       dhw: this._has('dhw_top') || this._has('dhw_mode'),
-      buffer: this._has('buffer_top') || this._has('buffer_mode'),
-      hc: this._has('hc_flow') || this._has('hc_mode') || this._has('hc_pump'),
+      buffer,
+      // A direct system still has a circuit: use the heat-pump flow/return when no circuit-specific sensors exist.
+      hc: this._has('hc_flow') || this._has('hc_mode') || this._has('hc_pump') || (!buffer && (this._has('flow') || this._has('return'))),
       house: this._has('room') || this._has('room_target'),
       circ: this._has('circulation'),
       hcType: this._hcType,
@@ -1154,6 +1729,8 @@ class HeatpumpFlowCard extends HTMLElement {
       src: this._sourceType,
       unit: this._unitKey(),
       heaters: ['heater', 'dhw_heater', 'buffer_heater'].map((k) => (this._has(k) ? 1 : 0)).join(''),
+      middle: [this._has('dhw_middle') ? 1 : 0, this._has('buffer_middle') ? 1 : 0].join(''),
+      pressure: [this._sourceType === 'brine' && this._has('brine_pressure') ? 1 : 0, this._has('hc_pressure') ? 1 : 0].join(''),
       solar: (this._has('dhw_top') || this._has('dhw_mode')) && (this._has('solar_collector') || this._has('solar_pump')),
       controls: this._controlList().map((c) => c.entity).join(),
       drawer: this._drawerRows().map(([s, r]) => s + r.map((x) => x[0]).join('.')).join('|'),
@@ -1165,6 +1742,18 @@ class HeatpumpFlowCard extends HTMLElement {
 
   /* ---------- render ---------- */
   _emitter(type, title) {
+    if (type === 'column') {
+      // Traditional column radiator: rounded joined sections, flow at the top and return at the bottom.
+      const columns = Array.from({ length: 7 }, (_, n) => `<g transform="translate(${832 + n * 17} 0)"><rect class="column-rib" x="0" y="350" width="13" height="120" rx="6" style="fill:url(#g-rad__S__)"/><circle class="column-cap" cx="6.5" cy="356" r="6"/><circle class="column-cap" cx="6.5" cy="464" r="6"/></g>`).join('');
+      return {
+        vl: 'M640 360 H826',
+        body: 'M826 360 H944 M944 460 H826',
+        rl: 'M826 460 H805 Q785 460 785 478 Q785 495 765 495 H640',
+        title: `<text class="tank-title" x="888" y="296" text-anchor="middle">${title}</text>`,
+        art: `<path class="column-link" d="M832 372 H947 M832 448 H947"/>${columns}<path class="column-foot" d="M846 470v8 M934 470v8"/>
+          <g class="waves" id="waves__S__">${[854, 888, 922].map((x) => `<path class="wave" d="M${x} 338 q7 -7 0 -14 q-7 -7 0 -14"/>`).join('')}</g>`,
+      };
+    }
     if (type === 'radiator') {
       // Radiator: flow enters top left, return leaves bottom left, heat waves rise above.
       const ribs = Array.from({ length: 8 }, (_, n) => `<rect class="rib" x="${838 + n * 14}" y="352" width="9" height="116" rx="4" style="fill:url(#g-rad__S__)"/>`).join('');
@@ -1193,6 +1782,13 @@ class HeatpumpFlowCard extends HTMLElement {
     const e = this._e;
     const i = this._i;
     const T = this._esc(this._config.title ?? i.title);
+    const fullLabel = this._fullscreenOpen ? i.fullscreen_close : i.fullscreen_open;
+    const diagnosticIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM10 7h4M10 11h4M10 15h4"/></svg>';
+    const fullscreenIcon = this._fullscreenOpen
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg>';
+    const energyHint = this._config.power_sources !== 'manual' && this._energyMissing?.length
+      ? i.energy_missing.replace('{sources}', this._energyMissing.map((type) => ({ solar: i.pv, battery: i.battery, grid: i.grid }[type])).join(', ')) : '';
     const de = (k) => (e[k] ? `data-entity="${this._esc(e[k])}"` : '');
     const pipePair = (id, d, show = true) => (show
       ? `<path class="pipe" id="p-${id}" d="${d}"/><path class="flow" id="f-${id}" d="${d}"/>` : '');
@@ -1204,23 +1800,32 @@ class HeatpumpFlowCard extends HTMLElement {
 
     this.shadowRoot.innerHTML = `
       <style>${HeatpumpFlowCard.styles}</style>
-      <ha-card class="layout-${this._layout}">
+      <div class="fullscreen-backdrop" id="fullscreen-backdrop" ${this._fullscreenOpen ? '' : 'hidden'}></div>
+      <ha-card class="layout-${this._layout} motion-${this._animations} theme-${this._theme}${this._fullscreenOpen ? ' fullscreen' : ''}"${this._fullscreenOpen ? ` role="dialog" aria-modal="true" aria-label="${T}"` : ''}>
         <div class="head">
           ${T ? `<div class="title">${T}</div>` : '<div></div>'}
-          <div class="chips">
-            <span class="chip" id="chip-mode" ${de('mode')}></span>
-            <span class="chip program" id="chip-program"></span>
-            ${this._badges.map((b, n) => `<span class="chip badge" id="chip-b${n}" data-badge="${n}" data-entity="${this._esc(b.entity)}">${this._esc(b.label || b.entity)}</span>`).join('')}
-            <span class="chip err" id="chip-err"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20.5h19z" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke-linecap="round"/></svg>${i.error}</span>
+          <div class="head-right">
+            <div class="chips">
+              <span class="chip" id="chip-mode" ${de('mode')}></span>
+              <span class="chip program" id="chip-program"></span>
+              ${this._badges.map((b, n) => `<span class="chip badge" id="chip-b${n}" data-badge="${n}" data-entity="${this._esc(b.entity)}">${this._esc(b.label || b.entity)}</span>`).join('')}
+              <span class="chip err" id="chip-err"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 2.5 20.5h19z" stroke-linejoin="round"/><path d="M12 10v4.5M12 17.5v.01" stroke-linecap="round"/></svg>${this._esc(i.error)}</span>
+            </div>
+            <div class="card-tools">
+              <button class="icon-button" id="diagnostic-copy" type="button" title="${this._esc(i.diagnostic_copy)}" aria-label="${this._esc(i.diagnostic_copy)}">${diagnosticIcon}</button>
+              ${this._config.fullscreen === false ? '' : `<button class="icon-button" id="fullscreen-toggle" type="button" title="${this._esc(fullLabel)}" aria-label="${this._esc(fullLabel)}" aria-pressed="${!!this._fullscreenOpen}">${fullscreenIcon}</button>`}
+              <span class="sr-only" id="tool-status" aria-live="polite"></span>
+            </div>
           </div>
         </div>
         ${this._needsBuild && this._preset ? `<div class="hint">${this._esc(i.not_found)}</div>` : ''}
+        ${energyHint ? `<div class="hint">${this._esc(energyHint)}</div>` : ''}
         <div class="body">
         <div class="stage">
         <svg viewBox="0 0 1000 ${H}" id="svg" role="group" tabindex="-1" aria-label="${T}">
           <defs>
-            <linearGradient id="g-dhw" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-dhw-top"/><stop offset="100%" id="g-dhw-bottom"/></linearGradient>
-            <linearGradient id="g-buf" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-buf-top"/><stop offset="100%" id="g-buf-bottom"/></linearGradient>
+            <linearGradient id="g-dhw" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-dhw-top"/>${this._has('dhw_middle') ? '<stop offset="50%" id="g-dhw-middle"/>' : ''}<stop offset="100%" id="g-dhw-bottom"/></linearGradient>
+            <linearGradient id="g-buf" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-buf-top"/>${this._has('buffer_middle') ? '<stop offset="50%" id="g-buf-middle"/>' : ''}<stop offset="100%" id="g-buf-bottom"/></linearGradient>
             <linearGradient id="g-rad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-rad-top"/><stop offset="100%" id="g-rad-bottom"/></linearGradient>
             <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           </defs>
@@ -1246,11 +1851,12 @@ class HeatpumpFlowCard extends HTMLElement {
 
           <g class="tap" ${de('mode')}>
             <rect class="unit" id="hp-box" x="50" y="190" width="240" height="235" rx="20"/>
-            <text class="unit-title" x="170" y="218" text-anchor="middle">${i.heat_pump}</text>
+            <text class="unit-title" x="170" y="218" text-anchor="middle">${this._esc(i.heat_pump)}</text>
             ${U ? `${U.below}${U.fans.map((fn, n) => this._fanSvg(n ? `fan${n + 1}` : 'fan', ...fn)).join('')}${U.above}${U.snows.map((sn, n) => this._snowSvg(n ? `snow${n + 1}` : 'snow', ...sn)).join('')}`
               : `<circle class="fan-ring" cx="170" cy="288" r="50"/>
             <g class="fan" id="fan"><path class="blade" d="M170 254 L184 288 L156 288Z M170 322 L156 288 L184 288Z"/><circle cx="170" cy="288" r="7" class="hub"/></g>
             ${this._snowSvg('snow', 170, 288, 18)}`}
+            <g class="vapour" id="vapour" aria-hidden="true"><path class="vapour-puff" d="M112 332 q-14 -18 2 -32 q14 -12 0 -28"/><path class="vapour-puff" d="M170 338 q-16 -20 2 -35 q15 -13 0 -30"/><path class="vapour-puff" d="M226 332 q-14 -18 2 -32 q14 -12 0 -28"/></g>
             <text class="unit-status" id="t-hp-status" x="170" y="366" text-anchor="middle"></text>
             <text class="unit-val" id="t-hp-power" x="170" y="390" text-anchor="middle"></text>
             <text class="unit-val strong" id="t-hp-cop" x="170" y="412" text-anchor="middle"></text>
@@ -1265,24 +1871,26 @@ class HeatpumpFlowCard extends HTMLElement {
               <text class="small" id="t-valve" x="446" y="254"></text>
             </g>
             <g class="tap" ${de('dhw_top')}>
-              <text class="tank-title" x="580" y="30" text-anchor="middle">${i.dhw}</text>
+              <text class="tank-title" x="580" y="30" text-anchor="middle">${this._esc(i.dhw)}</text>
               <rect class="tank" x="520" y="40" width="120" height="200" rx="26" fill="url(#g-dhw)"/>
               <path class="coil" id="coil" d="M520 80 H600 L540 100 H600 L540 120 H600 L540 140 H600 L540 160 H600 L540 180 H600 L540 200 H520"/>
               <text class="tank-temp" id="t-dhw-top" x="580" y="112" text-anchor="middle"></text>
-              <text class="tank-sub" id="t-dhw-bottom" x="580" y="222" text-anchor="middle"></text>
               <text class="small" id="t-dhw-mode" x="580" y="262" text-anchor="middle"></text>
             </g>
+            ${this._has('dhw_middle') ? `<g class="tap" ${de('dhw_middle')}><text class="tank-sub" id="t-dhw-middle" x="580" y="166" text-anchor="middle"></text></g>` : ''}
+            <g class="tap" ${de('dhw_bottom')}><text class="tank-sub" id="t-dhw-bottom" x="580" y="222" text-anchor="middle"></text></g>
             ${this._heaterSvg('dhw_heater', 'dhw', 186)}
-            ${P.circ ? `<g class="tap" ${de('circulation')}><text class="small circ" id="t-circ" x="650" y="60">↻ ${i.circulation}</text></g>` : ''}` : ''}
+            ${P.circ ? `<g class="tap" ${de('circulation')}><text class="small circ" id="t-circ" x="650" y="60">↻ ${this._esc(i.circulation)}</text></g>` : ''}` : ''}
 
           ${P.buffer ? `
             <g class="tap" ${de('buffer_top')}>
-              <text class="tank-title" x="580" y="310" text-anchor="middle">${i.buffer}</text>
+              <text class="tank-title" x="580" y="310" text-anchor="middle">${this._esc(i.buffer)}</text>
               <rect class="tank" x="520" y="320" width="120" height="200" rx="26" fill="url(#g-buf)"/>
               <text class="tank-temp" id="t-buf-top" x="580" y="392" text-anchor="middle"></text>
-              <text class="tank-sub" id="t-buf-bottom" x="580" y="502" text-anchor="middle"></text>
               <text class="small" id="t-buf-mode" x="580" y="542" text-anchor="middle"></text>
             </g>
+            ${this._has('buffer_middle') ? `<g class="tap" ${de('buffer_middle')}><text class="tank-sub" id="t-buf-middle" x="580" y="446" text-anchor="middle"></text></g>` : ''}
+            <g class="tap" ${de('buffer_bottom')}><text class="tank-sub" id="t-buf-bottom" x="580" y="502" text-anchor="middle"></text></g>
             ${this._heaterSvg('buffer_heater', 'buf', 455)}` : ''}
 
 
@@ -1291,7 +1899,7 @@ class HeatpumpFlowCard extends HTMLElement {
           ${P.house ? `
             <g class="tap" ${de(e.room ? 'room' : 'room_target')}>
               <path class="house" d="M720 130 L830 50 L940 130 V240 H720 Z"/>
-              <text class="tank-title" x="830" y="118" text-anchor="middle">${i.house}</text>
+              <text class="tank-title" x="830" y="118" text-anchor="middle">${this._esc(i.house)}</text>
               <text class="house-temp" id="t-room" x="830" y="172" text-anchor="middle"></text>
               <text class="house-sub" id="t-room-target" x="830" y="202" text-anchor="middle"></text>
               ${this._sourceType === 'air' ? '' : '<text class="small" id="t-outdoor" x="830" y="226" text-anchor="middle"></text>'}
@@ -1307,6 +1915,7 @@ class HeatpumpFlowCard extends HTMLElement {
         </div>
       </ha-card>`;
 
+    this._wireTools();
     if (this._layout === 'wall') {
       const card = this.shadowRoot.querySelector('ha-card');
       ['pointerdown', 'pointermove', 'keydown', 'focusin'].forEach((t) => card.addEventListener(t, () => this._wake(), { passive: true }));
@@ -1418,8 +2027,8 @@ class HeatpumpFlowCard extends HTMLElement {
 
   // Editor: the tiles this installation can fill as select options, the current selection as option values and the default set.
   static _tileOptions(config, r, hass) {
-    const I = HFC_I18N[(hass?.locale?.language || navigator.language || 'en').slice(0, 2)] || HFC_I18N.en;
-    const probe = Object.assign(Object.create(HeatpumpFlowCard.prototype), { _hass: hass, _e: r.entities, _tileMap: r.tiles, _config: config });
+    const I = HeatpumpFlowCard._texts(config, hass);
+    const probe = Object.assign(Object.create(HeatpumpFlowCard.prototype), { _hass: hass, _e: r.entities, _sums: r.sums, _tileMap: r.tiles, _config: config });
     const options = [];
     const periodsOf = {};
     // The cost tile needs a price (global `price`).
@@ -1472,6 +2081,11 @@ class HeatpumpFlowCard extends HTMLElement {
     if (def.ratio) {
       const parts = def.ratio.map((k) => [this._tileSource(k, period), HFC_TILES[k].kind]);
       if (parts.every(([s]) => s)) return { ratio: parts };
+    }
+    // Without a delivered-heat counter, heat = environmental energy + electricity. Keep this visibly approximate.
+    if (key === 'cop_total') {
+      const environmental = this._tileSource('env_energy', period); const electricity = this._tileSource('energy', period);
+      if (environmental && electricity) return { envCop: [environmental, electricity] };
     }
     return null;
   }
@@ -1610,6 +2224,10 @@ class HeatpumpFlowCard extends HTMLElement {
     if (src.id) return this._tileRead(src.id, kind, period);
     if (src.stat) return this._statChange(src.stat, kind, period);
     if (src.ratio) { const [a, b] = src.ratio.map(([s, k]) => this._srcValue(s, k, period)); return b > 0 && a >= 0 ? a / b : NaN; }
+    if (src.envCop) {
+      const environmental = this._srcValue(src.envCop[0], 'energy', period); const electricity = this._srcValue(src.envCop[1], 'energy', period);
+      return electricity > 0 && environmental >= 0 ? (environmental + electricity) / electricity : NaN;
+    }
     return NaN;
   }
 
@@ -1617,6 +2235,7 @@ class HeatpumpFlowCard extends HTMLElement {
     if (!src) return '';
     if (src.id || src.stat) return src.id || src.stat;
     if (src.ratio) return this._tileEntity(src.ratio[0][0], period);
+    if (src.envCop) return this._tileEntity(src.envCop[0], period);
     if (src.classes) return this._tileMap.load_class1;
     if (src.cost) return this._tileEntity(this._tileSource('energy', period), period);
     return '';
@@ -1641,7 +2260,7 @@ class HeatpumpFlowCard extends HTMLElement {
       } catch (err) { return `${approx ? '≈' : ''}${out(v, 2, currency)}`; }
     }
     const v = this._srcValue(src, def.kind, period);
-    const approx = src.ratio ? '≈' : '';
+    const approx = src.ratio || src.envCop ? '≈' : '';
     if (def.kind === 'cop') return Number.isFinite(v) ? `${approx}${this._fmt(v, dec(2))}` : '–';
     // Small amounts (standby, defrost) keep two decimals so they do not read as 0.0.
     if (def.kind === 'energy') return period === 'now' ? out(v, 0, 'W') : out(v, Math.abs(v) >= 100 ? 0 : Math.abs(v) < 1 ? 2 : 1, 'kWh');
@@ -1660,6 +2279,7 @@ class HeatpumpFlowCard extends HTMLElement {
       heat_estimated: !h('heat') && h('volume') && h('flow') && h('return'),
       power: h('power'), heat_live: h('heat'), compressor_speed: h('compressor_speed'),
       source_spread: h('source_in') && h('source_out'), outdoor: h('outdoor'), dhw_top: h('dhw_top'), room: h('room'),
+      brine_pressure: h('brine_pressure'), hc_pressure: h('hc_pressure'),
       pv_share: h('pv_share_today'),
     }[key];
   }
@@ -1675,6 +2295,8 @@ class HeatpumpFlowCard extends HTMLElement {
       case 'heat_live': return [f(this._kw('heat'), 1, 'kW'), this._e.heat];
       case 'compressor_speed': return [this._fmtState('compressor_speed'), this._e.compressor_speed];
       case 'source_spread': return [f(this._n('source_in') - this._n('source_out'), 1, 'K'), this._e.source_in];
+      case 'brine_pressure': return [this._pressureText('brine_pressure'), this._e.brine_pressure];
+      case 'hc_pressure': return [this._pressureText('hc_pressure'), this._e.hc_pressure];
       case 'pv_share': return [f(this._n('pv_share_today'), 0, '%'), this._e.pv_share_today];
       default: return [this._t(this._n(key)), this._e[key]];
     }
@@ -1721,18 +2343,35 @@ class HeatpumpFlowCard extends HTMLElement {
     // Entities that are unknown or unavailable (not reported by this model) are left out.
     const ok = (key) => this._has(key) && !['unknown', 'unavailable'].includes(this._s(key));
     const row = (key) => (ok(key) ? [key, D[key], this._e[key], () => this._fmtState(key)] : null);
-    const op = ['hours', 'starts_total', 'aux_hours', 'energy_total', 'heat_total'].map(row);
-    if (ok('energy_total') && ok('heat_total')) {
-      op.push(['cop_total', D.cop_total, this._e.heat_total, () => { const c = kwh('heat_total') / kwh('energy_total'); return Number.isFinite(c) && c > 0 ? `≈${this._fmt(c, 2)}` : '–'; }]);
+    const op = ['hours', 'starts_total', 'aux_hours', 'energy_total', 'env_energy', 'heat_total'].map(row);
+    if (ok('energy_total') && (ok('heat_total') || ok('env_energy'))) {
+      op.push(['cop_total', D.cop_total, ok('heat_total') ? this._e.heat_total : this._e.env_energy, () => {
+        const electricity = kwh('energy_total');
+        const heat = ok('heat_total') ? kwh('heat_total') : kwh('env_energy') + electricity;
+        const c = heat / electricity;
+        return Number.isFinite(c) && c > 0 ? `≈${this._fmt(c, 2)}` : '–';
+      }]);
     }
     const rf = ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev'].map(row);
+    // Cut-out counters are event counts, shown as plain numbers with a times sign, never with a unit of pressure or temperature.
+    const cutouts = ['cutout_high_pressure', 'cutout_low_pressure', 'cutout_temperature'].filter(ok).map((key) => [key, D[key], this._e[key], () => this._countText(key)]);
+    const hydraulic = [['brine_pressure', i.brine_pressure], ['hc_pressure', i.hc_pressure]].filter(([key]) => ok(key))
+      .map(([key, label]) => [key, label, this._e[key], () => this._pressureText(key)]);
     // Superheat = suction gas − evaporation, subcooling = condensation − liquid line, unless the integration provides them.
     const diff = (a, b) => { const v = this._n(a) - this._n(b); return Number.isFinite(v) ? `${this._fmt(v, 1)} K` : '–'; };
     rf.push(row('superheat') || (ok('suction_temp') && ok('evap_temp') ? ['superheat', D.superheat, this._e.suction_temp, () => diff('suction_temp', 'evap_temp')] : null));
     rf.push(row('subcooling') || (ok('cond_temp') && ok('liquid_temp') ? ['subcooling', D.subcooling, this._e.liquid_temp, () => diff('cond_temp', 'liquid_temp')] : null));
     const more = (this._config.details || []).map((d, n) => (typeof d === 'string' ? { entity: d } : d)).filter((d) => d && this._hass.states[d.entity])
       .map((d, n) => [`x${n}`, d.name || this._hass.states[d.entity].attributes.friendly_name || d.entity, d.entity, () => this._fmtState(null, d)]);
-    return [[i.sec_operation, op.filter(Boolean)], [i.sec_refrigerant, rf.filter(Boolean)], [i.sec_more, more]].filter(([, r]) => r.length);
+    return [[i.sec_operation, op.filter(Boolean)], [i.sec_hydraulic, hydraulic], [i.sec_refrigerant, rf.filter(Boolean)], [i.sec_cutouts, cutouts], [i.sec_more, more]].filter(([, r]) => r.length);
+  }
+
+  // Event counter: a whole number followed by "×"; text states stay as they are.
+  _countText(key) {
+    const st = this._hass.states[this._e[key]]; if (!st) return '–';
+    const v = parseFloat(st.state);
+    if (!Number.isFinite(v)) return ['unknown', 'unavailable'].includes(st.state) ? '–' : this._stateText(st, st.state);
+    return `${this._fmt(Math.round(v), 0)} ×`;
   }
 
   // Formats an entity value with its unit: integers without decimals, large values with none, others with one.
@@ -1754,7 +2393,7 @@ class HeatpumpFlowCard extends HTMLElement {
     if (this._drawerOpen === undefined) this._drawerOpen = !!this._config.details_open;
     const chevron = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
     return `<div class="drawer">
-      <button class="drawer-toggle" id="drawer-toggle" aria-expanded="${this._drawerOpen}">${this._i.details}${chevron}</button>
+      <button class="drawer-toggle" id="drawer-toggle" aria-expanded="${this._drawerOpen}">${this._esc(this._i.details)}${chevron}</button>
       <div class="drawer-body" id="drawer-body" ${this._drawerOpen ? '' : 'hidden'}>${sections.map(([title, rows]) => `<div class="dsec"><div class="dsec-title">${this._esc(title)}</div>
         <div class="dgrid">${rows.map(([id, label, entity]) => `<div class="drow" data-entity="${this._esc(entity)}"><span>${this._esc(label)}</span><b id="d-${id}"></b></div>`).join('')}</div></div>`).join('')}</div>
     </div>`;
@@ -1771,7 +2410,8 @@ class HeatpumpFlowCard extends HTMLElement {
     const s = n === 1 ? '' : String(n);
     const dy = (n - 1) * 250;
     const k = (key) => this._hk(n, key);
-    const de = (key) => (e[key] ? `data-entity="${this._esc(e[key])}"` : '');
+    const entity = (key) => e[key] || (n === 1 && !this._parts.buffer && key === k('flow') ? e.flow : '');
+    const de = (key) => (entity(key) ? `data-entity="${this._esc(entity(key))}"` : '');
     const name = this._config[n === 1 ? 'hc_name' : `hc${n}_name`];
     const title = this._esc(name || (this._hcCount > 1 ? `${i.heating_circuit} ${n}` : i.heating_circuit));
     const em = this._emitter(this._hcTypes[n - 1], title);
@@ -1779,7 +2419,7 @@ class HeatpumpFlowCard extends HTMLElement {
     if (n > 1) { vl = vl.replace('M640 ', 'M660 '); rl = rl.replace(/H640$/, 'H676'); }
     const pp = (id, d) => `<path class="pipe" id="p-${id}" d="${d}"/><path class="flow" id="f-${id}" d="${d}"/>`;
     const hop = n > 1 ? '<path class="hop" d="M660 483 V507"/>' : '';
-    const gy = this._hcTypes[n - 1] === 'radiator' ? [365, 455] : [360, 480];
+    const gy = this._hcTypes[n - 1] === 'underfloor' ? [360, 480] : [365, 455];
     const risers = n > 1 ? hop + pp(`hc-up${s}`, `M660 360 V${360 + dy}`) + pp(`hc-down${s}`, `M676 ${495 + dy} V495`) : '';
     return `${risers}<g transform="translate(0 ${dy})">
       <defs><linearGradient id="g-rad${s}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-rad${s}-top"/><stop offset="100%" id="g-rad${s}-bottom"/></linearGradient>
@@ -1787,6 +2427,7 @@ class HeatpumpFlowCard extends HTMLElement {
       ${em.art.split('__S__').join(s)}${pp(`hc-vl${s}`, vl)}${pp(`hc-body${s}`, em.body)}${pp(`hc-rl${s}`, rl)}
       <g class="tap" ${de(k('flow'))}><text class="pipe-label" id="t-hc${s}" x="740" y="334" text-anchor="middle"></text></g>
       <g class="tap" ${de(k('volume'))}><text class="vol-label" id="t-hc-vol${s}" x="720" y="394" text-anchor="middle"></text></g>
+      ${n === 1 && e.hc_pressure ? `<g class="tap pressure" id="pressure-hc" ${de('hc_pressure')}><text class="pressure-label" id="t-hc-pressure" x="700" y="430" text-anchor="middle"></text></g>` : ''}
       <g class="tap" ${de(e[k('pump')] ? k('pump') : k('mode'))}>
         <circle class="pump" cx="720" cy="360" r="16"/>
         <g class="impeller" id="impeller${s}"><path d="M720 348 L726 360 L714 360Z M720 372 L714 360 L726 360Z" class="imp"/></g>
@@ -1797,7 +2438,7 @@ class HeatpumpFlowCard extends HTMLElement {
   }
 
   // Drawing of the outdoor unit inside the heat pump block (air source only; brine and water keep the loop symbol).
-  // Styles: generic (fan ring), lambda (EU-L), vaillant in three sizes (aroTHERM plus). `auto` takes the style of the preset.
+  // Manufacturer-inspired, logo-free outdoor units. `auto` takes the style of the preset.
   _unitKey() {
     if (this._sourceType !== 'air') return 'generic';
     const style = this._config.unit_style && this._config.unit_style !== 'auto' ? this._config.unit_style : (this._preset?.unit_style || 'generic');
@@ -1847,6 +2488,63 @@ class HeatpumpFlowCard extends HTMLElement {
         snows: grilles.map(([cx, cy, r]) => [...abs(cx, cy), +Math.min(19, r * 0.58).toFixed(1)]),
       };
     }
+    if (key === 'panasonic') {
+      // Aquarea H/J/K outdoor units: a pale rectangular casing, large left-hand grille and a narrow service panel.
+      // This is an original simplified drawing without branding; proportions follow the common single-fan 824/875 mm units.
+      const x = 58; const y = 48; const w = 124; const h = 96;
+      const cx = 102; const cy = 95; const r = 37;
+      const grille = `<circle class="pana-gr" cx="${cx}" cy="${cy}" r="${r}"/><circle class="pana-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.78).toFixed(1)}"/><circle class="pana-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.54).toFixed(1)}"/>${Array.from({ length: 16 }, (_, m) => { const a = (m * Math.PI) / 8; return `<line class="pana-gr thin" x1="${(cx + Math.cos(a) * 7).toFixed(1)}" y1="${(cy + Math.sin(a) * 7).toFixed(1)}" x2="${(cx + Math.cos(a) * r).toFixed(1)}" y2="${(cy + Math.sin(a) * r).toFixed(1)}"/>`; }).join('')}`;
+      return {
+        below: T(`<rect class="pana-foot" x="${x + 10}" y="${y + h}" width="15" height="6" rx="1.5"/><rect class="pana-foot" x="${x + w - 25}" y="${y + h}" width="15" height="6" rx="1.5"/><rect class="pana-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="4"/><path class="pana-top" d="M${x + 3} ${y + 7} H${x + w - 3}"/>${grille}`),
+        fans: [[...abs(cx, cy), +(r * 0.82).toFixed(1), 'pana-fan']],
+        above: T(`<path class="pana-seam" d="M148 ${y + 8} V${y + h - 7}"/><path class="pana-vents" d="M156 76h17M156 82h17M156 88h17M156 94h17M156 100h17M156 106h17M156 112h17"/><rect class="pana-panel" x="157" y="119" width="15" height="12" rx="1.5"/>`),
+        snows: [[...abs(cx, cy), 18]],
+      };
+    }
+    if (key === 'viessmann') {
+      // Vitocal 250-A: tall graphite body with a softly rounded, full-height horizontal-louvre front.
+      const x = 78; const y = 28; const w = 84; const h = 124; const cx = 120; const cy = 88; const r = 32;
+      const slats = Array.from({ length: 17 }, (_, n) => `<path class="vies-slat" d="M${x + 9} ${y + 12 + n * 6} H${x + w - 9}"/>`).join('');
+      return {
+        below: T(`<rect class="vies-foot" x="${x + 9}" y="${y + h}" width="14" height="5" rx="1.5"/><rect class="vies-foot" x="${x + w - 23}" y="${y + h}" width="14" height="5" rx="1.5"/><rect class="vies-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="12"/><circle class="vies-well" cx="${cx}" cy="${cy}" r="${r + 3}"/>`),
+        fans: [[...abs(cx, cy), r, 'vies-fan']],
+        above: T(`<g>${slats}</g><rect class="vies-rim" x="${x}" y="${y}" width="${w}" height="${h}" rx="12"/>`),
+        snows: [[...abs(cx, cy), 18]],
+      };
+    }
+    if (key === 'bosch') {
+      // Compress 5800i/6800i AW: broad pale casing, rounded corners and one centred circular intake.
+      const x = 52; const y = 50; const w = 136; const h = 94; const cx = 120; const cy = 96; const r = 37;
+      const spokes = Array.from({ length: 16 }, (_, n) => { const a = (n * Math.PI) / 8; return `<line class="bosch-gr thin" x1="${(cx + Math.cos(a) * 8).toFixed(1)}" y1="${(cy + Math.sin(a) * 8).toFixed(1)}" x2="${(cx + Math.cos(a) * r).toFixed(1)}" y2="${(cy + Math.sin(a) * r).toFixed(1)}"/>`; }).join('');
+      return {
+        below: T(`<rect class="bosch-foot" x="${x + 13}" y="${y + h}" width="15" height="6" rx="2"/><rect class="bosch-foot" x="${x + w - 28}" y="${y + h}" width="15" height="6" rx="2"/><rect class="bosch-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="13"/><circle class="bosch-gr" cx="${cx}" cy="${cy}" r="${r}"/><circle class="bosch-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.74).toFixed(1)}"/>${spokes}`),
+        fans: [[...abs(cx, cy), +(r * 0.83).toFixed(1), 'bosch-fan']],
+        above: T(`<path class="bosch-top" d="M${x + 13} ${y + 9} H${x + w - 13}"/><rect class="bosch-mark" x="${x + w - 19}" y="${y + 13}" width="5" height="18" rx="2.5"/>`),
+        snows: [[...abs(cx, cy), 18]],
+      };
+    }
+    if (key === 'saunier') {
+      // GeniaAir Mono: white horizontal casing, black fan grille with the characteristic red accent ring.
+      const x = 56; const y = 56; const w = 128; const h = 88; const cx = 101; const cy = 99; const r = 35;
+      const spokes = Array.from({ length: 14 }, (_, n) => { const a = (n * Math.PI) / 7; return `<line class="sd-gr thin" x1="${(cx + Math.cos(a) * 7).toFixed(1)}" y1="${(cy + Math.sin(a) * 7).toFixed(1)}" x2="${(cx + Math.cos(a) * r).toFixed(1)}" y2="${(cy + Math.sin(a) * r).toFixed(1)}"/>`; }).join('');
+      return {
+        below: T(`<rect class="sd-foot" x="${x + 10}" y="${y + h}" width="15" height="6" rx="2"/><rect class="sd-foot" x="${x + w - 25}" y="${y + h}" width="15" height="6" rx="2"/><rect class="sd-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/><circle class="sd-accent" cx="${cx}" cy="${cy}" r="${r + 2}"/><circle class="sd-gr" cx="${cx}" cy="${cy}" r="${r}"/><circle class="sd-gr thin" cx="${cx}" cy="${cy}" r="${(r * 0.7).toFixed(1)}"/>${spokes}`),
+        fans: [[...abs(cx, cy), +(r * 0.82).toFixed(1), 'sd-fan']],
+        above: T(`<path class="sd-seam" d="M148 ${y + 8} V${y + h - 8}"/><path class="sd-vents" d="M157 83h17M157 90h17M157 97h17M157 104h17M157 111h17"/><rect class="sd-badge" x="160" y="120" width="10" height="4" rx="2"/>`),
+        snows: [[...abs(cx, cy), 18]],
+      };
+    }
+    if (key === 'samsung') {
+      // EHS Mono HT Quiet: dark-grey monolith with a horizontal black grille hiding the fan.
+      const x = 57; const y = 46; const w = 126; const h = 102; const cx = 103; const cy = 97; const r = 34;
+      const slats = Array.from({ length: 13 }, (_, n) => `<path class="sam-slat" d="M${x + 8} ${y + 14 + n * 6} H${x + 88}"/>`).join('');
+      return {
+        below: T(`<rect class="sam-foot" x="${x + 10}" y="${y + h}" width="15" height="6" rx="2"/><rect class="sam-foot" x="${x + w - 25}" y="${y + h}" width="15" height="6" rx="2"/><rect class="sam-body" x="${x}" y="${y}" width="${w}" height="${h}" rx="5"/><rect class="sam-grille" x="${x + 5}" y="${y + 7}" width="88" height="${h - 14}" rx="3"/>`),
+        fans: [[...abs(cx, cy), r, 'sam-fan']],
+        above: T(`<g>${slats}</g><path class="sam-seam" d="M${x + 96} ${y + 8} V${y + h - 8}"/><circle class="sam-dot" cx="${x + 110}" cy="${y + 17}" r="2"/>`),
+        snows: [[...abs(cx, cy), 18]],
+      };
+    }
     return { below: '<circle class="fan-ring" cx="170" cy="288" r="50"/>', fans: [[170, 288, 50, '']], above: '', snows: [[170, 288, 18]] };
   }
 
@@ -1864,8 +2562,11 @@ class HeatpumpFlowCard extends HTMLElement {
       return el.getClientRects().length > 0;
     };
     const label = (el) => {
+      if (el.dataset.a11y) return el.dataset.a11y;
       const st = this._hass?.states[el.dataset.entity];
       if (!st) return '';
+      const attr = hfcTempAttr(el.dataset.entity);
+      if (attr) return `${st.attributes?.friendly_name || el.dataset.entity}: ${this._t(parseFloat(st.attributes?.[attr]))}`;
       const u = st.attributes?.unit_of_measurement;
       return `${st.attributes?.friendly_name || el.dataset.entity}: ${st.state}${u ? ` ${u}` : ''}`;
     };
@@ -1984,6 +2685,30 @@ class HeatpumpFlowCard extends HTMLElement {
     return segs;
   }
 
+  // Entities shown as extra lanes under the bar: timeline_marks true = the badges, or a list of entities / { entity, label }.
+  _timelineMarks() {
+    const m = this._config.timeline_marks;
+    if (!m) return [];
+    const list = m === true ? this._badges : (Array.isArray(m) ? m : []);
+    const seen = new Set();
+    return list.map((x) => (typeof x === 'string' ? { entity: x } : x)).filter((x) => x && x.entity && !seen.has(x.entity) && seen.add(x.entity))
+      .map((x) => ({ entity: x.entity, label: x.label || this._hass.states[x.entity]?.attributes?.friendly_name || x.entity }));
+  }
+
+  // Periods in which a mark entity was on (same on-states as the badge chips), merged, between start and end.
+  _timelineMarkSegments(hist, mark, start, end) {
+    const list = hist[mark.entity] || [];
+    const segs = [];
+    list.forEach((e, n) => {
+      if (!['on', 'true', 'home', 'open', 'ein'].includes(String(e.s).toLowerCase())) return;
+      const from = Math.max(e.t, start); const to = Math.min(list[n + 1] ? list[n + 1].t : end, end);
+      if (to <= from) return;
+      const last = segs[segs.length - 1];
+      if (last && last.to === from) last.to = to; else segs.push({ from, to });
+    });
+    return segs;
+  }
+
   _timelineTime(ms) {
     let tz; try { tz = this._hass.config?.time_zone; new Intl.DateTimeFormat('en', { timeZone: tz }); } catch (err) { tz = undefined; }
     return new Intl.DateTimeFormat(this._lang, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: tz }).format(ms);
@@ -2012,19 +2737,22 @@ class HeatpumpFlowCard extends HTMLElement {
     const idList = ids ? Object.values(ids).filter(Boolean) : [];
     if (!idList.length) { box.hidden = true; return; }
     const now = Date.now(); const start = now - hours * 3600000;
-    const hist = this._wsCached(`timeline|${idList.join(',')}|${hours}`, {
-      type: 'history/history_during_period', start_time: new Date(start).toISOString(), entity_ids: idList,
+    const marks = this._timelineMarks();
+    const allIds = [...new Set([...idList, ...marks.map((m) => m.entity)])];
+    const hist = this._wsCached(`timeline|${allIds.join(',')}|${hours}`, {
+      type: 'history/history_during_period', start_time: new Date(start).toISOString(), entity_ids: allIds,
       minimal_response: true, no_attributes: true, significant_changes_only: false,
-    }, (res) => this._timelineHistory(res, idList));
+    }, (res) => this._timelineHistory(res, allIds));
     if (!hist) { box.hidden = true; return; }
     // The window is cached for five minutes; the bar always ends at "now".
     const segs = this._timelineSegments(hist, ids, start, now);
     if (!segs.length) { box.hidden = true; return; }
+    const lanes = marks.map((m, n) => ({ ...m, n, segs: this._timelineMarkSegments(hist, m, start, now) })).filter((l) => l.segs.length);
     const minute = Math.floor(now / 60000);
-    const key = `${minute}|${segs.map((s) => `${s.kind}${s.from}${s.to}`).join(',')}|${this._lang}|${this._tlSel ?? ''}`;
+    const key = `${minute}|${segs.map((s) => `${s.kind}${s.from}${s.to}`).join(',')}|${lanes.map((l) => `${l.n}${l.label}${l.segs.map((s) => `${s.from}-${s.to}`).join(',')}`).join(';')}|${this._lang}|${this._tlSel ?? ''}|${this._tlMarkSel ?? ''}`;
     if (box._k === key) return;
     box._k = key; box.hidden = false;
-    this._tl = { segs, start, now };
+    this._tl = { segs, start, now, lanes };
     const pct = (t) => (((t - start) / (now - start)) * 100).toFixed(3);
     const i = this._i;
     // Hour ticks at clock times (every 6 h for a day), found in the Home Assistant time zone.
@@ -2038,11 +2766,16 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     const kinds = [...new Set(segs.map((s) => s.kind))].filter((k) => k !== 'idle');
     const sel = segs.findIndex((s) => s.from === this._tlSel);
-    box.innerHTML = `<div class="tl-head"><span>${i.timeline_title.replace('{h}', hours)}</span><span class="tl-detail" id="tl-detail" aria-live="polite">${sel >= 0 ? this._esc(this._timelineDetail(segs[sel])) : ''}</span></div>
+    const markDetail = (l, s) => `${l.label} · ${this._timelineTime(s.from)}–${this._timelineTime(s.to)} · ${this._timelineDuration(s.to - s.from)}`;
+    let detail = sel >= 0 ? this._timelineDetail(segs[sel]) : '';
+    lanes.forEach((l) => l.segs.forEach((s) => { if (`${l.n}:${s.from}` === this._tlMarkSel) detail = markDetail(l, s); }));
+    box.innerHTML = `<div class="tl-head"><span>${this._esc(i.timeline_title.replace('{h}', hours))}</span><span class="tl-detail" id="tl-detail" aria-live="polite">${this._esc(detail)}</span></div>
       <div class="tl-bar" id="tl-bar" tabindex="0" role="group" aria-label="${this._esc(i.timeline_aria.replace('{h}', hours))}">${segs.map((s, n) =>
     `<span class="seg k-${s.kind}${n === sel ? ' sel' : ''}" data-seg="${n}" style="left:${pct(s.from)}%;width:${(pct(s.to) - pct(s.from)).toFixed(3)}%" title="${this._esc(this._timelineDetail(s))}"></span>`).join('')}</div>
+      ${lanes.map((l) => `<div class="tl-mark" role="img" aria-label="${this._esc(`${l.label}: ${l.segs.map((s) => `${this._timelineTime(s.from)}–${this._timelineTime(s.to)}`).join(', ')}`)}">${l.segs.map((s) =>
+    `<span class="mseg${`${l.n}:${s.from}` === this._tlMarkSel ? ' sel' : ''}" data-mseg="${l.n}:${s.from}" style="left:${pct(s.from)}%;width:${(pct(s.to) - pct(s.from)).toFixed(3)}%" title="${this._esc(markDetail(l, s))}"></span>`).join('')}</div>`).join('')}
       <div class="tl-axis">${ticks.map(([t, l]) => `<span style="left:${pct(t)}%">${l}</span>`).join('')}</div>
-      <div class="tl-legend">${kinds.map((k) => `<span><i class="k-${k}"></i>${this._esc(this._timelineLabel({ kind: k }))}</span>`).join('')}</div>`;
+      <div class="tl-legend">${kinds.map((k) => `<span><i class="k-${k}"></i>${this._esc(this._timelineLabel({ kind: k }))}</span>`).join('')}${lanes.map((l) => `<span><i class="k-mark"></i>${this._esc(l.label)}</span>`).join('')}</div>`;
   }
 
   // Tap or arrow keys select a period and show its start, end and duration.
@@ -2050,11 +2783,16 @@ class HeatpumpFlowCard extends HTMLElement {
     const select = (n) => {
       const seg = this._tl?.segs[n];
       if (!seg) return;
-      this._tlSel = seg.from;
+      this._tlSel = seg.from; this._tlMarkSel = null;
       box._k = null; this._updateTimeline();
       this._$('tl-bar')?.focus({ preventScroll: true });
     };
-    box.addEventListener('click', (ev) => { const el = ev.target.closest('[data-seg]'); if (el) select(+el.dataset.seg); });
+    box.addEventListener('click', (ev) => {
+      const el = ev.target.closest('[data-seg]'); if (el) { select(+el.dataset.seg); return; }
+      // A tap on a lane shows that period; a second tap on the same one clears it.
+      const m = ev.target.closest('[data-mseg]');
+      if (m) { this._tlMarkSel = this._tlMarkSel === m.dataset.mseg ? null : m.dataset.mseg; this._tlSel = null; box._k = null; this._updateTimeline(); }
+    });
     box.addEventListener('keydown', (ev) => {
       if (ev.target.id !== 'tl-bar' || !this._tl) return;
       const segs = this._tl.segs; const cur = segs.findIndex((s) => s.from === this._tlSel);
@@ -2101,7 +2839,9 @@ class HeatpumpFlowCard extends HTMLElement {
     const inn = this._e.source_in ? `data-entity="${this._esc(this._e.source_in)}"` : '';
     const labels = `<g class="tap" ${out}><text class="small" id="t-src-out" x="130" y="462" text-anchor="end"></text></g>
       <g class="tap" ${inn}><text class="small" id="t-src-in" x="210" y="462"></text></g>
-      <g class="tap" ${this._e.source_volume ? `data-entity="${this._esc(this._e.source_volume)}"` : ''}><text class="vol-label" id="t-src-vol" x="212" y="512"></text></g>`;
+      <g class="tap" ${inn}><text class="small source-spread" id="t-src-spread" x="96" y="512" text-anchor="middle"></text></g>
+      <g class="tap" ${this._e.source_volume ? `data-entity="${this._esc(this._e.source_volume)}"` : ''}><text class="vol-label" id="t-src-vol" x="212" y="512"></text></g>
+      ${this._sourceType === 'brine' && this._e.brine_pressure ? `<g class="tap pressure" id="pressure-brine" data-entity="${this._esc(this._e.brine_pressure)}"><text class="pressure-label" id="t-brine-pressure" x="170" y="532" text-anchor="middle"></text></g>` : ''}`;
     if (this._sourceType === 'brine') {
       return `${ground}${pp('src', 'M140 425 V528 Q140 548 170 548 Q200 548 200 528 V425')}${labels}`;
     }
@@ -2127,7 +2867,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const has = entity && this._hass.states[entity];
     return `<g class="tap src ${key}${has ? '' : ' absent'}" ${has ? `data-entity="${this._esc(entity)}"` : ''} id="src-${key}">
       <circle cx="${x}" cy="40" r="28" class="src-ring"/>${icons[key]}
-      <text class="small" x="${x}" y="88" text-anchor="middle" id="t-src-${key}">${label}</text>
+      <text class="small" x="${x}" y="88" text-anchor="middle" id="t-src-${key}">${this._esc(label)}</text>
       <text class="small src-val" x="${x}" y="108" text-anchor="middle" id="t-src-${key}-v"></text>
     </g>`;
   }
@@ -2154,6 +2894,71 @@ class HeatpumpFlowCard extends HTMLElement {
 
   _actEvents(box) { this._pointerActions(box, (ev) => this._elementActs(ev)); }
 
+  /* ---------- card tools ---------- */
+  _wireTools() {
+    this._$('diagnostic-copy')?.addEventListener('click', () => this._copyDiagnostic());
+    this._$('fullscreen-toggle')?.addEventListener('click', () => (this._fullscreenOpen ? this._closeFullscreen() : this._openFullscreen()));
+    this._$('fullscreen-backdrop')?.addEventListener('click', () => this._closeFullscreen());
+  }
+
+  async _writeClipboard(text) {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
+    const area = document.createElement('textarea');
+    area.value = text; area.setAttribute('readonly', ''); area.style.cssText = 'position:fixed;left:-9999px;top:0';
+    this.shadowRoot.appendChild(area); area.select();
+    const copied = document.execCommand && document.execCommand('copy'); area.remove();
+    if (!copied) throw new Error('Clipboard API unavailable');
+  }
+
+  async _copyDiagnostic() {
+    const button = this._$('diagnostic-copy'); const status = this._$('tool-status');
+    try {
+      await this._writeClipboard(HeatpumpFlowCard._diagnosticReport(this._config, this._hass));
+      if (status) status.textContent = this._i.diagnostic_copied;
+      if (button) { button.classList.add('done'); button.title = this._i.diagnostic_copied; button.setAttribute('aria-label', this._i.diagnostic_copied); }
+    } catch (err) {
+      if (status) status.textContent = this._i.diagnostic_failed;
+      if (button) { button.title = this._i.diagnostic_failed; button.setAttribute('aria-label', this._i.diagnostic_failed); }
+    }
+    clearTimeout(this._diagnosticTimer);
+    this._diagnosticTimer = setTimeout(() => {
+      const b = this._$('diagnostic-copy'); if (!b) return;
+      b.classList.remove('done'); b.title = this._i.diagnostic_copy; b.setAttribute('aria-label', this._i.diagnostic_copy);
+    }, 1800);
+  }
+
+  _openFullscreen() {
+    if (this._fullscreenOpen || this._config.fullscreen === false) return;
+    this._fullscreenOpen = true;
+    this._bodyOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    this._fullscreenKeyHandler = this._fullscreenKeyHandler || ((ev) => this._fullscreenKey(ev));
+    document.addEventListener('keydown', this._fullscreenKeyHandler);
+    this._render(); this._update();
+    this._$('fullscreen-toggle')?.focus({ preventScroll: true });
+  }
+
+  _closeFullscreen(restoreFocus = true, render = true) {
+    if (!this._fullscreenOpen) return;
+    this._fullscreenOpen = false;
+    document.removeEventListener('keydown', this._fullscreenKeyHandler);
+    if (this._bodyOverflow !== undefined) { document.body.style.overflow = this._bodyOverflow; delete this._bodyOverflow; }
+    if (render && this.shadowRoot && this._hass && this._config) { this._render(); this._update(); }
+    if (restoreFocus) this._$('fullscreen-toggle')?.focus({ preventScroll: true });
+  }
+
+  _fullscreenKey(ev) {
+    if (!this._fullscreenOpen) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); this._closeFullscreen(); return; }
+    if (ev.key !== 'Tab') return;
+    const card = this.shadowRoot.querySelector('ha-card');
+    const focusable = [...card.querySelectorAll('button:not([disabled]), select:not([disabled]), input:not([disabled]), [tabindex="0"]')]
+      .filter((el) => !el.hidden && el.getClientRects().length);
+    if (!focusable.length) return;
+    const current = this.shadowRoot.activeElement; const first = focusable[0]; const last = focusable[focusable.length - 1];
+    if (ev.shiftKey && (current === first || !card.contains(current))) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && current === last) { ev.preventDefault(); first.focus(); }
+  }
+
   // Wall display: the quick controls and the details toggle appear on a touch or mouse move and fade out again.
   _wallSeconds() {
     const t = this._config.wall_timeout;
@@ -2176,7 +2981,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const drawer = this._$('drawer-body');
     if (drawer && !drawer.hidden) { this._drawerOpen = false; drawer.hidden = true; this._$('drawer-toggle')?.setAttribute('aria-expanded', 'false'); }
   }
-  disconnectedCallback() { clearTimeout(this._sleepTimer); }
+  disconnectedCallback() { clearTimeout(this._sleepTimer); clearTimeout(this._diagnosticTimer); this._closeFullscreen(false, false); }
 
   // Tiles: the actions of the tile under the pointer.
   _tileEvents(box) {
@@ -2245,10 +3050,12 @@ class HeatpumpFlowCard extends HTMLElement {
     const running = compOn || power > this._threshold || this._runningStates.includes(status)
       || (!this._has('compressor') && !this._has('power') && !this._has('status') && ['heating', 'dhw', 'cooling', 'defrost'].includes(hp));
     const defrost = hp === 'defrost' || status.toUpperCase().includes('DEFROST') || (this._has('defrost') && this._on('defrost'));
-    // Valve: binary (on = DHW) or a state such as "Tank" / "DHW" ("Tank (DHW)" from Samsung NASA).
-    const valveDhw = this._has('valve') && (this._on('valve') || ['tank', 'tank (dhw)', 'dhw', 'hot water', 'warmwasser'].includes(String(this._s('valve')).toLowerCase()));
+    // Valve: binary (on = DHW) or a state such as "Tank" / "DHW".
+    const valveDhw = this._has('valve') && (this._on('valve') || ['tank', 'tank (dhw)', 'dhw', 'hot water', 'hot_water', 'warmwasser'].includes(String(this._s('valve')).toLowerCase()));
     // Integrations without an operating-mode entity: a running compressor means heating unless the valve says DHW.
     if (!this._has('mode')) hp = !running ? 'idle' : (defrost ? 'defrost' : (valveDhw ? 'dhw' : 'heating'));
+    // A defrost entity wins over an operating mode that keeps reporting heating while the unit defrosts (e.g. Kronoterm).
+    else if (this._has('defrost') && this._on('defrost') && ['heating', 'cooling', 'dhw'].includes(hp)) hp = 'defrost';
     const cooling = hp === 'cooling' || bufMode === 'cooling';
 
     const dhwActive = P.dhw && (hp === 'dhw' || ['dhw', 'legionella'].includes(dhwMode) || valveDhw);
@@ -2265,11 +3072,20 @@ class HeatpumpFlowCard extends HTMLElement {
     // the flow dashes the flow rate, the fan otherwise the electrical power.
     const mod = this._speedFraction();
     const modOk = Number.isFinite(mod) && mod > 0;
+    const speed = this._flowSpeed;
+    const scaled = (seconds) => `${(seconds / speed).toFixed(2)}s`;
     const dur = Number.isFinite(vol) && vol > 0 ? Math.min(Math.max(3.4 - vol / 1000, 0.8), 3) : (modOk ? 2.6 - mod * 1.8 : 2);
-    this.style.setProperty('--hfc-dur', `${dur.toFixed(2)}s`);
+    this.style.setProperty('--hfc-dur', scaled(dur));
     const fanDur = running ? (modOk ? 2.4 - mod * 1.9 : Math.min(Math.max(2.4 - (power || 0) / 1500, 0.5), 2.4)) : 0;
-    this.style.setProperty('--hfc-fan', `${fanDur.toFixed(2)}s`);
-    this.style.setProperty('--hfc-pump', `${(modOk ? 1.8 - mod * 1.2 : 1.2).toFixed(2)}s`);
+    this.style.setProperty('--hfc-fan', scaled(fanDur));
+    this.style.setProperty('--hfc-pump', scaled(modOk ? 1.8 - mod * 1.2 : 1.2));
+    this.style.setProperty('--hfc-electrical', scaled(1.1));
+    this.style.setProperty('--hfc-coil', scaled(1.4));
+    this.style.setProperty('--hfc-snow', scaled(1.6));
+    this.style.setProperty('--hfc-vapour', scaled(2.2));
+    this.style.setProperty('--hfc-wave', scaled(2.4));
+    this.style.setProperty('--hfc-wave-delay', scaled(0.8));
+    this.style.setProperty('--hfc-wave-delay2', scaled(1.6));
 
     // pipes
     const cFlow = defrost || cooling ? hfcVar('defrost') : this._vlColor(tFlow);
@@ -2293,7 +3109,7 @@ class HeatpumpFlowCard extends HTMLElement {
         // Circuit pump, else circuit mode, else assume the circuit runs whenever the heat pump heats or cools.
         const hcOn = this._has(k('pump')) ? this._on(k('pump')) : (this._has(k('mode')) ? ['heating', 'cooling'].includes(cMode) : toHeat);
         // Without circuit sensors fall back to the buffer / main loop temperatures.
-        const tHc = pick(this._n(k('flow')), this._n('buffer_top'), toHeat ? tFlow : tRet);
+        const tHc = pick(this._n(k('flow')), this._n('buffer_top'), tFlow);
         const tHcR = pick(this._n(k('return')), this._n('buffer_bottom'), tRet);
         const cHc = cMode === 'cooling' ? hfcVar('defrost') : this._vlColor(tHc);
         stroke(`hc-vl${s}`, cHc); stroke(`hc-body${s}`, cHc); stroke(`hc-rl${s}`, this._rlColor(tHcR));
@@ -2311,10 +3127,12 @@ class HeatpumpFlowCard extends HTMLElement {
         this._cls(`impeller${s}`, hcOn);
         this._cls(`waves${s}`, hcOn && cMode !== 'cooling');
         const set = this._n(k('setpoint'));
-        this._txt(`t-hc${s}`, this._has(k('flow')) ? `${this._t(tHc)}${Number.isFinite(set) ? ` · ${i.target} ${this._fmt(set)}` : ''}` : '');
+        const showFlow = this._has(k('flow')) || (n === 1 && !P.buffer && this._has('flow'));
+        this._txt(`t-hc${s}`, showFlow ? `${this._t(tHc)}${Number.isFinite(set) ? ` · ${i.target} ${this._fmt(set)}` : ''}` : '');
         const hcVol = this._lh(k('volume'));
         this._txt(`t-hc-vol${s}`, this._has(k('volume')) && Number.isFinite(hcVol) ? `${this._fmt(hcVol, 0)} l/h` : '');
         this._txt(`t-hc-mode${s}`, this._has(k('mode')) ? this._modeLabel(cMode, this._s(k('mode'))) : (hcOn ? i.running : ''));
+        if (n === 1 && this._has('hc_pressure')) this._updatePressure('hc_pressure', 'hc', 'pressure-hc', 't-hc-pressure', i.hc_pressure);
       }
     }
 
@@ -2341,7 +3159,7 @@ class HeatpumpFlowCard extends HTMLElement {
 
     // heat pump
     this._cls('fan', running); this._cls('fan2', running);
-    this._cls('snow', defrost && this._sourceType === 'air'); this._cls('snow2', defrost && this._sourceType === 'air'); this._cls('hp-box', running);
+    this._cls('snow', defrost && this._sourceType === 'air'); this._cls('snow2', defrost && this._sourceType === 'air'); this._cls('vapour', defrost && this._sourceType === 'air'); this._cls('hp-box', running);
     const hpBox = this._$('hp-box');
     if (hpBox) {
       ['dhw', 'defrost', 'cool'].forEach((c) => hpBox.classList.remove(c));
@@ -2351,7 +3169,7 @@ class HeatpumpFlowCard extends HTMLElement {
     // Some integrations report "heating" while charging DHW (e.g. ViCare compressor phase); the valve decides.
     const shownMode = toDhw && ['heating', 'idle', ''].includes(hp) ? 'dhw' : hp;
     const modeTxt = this._modeLabel(shownMode, rawMode);
-    const sl = (this._statusLabels[this._lang] || {})[status];
+    const sl = (this._statusLabels[this._lang] || this._statusLabels.en || {})[status];
     this._hpStatus(`${modeTxt}${running && sl ? ` · ${sl}` : ''}`);
     const heatTxt = Number.isFinite(heat) ? `${heatEstimated ? '≈' : ''}${this._fmt(heat, 1)} kW` : '';
     this._txt('t-hp-power', running
@@ -2368,7 +3186,10 @@ class HeatpumpFlowCard extends HTMLElement {
       const brine = this._sourceType === 'brine';
       this._txt('t-src-in', this._has('source_in') ? `${brine ? i.brine_in : i.well_in} ${this._t(this._n('source_in'))}` : '');
       this._txt('t-src-out', this._has('source_out') ? `${brine ? i.brine_out : i.well_out} ${this._t(this._n('source_out'))}` : '');
+      const sourceSpread = this._n('source_in') - this._n('source_out');
+      this._txt('t-src-spread', this._sourceSpread && running && Number.isFinite(sourceSpread) ? `ΔT ${this._fmt(sourceSpread)} K` : '');
       this._txt('t-src-vol', this._has('source_volume') && srcVol > 0 ? `${this._fmt(srcVol, 0)} l/h` : '');
+      if (brine && this._has('brine_pressure')) this._updatePressure('brine_pressure', 'brine', 'pressure-brine', 't-brine-pressure', i.brine_pressure);
       ['src', 'src-in', 'src-out'].forEach((id) => pipe(id, running));
     }
 
@@ -2379,8 +3200,10 @@ class HeatpumpFlowCard extends HTMLElement {
       this._txt('t-valve', loop ? (toDhw ? i.valve_dhw : (cooling ? i.valve_cooling : i.valve_heating)) : '');
       const top = this._n('dhw_top'); const bot = this._has('dhw_bottom') ? this._n('dhw_bottom') : top - 5;
       this._$('g-dhw-top').setAttribute('stop-color', this._tankColor(top));
+      if (this._has('dhw_middle')) this._$('g-dhw-middle')?.setAttribute('stop-color', this._tankColor(this._n('dhw_middle')));
       this._$('g-dhw-bottom').setAttribute('stop-color', this._tankColor(bot));
       this._txt('t-dhw-top', this._t(top));
+      this._txt('t-dhw-middle', this._has('dhw_middle') ? `${i.middle} ${this._t(this._n('dhw_middle'))}` : '');
       this._txt('t-dhw-bottom', this._has('dhw_bottom') ? `${i.bottom} ${this._t(this._n('dhw_bottom'))}` : '');
       const tgt = this._n('dhw_target');
       const parts = [];
@@ -2392,8 +3215,10 @@ class HeatpumpFlowCard extends HTMLElement {
     if (P.buffer) {
       const top = this._n('buffer_top'); const bot = this._has('buffer_bottom') ? this._n('buffer_bottom') : top - 5;
       this._$('g-buf-top').setAttribute('stop-color', this._tankColor(top));
+      if (this._has('buffer_middle')) this._$('g-buf-middle')?.setAttribute('stop-color', this._tankColor(this._n('buffer_middle')));
       this._$('g-buf-bottom').setAttribute('stop-color', this._tankColor(bot));
       this._txt('t-buf-top', this._t(top));
+      this._txt('t-buf-middle', this._has('buffer_middle') ? `${i.middle} ${this._t(this._n('buffer_middle'))}` : '');
       this._txt('t-buf-bottom', this._has('buffer_bottom') ? `${i.bottom} ${this._t(this._n('buffer_bottom'))}` : '');
       this._txt('t-buf-mode', this._has('buffer_mode') ? this._modeLabel(bufMode, this._s('buffer_mode')) : '');
     }
@@ -2424,13 +3249,15 @@ class HeatpumpFlowCard extends HTMLElement {
     const chip = this._$('chip-mode');
     chip.textContent = `${modeTxt}${running ? ` · ${i.running}` : ''}`;
     chip.className = `chip mode-${defrost ? 'defrost' : cooling ? 'cool' : toDhw ? 'dhw' : toHeat ? 'heat' : 'idle'}`;
-    this._badges.forEach((b, n) => this._cls(`chip-b${n}`, ['on', 'true', 'home', 'open'].includes(String(this._hass.states[b.entity]?.state).toLowerCase())));
-    // Text error sensors (preset error_ok, e.g. Samsung "No Error"): any other known text is a fault.
-    const errOk = this._preset?.error_ok || [];
+    this._badges.forEach((b, n) => this._cls(`chip-b${n}`, ['on', 'true', 'home', 'open', 'ein'].includes(String(this._hass.states[b.entity]?.state).toLowerCase())));
     const errs = this._errors.filter((id) => {
-      const st = this._hass.states[id]?.state; const v = parseFloat(st);
-      return (Number.isFinite(v) && v !== 0) || st === 'on'
-        || (errOk.length > 0 && st !== undefined && !Number.isFinite(v) && !['unknown', 'unavailable', 'off', ''].includes(st) && !errOk.includes(st));
+      const state = this._hass.states[id]?.state;
+      if (state === undefined) return false;
+      const raw = String(state).trim(); const normalized = raw.toLowerCase(); const value = Number(raw);
+      if (Number.isFinite(value)) return value !== 0;
+      if (normalized === 'on') return true;
+      if (['unknown', 'unavailable', 'off', ''].includes(normalized)) return false;
+      return this._errorOk.length > 0 && !this._errorOk.includes(normalized);
     });
     const prog = this._program();
     const pc = this._$('chip-program');
@@ -2482,8 +3309,33 @@ class HeatpumpFlowCard extends HTMLElement {
 
 HeatpumpFlowCard.styles = `
   :host { display: block; --hfc-muted: var(--secondary-text-color, #888); }
-  ha-card { padding: 12px 12px 8px; overflow: hidden; }
+  ha-card { padding: 12px 12px 8px; overflow: hidden; background: var(--card-background-color, #fff); }
+  .fullscreen-backdrop { position: fixed; inset: 0; z-index: 2147483645; background: rgba(0,0,0,.62); }
+  ha-card.fullscreen { position: fixed; inset: 0; z-index: 2147483646; box-sizing: border-box; width: 100vw; height: 100dvh; margin: 0;
+    border-radius: 0; overflow: auto; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  @media (min-width: 1640px) and (min-height: 800px) { ha-card.fullscreen { inset: 20px; width: min(1600px, calc(100vw - 40px)); height: calc(100dvh - 40px); margin: auto; border-radius: 14px; } }
+  .theme-night { color-scheme: dark; --card-background-color: #111827; --primary-text-color: #e5e7eb; --secondary-text-color: #94a3b8;
+    --secondary-background-color: #1e293b; --divider-color: #475569; --hfc-muted: #94a3b8; --hfc-heat: #c8783d; --hfc-hot: #c75b5b;
+    --hfc-cool: #5795ad; --hfc-cool-strong: #4387a3; --hfc-defrost: #79aabd; --hfc-pv: #c79336; --hfc-battery: #3f9b78;
+    --hfc-grid: #7f8a9a; --hfc-good: #4f9c5a; --hfc-badge: #9263b5; --hfc-brine: #668fc4; --hfc-ground: #8f6a35;
+    --hfc-flow-cold: #c47742; --hfc-flow-hot: #b64c4c; --hfc-return-cold: #6b9fb4; --hfc-return-hot: #486eaa;
+    --hfc-tank-cold: #486eaa; --hfc-tank-cool: #3e91a4; --hfc-tank-warm: #c8783d; --hfc-tank-hot: #c75b5b; --hfc-flow-dash: rgba(255,255,255,.72); }
+  .theme-contrast { color-scheme: light; --card-background-color: #fff; --primary-text-color: #000; --secondary-text-color: #111;
+    --secondary-background-color: #fff; --divider-color: #000; --hfc-muted: #111; --hfc-heat: #a83a00; --hfc-hot: #a40000;
+    --hfc-cool: #006b8f; --hfc-cool-strong: #00506b; --hfc-defrost: #00749a; --hfc-pv: #8a5b00; --hfc-battery: #006b3c;
+    --hfc-grid: #333; --hfc-good: #006b28; --hfc-badge: #5d2483; --hfc-brine: #0057b8; --hfc-ground: #664000;
+    --hfc-flow-cold: #b84f00; --hfc-flow-hot: #a40000; --hfc-return-cold: #00749a; --hfc-return-hot: #003f9e;
+    --hfc-tank-cold: #003f9e; --hfc-tank-cool: #006b8f; --hfc-tank-warm: #b84f00; --hfc-tank-hot: #a40000; --hfc-flow-dash: #fff; }
+  .theme-contrast .pipe { stroke-width: 11; } .theme-contrast .unit, .theme-contrast .tank, .theme-contrast .house,
+  .theme-contrast .src-ring, .theme-contrast .pump { stroke-width: 3; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0 4px 4px; }
+  .head-right { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+  .card-tools { display: inline-flex; align-items: center; gap: 3px; }
+  .icon-button { width: 30px; height: 30px; padding: 5px; border: 1px solid transparent; border-radius: 7px; color: var(--hfc-muted); background: transparent; cursor: pointer; }
+  .icon-button:hover { border-color: var(--divider-color, rgba(127,127,127,.35)); background: var(--secondary-background-color, rgba(127,127,127,.12)); }
+  .icon-button.done { color: ${hfcVar('good')}; }
+  .icon-button svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   .title { font-size: 1.15em; font-weight: 600; color: var(--primary-text-color); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chip { cursor: pointer; font-size: .82em; padding: 3px 10px; border-radius: 999px; background: var(--secondary-background-color, rgba(127,127,127,.15)); color: var(--primary-text-color); white-space: nowrap; }
@@ -2505,6 +3357,8 @@ HeatpumpFlowCard.styles = `
   .small { font-size: calc(15px * var(--k2, 1)); fill: var(--hfc-muted); }
   .pipe-label { font-size: calc(15px * var(--kp, 1)); font-weight: 600; }
   .vol-label { font-size: 13px; fill: var(--hfc-muted); }
+  .pressure-label { font-size: 13px; font-weight: 600; fill: var(--hfc-muted); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 4px; }
+  .pressure.warning .pressure-label { fill: ${hfcInk('pv')}; } .pressure.critical .pressure-label { fill: ${hfcInk('hot')}; }
   .unit { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.35)); stroke-width: 2; transition: stroke .4s; }
   .unit.on.dhw { stroke: ${hfcVar('hot')}; } .unit.on.defrost, .unit.on.cool { stroke: ${hfcVar('cool-strong')}; }
   .unit.on { stroke: ${hfcVar('heat')}; filter: url(#glow); }
@@ -2522,7 +3376,12 @@ HeatpumpFlowCard.styles = `
   .snow { opacity: 0; }
   .snow-bg { fill: var(--card-background-color, #fff); opacity: .85; }
   .snow-flake { fill: none; stroke: ${hfcVar('cool-strong')}; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-  .snow.on { opacity: 1; animation: hfc-pulse 1.6s ease-in-out infinite; }
+  .snow.on { opacity: 1; animation: hfc-pulse var(--hfc-snow, 1.6s) ease-in-out infinite; }
+  .vapour { opacity: 0; pointer-events: none; }
+  .vapour-puff { fill: none; stroke: ${hfcVar('defrost')}; stroke-width: 4; stroke-linecap: round; }
+  .vapour.on { opacity: .85; }
+  .vapour.on .vapour-puff { animation: hfc-vapour var(--hfc-vapour, 2.2s) ease-out infinite; transform-box: fill-box; transform-origin: center bottom; }
+  .vapour.on .vapour-puff:nth-child(2) { animation-delay: .45s; } .vapour.on .vapour-puff:nth-child(3) { animation-delay: .9s; }
   /* idle pipes are a solid pale tint, not transparent, so round caps that overlap at a junction do not show as dots */
   .pipe { fill: none; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; stroke: color-mix(in srgb, var(--pc, var(--hfc-muted)) 22%, var(--card-background-color, #fff)); transition: stroke .5s; }
   .pipe.on { stroke: var(--pc, var(--hfc-muted)); }
@@ -2532,7 +3391,7 @@ HeatpumpFlowCard.styles = `
   .eline.pv { stroke: ${hfcVar('pv')}; } .eline.bat { stroke: ${hfcVar('battery')}; } .eline.grid { stroke: ${hfcVar('grid')}; }
   .eflow { fill: none; stroke-width: 7; stroke-linecap: round; stroke-dasharray: 0.1 18; opacity: 0; pointer-events: none; }
   .eflow.pv { stroke: ${hfcVar('pv')}; } .eflow.bat { stroke: ${hfcVar('battery')}; } .eflow.grid { stroke: ${hfcVar('grid')}; }
-  .eflow.on { opacity: 1; animation: hfc-dash 1.1s linear infinite; }
+  .eflow.on { opacity: 1; animation: hfc-dash var(--hfc-electrical, 1.1s) linear infinite; }
   .hop { fill: none; stroke: var(--card-background-color, #fff); stroke-width: 15; }
   .src.absent { opacity: .35; }
   .src text { font-size: calc(15px * var(--ks, 1)); paint-order: stroke; stroke: var(--card-background-color, #fff); stroke-width: 5px; stroke-linejoin: round; }
@@ -2551,7 +3410,7 @@ HeatpumpFlowCard.styles = `
   .house-temp { font-size: calc(26px * var(--kt, 1)); font-weight: 700; }
   .house-sub { font-size: calc(14px * var(--k2, 1)); }
   .coil { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 3; stroke-linejoin: round; opacity: .25; }
-  .coil.on { opacity: .6; stroke-width: 2.5; stroke-dasharray: 5 9; animation: hfc-dash 1.4s linear infinite; }
+  .coil.on { opacity: .6; stroke-width: 2.5; stroke-dasharray: 5 9; animation: hfc-dash var(--hfc-coil, 1.4s) linear infinite; }
   .circ { opacity: .35; } .circ.on { opacity: 1; fill: ${hfcVar('cool-strong')}; }
   .pump { fill: var(--card-background-color, #fff); stroke: var(--hfc-muted); stroke-width: 3; }
   .imp { fill: var(--hfc-muted); }
@@ -2573,10 +3432,13 @@ HeatpumpFlowCard.styles = `
   .pipe.src { --pc: ${hfcVar('brine')}; }
   .radiator { fill: var(--secondary-background-color, rgba(127,127,127,.12)); stroke: var(--divider-color, rgba(127,127,127,.4)); stroke-width: 2; }
   .rib { fill: url(#g-rad); stroke: rgba(0,0,0,.08); stroke-width: 1; }
+  .column-rib { stroke: var(--divider-color, rgba(127,127,127,.45)); stroke-width: 1.5; }
+  .column-cap { fill: color-mix(in srgb, var(--hfc-muted) 24%, transparent); stroke: var(--divider-color, rgba(127,127,127,.45)); stroke-width: 1; }
+  .column-link, .column-foot { fill: none; stroke: var(--divider-color, rgba(127,127,127,.5)); stroke-width: 4; stroke-linecap: round; }
   #p-hc-body, #f-hc-body { display: var(--hfc-body, inline); }
   .wave { fill: none; stroke: ${hfcVar('heat')}; stroke-width: 3; stroke-linecap: round; opacity: 0; }
-  .waves.on .wave { animation: hfc-rise 2.4s ease-in-out infinite; }
-  .waves.on .wave:nth-child(2) { animation-delay: .8s; } .waves.on .wave:nth-child(3) { animation-delay: 1.6s; }
+  .waves.on .wave { animation: hfc-rise var(--hfc-wave, 2.4s) ease-in-out infinite; }
+  .waves.on .wave:nth-child(2) { animation-delay: var(--hfc-wave-delay, .8s); } .waves.on .wave:nth-child(3) { animation-delay: var(--hfc-wave-delay2, 1.6s); }
   .hint { margin: 4px 4px 8px; padding: 8px 12px; border-radius: 8px; background: ${hfcTint('heat', 14)}; color: var(--primary-text-color); font-size: .9em; }
   .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 4px 0; }
   .ctl { font: inherit; font-size: .88em; color: var(--primary-text-color); background: var(--secondary-background-color, rgba(127,127,127,.12));
@@ -2613,12 +3475,37 @@ HeatpumpFlowCard.styles = `
   .lam-plinth { fill: color-mix(in srgb, var(--primary-text-color, #1f2937) 22%, var(--card-background-color, #fff)); }
   /* a rim in the theme text colour keeps the anthracite body visible on dark cards */
   .lam-rim { fill: none; stroke: color-mix(in srgb, var(--primary-text-color, #1f2937) 48%, transparent); stroke-width: 1.4; }
-  .fan.lam-fan .blade, .fan.vai-fan .blade { fill: #9aa3ad; opacity: .55; } .fan.lam-fan .hub, .fan.vai-fan .hub { fill: #9aa3ad; }
-  .fan.lam-fan.on .blade, .fan.vai-fan.on .blade { fill: ${hfcVar('cool')}; opacity: .95; }
+  .fan.lam-fan .blade, .fan.vai-fan .blade, .fan.pana-fan .blade, .fan.vies-fan .blade, .fan.bosch-fan .blade, .fan.sd-fan .blade, .fan.sam-fan .blade { fill: #9aa3ad; opacity: .55; }
+  .fan.lam-fan .hub, .fan.vai-fan .hub, .fan.pana-fan .hub, .fan.vies-fan .hub, .fan.bosch-fan .hub, .fan.sd-fan .hub, .fan.sam-fan .hub { fill: #9aa3ad; }
+  .fan.lam-fan.on .blade, .fan.vai-fan.on .blade, .fan.pana-fan.on .blade, .fan.vies-fan.on .blade, .fan.bosch-fan.on .blade, .fan.sd-fan.on .blade, .fan.sam-fan.on .blade { fill: ${hfcVar('cool')}; opacity: .95; }
   .vai-body { fill: ${hfcVar('casing')}; stroke: color-mix(in srgb, ${hfcVar('casing')} 80%, #6b7280); stroke-width: 1.5; }
   .vai-dark, .vai-foot { fill: color-mix(in srgb, ${hfcVar('anthracite')} 60%, #000); }
   .vai-gr { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 45%, #a0a8b0); stroke-width: 2; } .vai-gr.thin { stroke-width: 1; opacity: .85; }
   .vai-seam { stroke: color-mix(in srgb, ${hfcVar('casing')} 80%, #6b7280); stroke-width: 1.2; fill: none; opacity: .8; }
+  .pana-body { fill: ${hfcVar('casing')}; stroke: color-mix(in srgb, ${hfcVar('casing')} 76%, #64748b); stroke-width: 1.5; }
+  .pana-foot, .pana-panel { fill: color-mix(in srgb, ${hfcVar('anthracite')} 62%, #000); }
+  .pana-gr { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 52%, #94a3b8); stroke-width: 2; }
+  .pana-gr.thin { stroke-width: 1; opacity: .88; }
+  .pana-top, .pana-seam, .pana-vents { fill: none; stroke: color-mix(in srgb, ${hfcVar('casing')} 62%, #64748b); stroke-width: 1.25; }
+  .pana-vents { stroke-width: 1.5; stroke-linecap: round; }
+  .vies-body { fill: ${hfcVar('anthracite')}; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 76%, #000); stroke-width: 1.5; }
+  .vies-foot, .sam-foot { fill: color-mix(in srgb, ${hfcVar('anthracite')} 55%, #000); }
+  .vies-well { fill: color-mix(in srgb, ${hfcVar('anthracite')} 35%, #000); opacity: .8; }
+  .vies-slat { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 62%, #000); stroke-width: 2.3; stroke-linecap: round; }
+  .vies-rim { fill: none; stroke: color-mix(in srgb, var(--primary-text-color, #1f2937) 42%, transparent); stroke-width: 1.2; }
+  .bosch-body, .sd-body { fill: ${hfcVar('casing')}; stroke: color-mix(in srgb, ${hfcVar('casing')} 76%, #64748b); stroke-width: 1.5; }
+  .bosch-foot, .sd-foot { fill: color-mix(in srgb, ${hfcVar('anthracite')} 58%, #000); }
+  .bosch-gr, .sd-gr { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 50%, #94a3b8); stroke-width: 2; }
+  .bosch-gr.thin, .sd-gr.thin { stroke-width: 1; opacity: .88; }
+  .bosch-top, .sd-seam, .sd-vents { fill: none; stroke: color-mix(in srgb, ${hfcVar('casing')} 62%, #64748b); stroke-width: 1.3; }
+  .bosch-mark { fill: ${hfcVar('good')}; opacity: .8; }
+  .sd-accent { fill: none; stroke: ${hfcVar('hot')}; stroke-width: 2.5; }
+  .sd-vents { stroke-linecap: round; } .sd-badge { fill: ${hfcVar('hot')}; }
+  .sam-body { fill: color-mix(in srgb, ${hfcVar('anthracite')} 88%, #111827); stroke: color-mix(in srgb, ${hfcVar('anthracite')} 62%, #000); stroke-width: 1.5; }
+  .sam-grille { fill: color-mix(in srgb, ${hfcVar('anthracite')} 32%, #000); }
+  .sam-slat { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 48%, #000); stroke-width: 3; stroke-linecap: round; }
+  .sam-seam { fill: none; stroke: color-mix(in srgb, ${hfcVar('anthracite')} 75%, #94a3b8); stroke-width: 1.2; }
+  .sam-dot { fill: color-mix(in srgb, ${hfcVar('casing')} 70%, #fff); opacity: .7; }
   /* timeline of the operating mode */
   .timeline { margin: 8px 4px 0; }
   .tl-head { display: flex; justify-content: space-between; gap: 8px; font-size: .82em; color: var(--hfc-muted); }
@@ -2633,6 +3520,11 @@ HeatpumpFlowCard.styles = `
   .seg.k-blocked, .tl-legend i.k-blocked { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--hfc-muted) 55%, transparent) 0 3px, transparent 3px 6px); }
   .seg.k-gap, .tl-legend i.k-gap { background: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--hfc-muted) 30%, transparent) 3px 4px); }
   .seg.sel { box-shadow: inset 0 0 0 2px var(--primary-text-color); }
+  .tl-mark { position: relative; height: 7px; margin-top: 4px; border-radius: 4px; background: color-mix(in srgb, var(--hfc-muted) 10%, transparent); }
+  .tl-mark .mseg { position: absolute; top: 0; bottom: 0; min-width: 3px; border-radius: 4px; cursor: pointer; background: ${hfcVar('badge')}; }
+  .tl-mark .mseg::before { content: ''; position: absolute; inset: -6px 0; }
+  .tl-mark .mseg.sel { box-shadow: 0 0 0 2px var(--primary-text-color); }
+  .tl-legend i.k-mark { background: ${hfcVar('badge')}; }
   .tl-bar:focus-visible { outline: 2px solid var(--primary-color, #03a9f4); outline-offset: 2px; }
   .tl-axis { position: relative; height: 1.2em; font-size: .72em; color: var(--hfc-muted); }
   .tl-axis span { position: absolute; top: 2px; transform: translateX(-50%); }
@@ -2641,7 +3533,7 @@ HeatpumpFlowCard.styles = `
   /* keyboard focus */
   .focus-ring { fill: none; stroke: var(--primary-color, #03a9f4); stroke-width: 3; pointer-events: none; }
   .tap:focus, .tap:focus-visible, #svg:focus { outline: none; }
-  .chip:focus-visible, .stat:focus-visible, .drow:focus-visible, .drawer-toggle:focus-visible, .ctl:focus-visible { outline: 2px solid var(--primary-color, #03a9f4); outline-offset: 2px; }
+  .chip:focus-visible, .stat:focus-visible, .drow:focus-visible, .drawer-toggle:focus-visible, .ctl:focus-visible, .icon-button:focus-visible { outline: 2px solid var(--primary-color, #03a9f4); outline-offset: 2px; }
   /* narrow schematic (phones, narrow columns): larger type, secondary labels hidden */
   .stage { container-type: inline-size; }
   @container (max-width: 640px) { #svg { --k: 1.2; --ku: 1.1; --kp: 1; --k2: 1; --ks: 1.2; --kt: 1.15; } }
@@ -2677,19 +3569,35 @@ HeatpumpFlowCard.styles = `
   @keyframes hfc-spin { to { transform: rotate(360deg); } }
   @keyframes hfc-pulse { 50% { opacity: .35; } }
   @keyframes hfc-rise { 0% { opacity: 0; transform: translateY(6px); } 40% { opacity: .9; } 100% { opacity: 0; transform: translateY(-10px); } }
-  @media (prefers-reduced-motion: reduce) { .flow.on, .eflow.on, .fan.on, .impeller.on, .coil.on, .snow.on, .waves.on .wave { animation: none; } .waves.on .wave { opacity: .7; } }
+  @keyframes hfc-vapour { 0% { opacity: 0; transform: translateY(6px) scale(.9); } 35% { opacity: .9; } 100% { opacity: 0; transform: translateY(-12px) scale(1.08); } }
+  .motion-off .flow.on, .motion-off .eflow.on, .motion-off .fan.on, .motion-off .impeller.on, .motion-off .coil.on, .motion-off .snow.on, .motion-off .vapour.on .vapour-puff, .motion-off .waves.on .wave { animation: none !important; }
+  .motion-off .vapour.on .vapour-puff { opacity: .65; }
+  .motion-off .waves.on .wave { opacity: .7; }
+  @media (prefers-reduced-motion: reduce) { .motion-auto .flow.on, .motion-auto .eflow.on, .motion-auto .fan.on, .motion-auto .impeller.on, .motion-auto .coil.on, .motion-auto .snow.on, .motion-auto .vapour.on .vapour-puff, .motion-auto .waves.on .wave { animation: none; } .motion-auto .vapour.on .vapour-puff { opacity: .65; } .motion-auto .waves.on .wave { opacity: .7; } }
 `;
 
 // Card editor: the same form as getConfigForm, but entity pickers show what the preset found,
 // only the configured number of circuits is offered, and the preset field reports the detection.
 class HeatpumpFlowCardEditor extends HTMLElement {
-  setConfig(config) { this._config = config; this._resolved = null; this._render(); }
+  setConfig(config) { this._config = config; this._resolved = null; this._loadEnergyInfo(); this._render(); }
 
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
     if (this._form) this._form.hass = hass;
+    this._loadEnergyInfo();
     if (first) this._render();
+  }
+
+  _loadEnergyInfo() {
+    if (!this._config || this._config.power_sources === 'manual') return;
+    if (this._energyReq || typeof this._hass?.callWS !== 'function') return;
+    this._energyReq = true;
+    HeatpumpFlowCard._energyPrefs = HeatpumpFlowCard._energyPrefs || this._hass.callWS({ type: 'energy/get_prefs' });
+    HeatpumpFlowCard._energyPrefs.then((prefs) => {
+      this._energyMissing = HeatpumpFlowCard._energyInfo(prefs).missing;
+      this._render();
+    }).catch(() => { this._energyMissing = []; });
   }
 
   _render() {
@@ -2708,6 +3616,8 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     const r = HeatpumpFlowCard._resolve(this._config, this._hass);
     // Only entities that exist are shown as found by the preset.
     this._fromPreset = Object.fromEntries(Object.entries(r.fromPreset).filter(([, id]) => this._hass.states[id]));
+    this._presetErrors = r.presetErrors || [];
+    this._presetErrorOk = r.preset?.error_ok || [];
     const tiles = HeatpumpFlowCard._tileOptions(this._config, r, this._hass);
     this._tiles = tiles;
     const { schema, computeLabel, L } = HeatpumpFlowCard._formSchema(this._config, tiles);
@@ -2724,6 +3634,10 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       if (!has('flow') || !has('return')) warn.push(L.warn_temps);
       if (!has('heat') && !has('volume')) warn.push(L.warn_heat);
     }
+    if (this._config.power_sources !== 'manual' && this._energyMissing?.length) {
+      const names = this._energyMissing.map((type) => ({ solar: L.pv, battery: L.battery, grid: L.grid }[type])).join(', ');
+      warn.push(L.warn_energy_sources.replace('{sources}', names));
+    }
     const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const html = warn.length ? `<ha-alert alert-type="info" title="${esc(L.warn_title)}"><ul style="margin:0;padding-left:18px">${warn.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></ha-alert>` : '';
     if (this._warn._html !== html) { this._warn.innerHTML = html; this._warn._html = html; this._warn.style.marginBottom = html ? '12px' : '0'; }
@@ -2738,12 +3652,23 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       }
       if (s.name === 'tiles_custom') return tiles.editable ? L.tiles_custom_help : L.tiles_yaml;
       if (s.name === 'price_entity') return L.price_help;
+      if (s.name === 'errors') return L.errors_help;
+      if (s.name === 'error_ok_text') return L.error_ok_help;
+      if (['energy_total', 'env_energy', 'heat_total'].includes(s.name)) return L.total_cop_help;
+      if (s.name === 'language') return L.language_help;
       if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
+      if (Array.isArray(own[s.name])) return L.sum_help;
       if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;
       return '';
     };
     const custom = Array.isArray(this._config.tiles);
-    const data = { ...this._config, entities: shown, tiles_custom: custom };
+    const controls = (this._config.controls || []).map((c) => (typeof c === 'string' ? c : c?.entity)).filter(Boolean);
+    const data = { ...this._config, entities: shown, controls, timeline_marks: !!this._config.timeline_marks,
+      errors: this._config.errors !== undefined ? this._config.errors : this._presetErrors,
+      error_ok_text: (this._config.error_ok !== undefined ? this._config.error_ok : this._presetErrorOk).join(', '), tiles_custom: custom,
+      animations: this._config.animations || 'auto', flow_speed: this._config.flow_speed ?? 1, source_spread: this._config.source_spread !== false,
+      theme: this._config.theme || 'auto', fullscreen: this._config.fullscreen !== false };
+    if (this._config.controls === undefined) delete data.controls;
     if (custom && tiles.editable) data.tiles = tiles.value;
     this._priceShown = custom;
     if (custom) {
@@ -2770,6 +3695,29 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       }
     });
     const config = { ...value };
+    // Nested translations are YAML-only; ha-form does not render them and therefore may omit them from value-changed.
+    if (this._config.texts && value.texts === undefined) config.texts = this._config.texts;
+    // The entity picker deals in ids; keep YAML-only metadata of controls that stay selected.
+    if (Array.isArray(value.controls)) {
+      const old = new Map((this._config.controls || []).filter((c) => c && typeof c === 'object' && c.entity).map((c) => [c.entity, c]));
+      config.controls = value.controls.map((c) => {
+        const id = typeof c === 'string' ? c : c?.entity;
+        return old.get(id) || id;
+      }).filter(Boolean);
+    }
+    delete config.error_ok_text;
+    // The switch only knows on and off; a YAML list of marks stays as it is while the switch stays on.
+    if (!value.timeline_marks) delete config.timeline_marks;
+    else if (Array.isArray(this._config.timeline_marks)) config.timeline_marks = this._config.timeline_marks;
+    if (!value.animations || value.animations === 'auto') delete config.animations;
+    if (!value.theme || value.theme === 'auto') delete config.theme;
+    if (value.fullscreen !== false) delete config.fullscreen;
+    if (value.flow_speed === undefined || value.flow_speed === null || value.flow_speed === '' || +value.flow_speed === 1) delete config.flow_speed;
+    if (value.source_spread !== false) delete config.source_spread;
+    const errorOk = String(value.error_ok_text || '').split(',').map((state) => state.trim()).filter(Boolean);
+    if (JSON.stringify(errorOk) !== JSON.stringify(this._presetErrorOk || [])) config.error_ok = errorOk; else delete config.error_ok;
+    const errors = Array.isArray(value.errors) ? value.errors.filter(Boolean) : [];
+    if (JSON.stringify(errors) !== JSON.stringify(this._presetErrors || [])) config.errors = errors; else delete config.errors;
     if (Object.keys(ents).length) config.entities = ents; else delete config.entities;
     // Tiles: off = default tiles; switched on = start from the default set; tiles with own options stay as in YAML.
     delete config.tiles_custom;
@@ -2783,6 +3731,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     else if (!Array.isArray(this._config.tiles)) config.tiles = this._tiles.defaults;
     else if (!this._tiles.editable) config.tiles = this._config.tiles;
     this._config = config;
+    this._loadEnergyInfo();
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
     this._render();
   }
@@ -2805,7 +3754,7 @@ hfcDefine('heatpump-flow-card', HeatpumpFlowCard);
 const hfcGeneric = hfcMine('heatpump-flow-card') && hfcMine('heatpump-flow-card-editor');
 if (!hfcGeneric) {
   console.warn('heatpump-flow-card: the element name "heatpump-flow-card" is already used by another card, so "type: custom:heatpump-flow-card" opens that card. '
-    + 'Use "type: custom:heatpump-hydraulic-card" for this card (github.com/Sturmi77/heatpump-flow-card).');
+    + 'Use "type: custom:heatpump-hydraulic-card" for this card (github.com/Sturmi77/heatpump-hydraulic-card).');
 }
 const hfcType = hfcGeneric ? 'heatpump-flow-card' : 'heatpump-hydraulic-card';
 window.customCards = window.customCards || [];
@@ -2813,9 +3762,9 @@ if (!window.customCards.some((c) => c.type === hfcType)) {
   window.customCards.push({
     type: hfcType,
     name: hfcGeneric ? 'Heatpump Flow Card' : 'Heatpump Hydraulic Card',
-    description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann, Vaillant, EMS-ESP (Bosch/Buderus/Junkers/Nefit), Panasonic Aquarea (HeishaMon), Samsung EHS.',
+    description: 'Animated hydraulic schematic for heat pumps (power sources, valve, tanks, heating circuit). Presets: Lambda, Viessmann (ViCare / Open3E), Vaillant, EMS-ESP (Bosch/Buderus/Junkers/Nefit), Panasonic Aquarea (HeishaMon).',
     preview: true,
-    documentationURL: 'https://github.com/Sturmi77/heatpump-flow-card',
+    documentationURL: 'https://github.com/Sturmi77/heatpump-hydraulic-card',
   });
 }
 console.info(`%c HEATPUMP-FLOW-CARD %c ${HFC_VERSION} `, 'background:#f97316;color:#fff;border-radius:3px 0 0 3px', 'background:#334155;color:#fff;border-radius:0 3px 3px 0');

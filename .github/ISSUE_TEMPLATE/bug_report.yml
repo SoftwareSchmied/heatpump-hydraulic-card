@@ -5,13 +5,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting! Please fill in as much as you can – a screenshot and your card YAML help most.
+        Thanks for reporting! Please fill in as much as you can. If your card version shows a document button in the header, copy its diagnostic report, review entity ids for private names, and paste it below. The report stays local until you paste it.
   - type: input
     id: version
     attributes:
       label: Card version
-      description: Shown in the browser console as "HEATPUMP-FLOW-CARD x.y.z" or in HACS.
-      placeholder: 0.3.1
+      description: The version the browser actually runs, shown in the browser console as "HEATPUMP-FLOW-CARD x.y.z" or in the diagnostic report. The version HACS lists can differ if the dashboard resource still points to an old file.
+      placeholder: 0.9.6
     validations:
       required: true
   - type: input
@@ -31,6 +31,7 @@ body:
         - vaillant
         - emsesp
         - heishamon
+        - kronoterm
         - none (manual entities)
     validations:
       required: true
@@ -45,6 +46,12 @@ body:
     attributes:
       label: Card configuration (YAML)
       render: yaml
+  - type: textarea
+    id: diagnostic
+    attributes:
+      label: Diagnostic report / entity list
+      description: Copy the report with the document button in the card header and remove anything private before sharing. For an older version without the button, paste relevant entity ids with example states and units.
+      render: text
   - type: textarea
     id: screenshot
     attributes:

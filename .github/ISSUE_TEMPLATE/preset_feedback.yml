@@ -6,6 +6,7 @@ body:
     attributes:
       value: |
         The Viessmann, Vaillant, EMS-ESP and HeishaMon presets are built from the integrations' source code and have **not yet been tested on real installations** – your feedback is exactly what is needed. "It works" reports are welcome too!
+        If your card version shows a document button in the header, use it to copy a diagnostic report. It stays local until you paste it. Entity ids may contain names, so review and remove anything private first.
   - type: dropdown
     id: kind
     attributes:
@@ -39,12 +40,13 @@ body:
         - Does not work
         - No preset yet (new brand)
   - type: textarea
-    id: entities
+    id: diagnostic
     attributes:
-      label: Entity list
+      label: Diagnostic report / entity list
       description: |
-        Developer tools → States, filter by your heat pump, and paste entity ids with example states and units
-        (e.g. `sensor.xyz_flow_temperature = 34.5 °C`). Remove anything private.
+        Prefer the diagnostic report copied with the document button in the card header. Review its entity ids and remove anything private before pasting it.
+        If the card is not loading or your version has no document button yet, use Developer tools → States and paste entity ids with example states and units
+        (e.g. `sensor.xyz_flow_temperature = 34.5 °C`).
       render: text
     validations:
       required: true
