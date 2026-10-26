@@ -53,8 +53,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The browser download is cached per Playwright version (package-lock.json); a cache hit skips it.
+      - name: Cache ${{ matrix.browser }}
+        id: browser-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('package-lock.json') }}
+      # The hosted runner already has the system libraries of both browsers, so only the browser build is installed.
+      # A stalled download is cut off after two minutes and tried again.
       - name: Install ${{ matrix.browser }}
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: |
+          for attempt in 1 2 3; do
+            timeout 120 npx playwright install ${{ matrix.browser }} && exit 0
+            echo "Attempt $attempt failed" >&2
+          done
+          exit 1
       - name: Run self-test in ${{ matrix.browser }}
         run: npm run test:${{ matrix.browser }}
       - name: Upload failure diagnostics
