@@ -2919,7 +2919,9 @@ class HeatpumpFlowCard extends HTMLElement {
       this._$('g-dhw-bottom').setAttribute('stop-color', this._tankColor(bot));
       this._txt('t-dhw-top', hasTop ? this._t(top) : '');
       this._txt('t-dhw-middle', this._has('dhw_middle') ? `${i.middle} ${this._t(this._n('dhw_middle'))}` : '');
-      this._txt('t-dhw-bottom', this._has('dhw_bottom') ? `${i.bottom} ${this._t(this._n('dhw_bottom'))}` : '');
+      // The position label only tells sensors apart; a single bottom sensor shows the bare value at the bottom.
+      const onlyBottom = !hasTop && !this._has('dhw_middle');
+      this._txt('t-dhw-bottom', this._has('dhw_bottom') ? `${onlyBottom ? '' : `${i.bottom} `}${this._t(this._n('dhw_bottom'))}` : '');
       const tgt = this._n('dhw_target');
       const parts = [];
       if (this._has('dhw_mode')) parts.push(this._modeLabel(dhwMode, this._s('dhw_mode')));

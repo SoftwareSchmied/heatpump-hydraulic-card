@@ -1328,7 +1328,7 @@
     const card = mount({ entities: { flow: 'sensor.flow', return: 'sensor.return', dhw_bottom: 'sensor.dhw' } }, hassOf(states)); await wait(20);
     const $ = (id) => card.shadowRoot.getElementById(id);
     check(ok(card) && !!card.shadowRoot.querySelector('rect.tank'), 'DHW tank is drawn with only a bottom sensor');
-    check($('t-dhw-top').textContent === '' && /37/.test($('t-dhw-bottom').textContent), `the value shows at the bottom, not as the top value (${$('t-dhw-bottom').textContent})`);
+    check($('t-dhw-top').textContent === '' && $('t-dhw-bottom').textContent === card._t(37), `the value shows at the bottom without a position label (${$('t-dhw-bottom').textContent})`);
     check($('g-dhw-top').getAttribute('stop-color') === $('g-dhw-bottom').getAttribute('stop-color'), 'the tank colour comes from the bottom sensor');
     check(card.shadowRoot.querySelector('rect.tank').closest('.tap')?.getAttribute('data-entity') === 'sensor.dhw', 'tapping the tank opens the bottom sensor');
     card.remove();
