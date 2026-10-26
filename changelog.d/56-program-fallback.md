@@ -1,0 +1,1 @@
+- Presets: an entity candidate that exists but is `unavailable` or `unknown` (not reported by this model) no longer blocks a later candidate that has a value. HeishaMon now reads the holiday mode from `switch.<prefix>_main_holiday_mode_state` when `sensor.<prefix>_main_holiday_mode_state` is unavailable (#56).
