@@ -3,7 +3,7 @@
  * Animated hydraulic schematic for air-to-water heat pumps in Home Assistant:
  * power sources (PV / battery / grid) → heat pump → diverter valve → DHW tank / buffer → heating circuit.
  * Vendor-neutral core with presets: Lambda, Viessmann (ViCare), Vaillant (myPyllant),
- * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …) and Panasonic Aquarea (HeishaMon).
+ * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …), Panasonic Aquarea (HeishaMon) and Wolf (wolflink).
  *
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
@@ -380,6 +380,73 @@ const HFC_PRESETS = {
         starts: { total: `${m}operations_counter` }, hours: { total: `${m}operations_hours` },
         aux_hours: { total: `${m}room_heater_operations_hours` },
       };
+    },
+  },
+
+  // Wolf heat pumps (CHA …) via the core wolflink integration (WOLF Link home, SmartSet cloud, polled every 60 s).
+  // Entity ids are sensor.<device>_<parameter name> with names in the SmartSet language (English expected here); list states
+  // are German texts or their slugs (heizbetrieb, Abtaubetrieb …). Names that repeat get _2, _3 in no fixed order and are not used.
+  wolf: {
+    name: 'Wolf (wolflink)',
+    // The integration also serves gas and oil boilers; only heat pumps report a compressor status (Verdichterstatus).
+    detect: (ctx) => {
+      const id = ctx.match(/^sensor\.(.+)_compressor_status$/, 'wolflink');
+      return id === undefined ? undefined : id.replace(/^sensor\./, '').replace(/_compressor_status$/, '');
+    },
+    entities: (p) => {
+      const s = (name) => `sensor.${p}_${name}`;
+      return {
+        mode: s('operating_mode_heater'),
+        status: s('compressor_status'),
+        compressor: s('compressor_frequency'),
+        compressor_speed: s('current_capacity_specification_compressor'),
+        power: s('power_consumption_wp_ehz'),
+        heat: s('current_secondary_power'),
+        flow: s('boiler_water_temperature'),
+        return: s('return_temperature'),
+        volume: s('hc_flow_rate'),
+        outdoor: s('outside_temperature'),
+        valve: s('3_way_diverter_valve_htg_dhw'),
+        heater: s('electric_booster_heater'),
+        dhw_top: s('dhw_temperature'),
+        dhw_target: s('set_dhw_temperature_adjusted'),
+        hc_flow: s('flow_temperature'),
+        hc_pump: s('mkp_mixer_circuit_pump'),
+        hc_mode: s('mixer_circuit_status'),
+        hc_pressure: s('system_pressure'),
+        room: s('room_temperature'),
+        room_target: s('day_temperature'),
+        program: s('holiday_mode'),
+        hours: s('compressor_operating_hours'),
+        aux_hours: s('e_heating_operating_hours'),
+      };
+    },
+    // Heat counters only: the electricity counters stay 0 without an energy meter at the heat pump, which would give empty COP tiles.
+    tiles: (p) => {
+      const s = (name) => `sensor.${p}_${name}`;
+      return {
+        heat: { yesterday: s('heat_generated_previous_day'), month: s('heat_generated_current_month'), year: s('heat_generated_current_year') },
+        heat_heating: { total: s('energy_amount_htg') }, heat_dhw: { total: s('energy_amount_dhw') }, heat_cooling: { total: s('clg_energy_amount') },
+        hours: { total: s('compressor_operating_hours') }, aux_hours: { total: s('e_heating_operating_hours') },
+      };
+    },
+    errors: (p) => [`sensor.${p}_sub_fault_code`],
+    // "Betriebsart Heizgerät" list items (wolf-comm parameter example for heat pumps), as wolflink reports them.
+    mode_map: {
+      heizbetrieb: 'heating', warmwasser: 'dhw', 'WW-Nachlauf': 'circulate', 'HZ-Nachlauf': 'circulate', Abtaubetrieb: 'defrost', standby: 'idle',
+      'Aktive Kühlung': 'cooling', 'Nachlauf K': 'circulate', 'Frostschutz HK': 'frost', 'Frostschutz Warmwasser': 'frost',
+      antilegionellenfunktion: 'dhw', Pool: 'heating',
+    },
+    // "Mischerkreis Status" list items.
+    hc_mode_map: {
+      aus: 'off', heizbetrieb: 'heating', absenkbetrieb: 'heating', eco: 'heating', absenkstop: 'heating', Kühlbetrieb: 'cooling',
+      at_abschaltung: 'off', rt_abschaltung: 'off', at_frostschutz: 'frost', rt_frostschutz: 'frost', warmwasservorrang: 'idle',
+    },
+    program_map: { aktiviert: 'holiday', deaktiviert: 'none' },
+    running_states: ['Betrieb'],
+    status_labels: {
+      de: { vorspulen: 'Vorspülen', nachspulen: 'Nachspülen', Sperrzeit: 'Sperrzeit', 'EVU Sperre': 'EVU-Sperre' },
+      en: { vorspulen: 'pre-flush', nachspulen: 'post-flush', Sperrzeit: 'blocking time', 'EVU Sperre': 'utility lock' },
     },
   },
 };
@@ -1236,7 +1303,7 @@ class HeatpumpFlowCard extends HTMLElement {
     this._txt(textId, `${glyph}${label} ${this._pressureText(key)}`);
     group.dataset.a11y = `${label}: ${this._pressureText(key)}, ${this._i[`pressure_${state}`]}`;
   }
-  _on(key) { return ['on', 'true', 'open', '1'].includes(String(this._s(key)).toLowerCase()); }
+  _on(key) { return ['on', 'true', 'open', '1', 'ein'].includes(String(this._s(key)).toLowerCase()); }
   // Compressor modulation 0..1 from `compressor_speed` (percent; Hz or rpm against `compressor_speed_max`), NaN without a usable value.
   _speedFraction() {
     const v = this._n('compressor_speed');
@@ -1264,7 +1331,7 @@ class HeatpumpFlowCard extends HTMLElement {
   _level(key) {
     if (!this._has(key)) return 0;
     const s = String(this._s(key)).toLowerCase();
-    if (['on', 'true', 'open'].includes(s)) return 1;
+    if (['on', 'true', 'open', 'ein'].includes(s)) return 1;
     const v = parseFloat(s);
     if (!Number.isFinite(v) || v <= 0) return 0;
     return ['w', 'kw', '%'].includes(this._unit(key)) ? 1 : Math.min(Math.round(v), 3);
@@ -2324,7 +2391,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const list = hist[mark.entity] || [];
     const segs = [];
     list.forEach((e, n) => {
-      if (!['on', 'true', 'home', 'open'].includes(String(e.s).toLowerCase())) return;
+      if (!['on', 'true', 'home', 'open', 'ein'].includes(String(e.s).toLowerCase())) return;
       const from = Math.max(e.t, start); const to = Math.min(list[n + 1] ? list[n + 1].t : end, end);
       if (to <= from) return;
       const last = segs[segs.length - 1];
@@ -2871,7 +2938,7 @@ class HeatpumpFlowCard extends HTMLElement {
     const chip = this._$('chip-mode');
     chip.textContent = `${modeTxt}${running ? ` · ${i.running}` : ''}`;
     chip.className = `chip mode-${defrost ? 'defrost' : cooling ? 'cool' : toDhw ? 'dhw' : toHeat ? 'heat' : 'idle'}`;
-    this._badges.forEach((b, n) => this._cls(`chip-b${n}`, ['on', 'true', 'home', 'open'].includes(String(this._hass.states[b.entity]?.state).toLowerCase())));
+    this._badges.forEach((b, n) => this._cls(`chip-b${n}`, ['on', 'true', 'home', 'open', 'ein'].includes(String(this._hass.states[b.entity]?.state).toLowerCase())));
     const errs = this._errors.filter((id) => {
       const state = this._hass.states[id]?.state;
       if (state === undefined) return false;
