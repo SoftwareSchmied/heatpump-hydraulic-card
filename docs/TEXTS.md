@@ -26,6 +26,8 @@ dhw
 buffer
 heating_circuit
 house
+room
+room_target
 running
 compressor_off
 source_in
