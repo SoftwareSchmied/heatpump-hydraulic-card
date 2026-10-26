@@ -29,9 +29,20 @@ For a faster loop, use `npm run test:chromium`, `npm run test:firefox`, or the i
 
 New setups and scenarios belong in `demo/setups.js`; assertions belong in `test/selftest.html`. Keep tests deterministic and independent of Home Assistant, the internet and real installations.
 
+## Pull requests without merge conflicts
+
+Several pull requests are usually open at once. Files that every change edits make them collide, so a pull request keeps to these rules:
+
+- **Do not edit `README.md` or `CHANGELOG.md`.** The maintainer updates the preset table, the feature list and the German summary when merging.
+- **Changelog:** add one file `changelog.d/<pull request number or topic>.md` with the entry as a bullet list (see `changelog.d/README.md`). At release time `npm run changelog:compile` moves the fragments into `CHANGELOG.md`.
+- **Preset documentation** goes into `docs/presets/<preset>.md`: what is mapped, what is deliberately not, the evidence (integration source, real installation) and the known limits. Describe the same in the pull request text.
+- **Do not list presets in the header comment of `dist/heatpump-hydraulic-card.js`;** it is generic on purpose.
+- Add tests as one block with their own section heading in `test/selftest.html`, and refer to demo setups by name, not by position in the list.
+- If a pull request still conflicts after another one was merged, merge `main` into the branch and keep both sides of each conflict; the maintainer can do this for you when "Allow edits by maintainers" is on.
+
 ## Release contract
 
-`npm run release:check` verifies that `package.json`, `HFC_VERSION`, the HACS distribution filename and the changelog agree. On a tag build, the tag must be `v<version>`.
+`npm run release:check` verifies that `package.json`, `HFC_VERSION`, the HACS distribution filename and the changelog agree and that the changelog fragments are well-formed. On a tag build, the tag must be `v<version>` and no fragment may be left in `changelog.d/`. Before tagging, run `npm run changelog:compile` and rename the `## Unreleased` heading to the version.
 
 The recommended required checks for the default branch are `HACS validation`, `Quality`, `Browser / chromium` and `Browser / firefox`.
 

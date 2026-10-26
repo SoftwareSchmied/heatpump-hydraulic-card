@@ -2,8 +2,7 @@
  * Heatpump Flow Card
  * Animated hydraulic schematic for air-to-water heat pumps in Home Assistant:
  * power sources (PV / battery / grid) → heat pump → diverter valve → DHW tank / buffer → heating circuit.
- * Vendor-neutral core with presets: Lambda, Viessmann (ViCare), Vaillant (myPyllant),
- * EMS-ESP (Bosch, Buderus, Junkers, Nefit, Worcester …), Panasonic Aquarea (HeishaMon) and Wolf (wolflink).
+ * Vendor-neutral core with built-in presets for several brands (list: README preset table).
  *
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
