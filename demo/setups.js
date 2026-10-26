@@ -178,6 +178,8 @@ const brineStates = (s) => ({
   'sensor.mixer_hc1_flowtemphc': ['33.0', '°C'], 'binary_sensor.mixer_hc1_pumpstatus': ['heat', 'defrost'].includes(s) ? 'on' : 'off',
   'sensor.mixer_hc2_flowtemphc': ['45.5', '°C'], 'binary_sensor.mixer_hc2_pumpstatus': s === 'heat' || s === 'defrost' ? 'on' : 'off',
   'sensor.thermostat_hc1_currtemp': ['21.2', '°C'], 'sensor.thermostat_hc1_seltemp': ['21.5', '°C'],
+  // Upstairs (circuit 2): a room sensor of its own and the target of the thermostat's second circuit.
+  'sensor.upstairs_temperature': ['20.6', '°C'], 'sensor.thermostat_hc2_seltemp': ['21.0', '°C'],
 });
 // Wolf CHA via wolflink: English parameter names, German list states, ein/aus switches, kW, L/min, repeated names with _2/_3.
 const wolfStates = (s) => {
@@ -416,7 +418,7 @@ const setups = [
     config: { preset: 'heishamon', title: 'Aquarea', hc_type: 'radiator' },
   },
   {
-    name: 'Ground source heat pump', sub: 'EMS-ESP, brine loop, environmental energy, two heating circuits and heaters',
+    name: 'Ground source heat pump', sub: 'EMS-ESP, brine loop, environmental energy, two heating circuits with a room temperature each, heaters',
     states: brineStates, registry: regOf(brineStates, 'mqtt'),
     statistics: {
       'sensor.boiler_nrgconstotal': { today: 6.1, month: 180, year: 1720 },
@@ -429,7 +431,7 @@ const setups = [
       brine_pressure_min: 0.9, brine_pressure_crit: 0.6, brine_pressure_max: 2.5,
       hc_pressure_min: 1.0, hc_pressure_crit: 0.7, hc_pressure_max: 2.8,
       entities: { dhw_heater: 'binary_sensor.dhw_heater_rod', brine_pressure: 'sensor.boiler_brine_pressure', hc_pressure: 'sensor.boiler_heating_pressure',
-        env_energy: 'sensor.boiler_environmental_energy_total' },
+        env_energy: 'sensor.boiler_environmental_energy_total', hc2_room: 'sensor.upstairs_temperature', hc2_room_target: 'sensor.thermostat_hc2_seltemp' },
       tiles: ['energy', 'env_energy', 'cop_total', 'env_energy:month', 'spread', 'brine_pressure', 'hc_pressure'],
     },
   },
