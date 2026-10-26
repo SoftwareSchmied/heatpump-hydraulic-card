@@ -476,18 +476,23 @@ const HFC_PRESETS = {
     },
   },
 
-  // Wolf heat pumps (CHA …) via the core wolflink integration (WOLF Link home, SmartSet cloud, polled every 60 s).
-  // Entity ids are sensor.<device>_<parameter name> with names in the SmartSet language (English expected here); list states
-  // are German texts or their slugs (heizbetrieb, Abtaubetrieb …). Names that repeat get _2, _3 in no fixed order and are not used.
+  // Wolf heat pumps (CHA …) via the core wolflink integration or the custom wolf_smartset integration (both WOLF Link home and
+  // the SmartSet cloud). wolflink: entity ids sensor.<device>_<parameter name> in the SmartSet language (English expected here),
+  // list states as German texts or slugs (Abtaubetrieb, heizbetrieb, at_abschaltung); names that repeat get _2, _3 in no fixed
+  // order and are not used. wolf_smartset: entities found by translation_key (the wolflink suffixes), list states as Wolf's
+  // German texts (Heizbetrieb, AT Abschaltung, Ein). The prefix tells the branches apart: '' is wolf_smartset, a slug is wolflink.
   wolf: {
-    name: 'Wolf (wolflink)',
-    // The integration also serves gas and oil boilers; only heat pumps report a compressor status (Verdichterstatus).
+    name: 'Wolf (wolflink, wolf_smartset)',
+    // Both integrations also serve gas and oil boilers; only heat pumps report a compressor status (Verdichterstatus).
+    // wolf_smartset wins when both are installed (its README asks to disable wolflink for the same account anyway).
     detect: (ctx) => {
+      if (ctx.key('wolf_smartset', 'sensor', 'compressor_status')) return '';
       const id = ctx.match(/^sensor\.(.+)_compressor_status$/, 'wolflink');
       return id === undefined ? undefined : id.replace(/^sensor\./, '').replace(/_compressor_status$/, '');
     },
-    entities: (p) => {
-      const s = (name) => `sensor.${p}_${name}`;
+    entities: (p, i, ctx) => {
+      const sm = p === '';
+      const s = sm ? (tk) => ctx.key('wolf_smartset', 'sensor', tk) : (name) => `sensor.${p}_${name}`;
       return {
         mode: s('operating_mode_heater'),
         status: s('compressor_status'),
@@ -504,42 +509,49 @@ const HFC_PRESETS = {
         dhw_top: s('dhw_temperature'),
         dhw_target: s('set_dhw_temperature_adjusted'),
         hc_flow: s('flow_temperature'),
-        hc_pump: s('mkp_mixer_circuit_pump'),
+        // In wolf_smartset "Ausgang MKP" duplicates "Mischerkreispumpe" and starts disabled, so the pump of the system tab comes first.
+        hc_pump: sm ? [s('mixer_circuit_pump'), s('mkp_mixer_circuit_pump')] : s('mkp_mixer_circuit_pump'),
         hc_mode: s('mixer_circuit_status'),
         hc_pressure: s('system_pressure'),
         room: s('room_temperature'),
-        room_target: s('day_temperature'),
-        program: s('holiday_mode'),
+        room_target: sm ? ctx.key('wolf_smartset', 'number', 'day_temperature_mixer_circuit_1') : s('day_temperature'),
+        // wolf_smartset has no party or holiday parameter yet.
+        program: sm ? undefined : s('holiday_mode'),
         hours: s('compressor_operating_hours'),
         aux_hours: s('e_heating_operating_hours'),
       };
     },
     // Heat counters only: the electricity counters stay 0 without an energy meter at the heat pump, which would give empty COP tiles.
-    tiles: (p) => {
-      const s = (name) => `sensor.${p}_${name}`;
+    tiles: (p, i, ctx) => {
+      const s = p === '' ? (tk) => ctx.key('wolf_smartset', 'sensor', tk) : (name) => `sensor.${p}_${name}`;
       return {
         heat: { yesterday: s('heat_generated_previous_day'), month: s('heat_generated_current_month'), year: s('heat_generated_current_year') },
         heat_heating: { total: s('energy_amount_htg') }, heat_dhw: { total: s('energy_amount_dhw') }, heat_cooling: { total: s('clg_energy_amount') },
         hours: { total: s('compressor_operating_hours') }, aux_hours: { total: s('e_heating_operating_hours') },
       };
     },
-    errors: (p) => [`sensor.${p}_sub_fault_code`],
-    // "Betriebsart Heizgerät" list items (wolf-comm parameter example for heat pumps), as wolflink reports them.
+    // wolf_smartset has no fault code: none in its translation keys, none in the Wolf heat pump description. Configure `errors` by hand there.
+    errors: (p) => (p === '' ? [] : [`sensor.${p}_sub_fault_code`]),
+    // "Betriebsart Heizgerät" list items (wolf-comm parameter example for heat pumps). wolflink reports some as slugs, wolf_smartset
+    // reports Wolf's texts (Heizbetrieb); the lookup is case-insensitive, so one entry serves both.
     mode_map: {
       heizbetrieb: 'heating', warmwasser: 'dhw', 'WW-Nachlauf': 'circulate', 'HZ-Nachlauf': 'circulate', Abtaubetrieb: 'defrost', standby: 'idle',
       'Aktive Kühlung': 'cooling', 'Nachlauf K': 'circulate', 'Frostschutz HK': 'frost', 'Frostschutz Warmwasser': 'frost',
       antilegionellenfunktion: 'dhw', Pool: 'heating',
     },
-    // "Mischerkreis Status" list items.
+    // "Mischerkreis Status" list items. wolflink slugifies the four AT/RT states (at_abschaltung); wolf_smartset reports Wolf's text
+    // with a space (AT Abschaltung), which lower-casing cannot bridge, so both spellings are listed.
     hc_mode_map: {
       aus: 'off', heizbetrieb: 'heating', absenkbetrieb: 'heating', eco: 'heating', absenkstop: 'heating', Kühlbetrieb: 'cooling',
       at_abschaltung: 'off', rt_abschaltung: 'off', at_frostschutz: 'frost', rt_frostschutz: 'frost', warmwasservorrang: 'idle',
+      'AT Abschaltung': 'off', 'RT Abschaltung': 'off', 'AT Frostschutz': 'frost', 'RT Frostschutz': 'frost',
     },
     program_map: { aktiviert: 'holiday', deaktiviert: 'none' },
     running_states: ['Betrieb'],
+    // Keys are the raw status texts: wolflink slugs (vorspulen) and wolf_smartset texts (Vorspülen).
     status_labels: {
-      de: { vorspulen: 'Vorspülen', nachspulen: 'Nachspülen', Sperrzeit: 'Sperrzeit', 'EVU Sperre': 'EVU-Sperre' },
-      en: { vorspulen: 'pre-flush', nachspulen: 'post-flush', Sperrzeit: 'blocking time', 'EVU Sperre': 'utility lock' },
+      de: { vorspulen: 'Vorspülen', nachspulen: 'Nachspülen', Vorspülen: 'Vorspülen', Nachspülen: 'Nachspülen', Sperrzeit: 'Sperrzeit', 'EVU Sperre': 'EVU-Sperre' },
+      en: { vorspulen: 'pre-flush', nachspulen: 'post-flush', Vorspülen: 'pre-flush', Nachspülen: 'post-flush', Sperrzeit: 'blocking time', 'EVU Sperre': 'utility lock' },
     },
   },
 

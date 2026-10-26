@@ -3,7 +3,7 @@
   "reviewed": {
     "date": "2026-10-26",
     "version": null,
-    "note": "Baseline: changes before this date were not tracked."
+    "note": "Baseline: changes before this date were not tracked. wolf_smartset reviewed from source at v0.3.0 and main e0b859a (PR 10), no installation."
   },
   "sources": [
     {
@@ -23,6 +23,16 @@
       "paths": [
         "wolf_comm/wolf_client.py",
         "parameters-examples/heatpumpparameter.json"
+      ]
+    },
+    {
+      "repo": "tibuntu/homeassistant-wolf-smartset",
+      "branch": "main",
+      "paths": [
+        "custom_components/wolf_smartset/translation_keys.py",
+        "custom_components/wolf_smartset/model.py",
+        "custom_components/wolf_smartset/sensor.py",
+        "custom_components/wolf_smartset/translations/en.json"
       ]
     }
   ]

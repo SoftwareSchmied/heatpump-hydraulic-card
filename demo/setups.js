@@ -222,6 +222,62 @@ const wolfStates = (s) => {
   };
   return Object.fromEntries(Object.entries(v).map(([k, val]) => [`${x}${k}`, val]));
 };
+// Wolf CHA via wolf_smartset (HACS): German entity ids (device name + Wolf label), found by translation key only. List states are
+// Wolf's texts as the SmartSet app shows them (Heizbetrieb, Betrieb, Ein). "Ausgang MKP" and "Raumtemperatur" start disabled in
+// the integration, so they do not exist here; the circuit pump is "Mischerkreispumpe" of the system tab.
+const wolfSmartsetReg = {
+  'sensor.heizgerat_betriebsart_heizgerat': 'operating_mode_heater', 'sensor.heizgerat_verdichterstatus': 'compressor_status',
+  'sensor.heizgerat_verdichterfrequenz': 'compressor_frequency', 'sensor.heizgerat_aktuelle_leistungsvorgabe_verdichter': 'current_capacity_specification_compressor',
+  'sensor.heizgerat_leistungsaufnahme_wp_ehz': 'power_consumption_wp_ehz', 'sensor.heizgerat_aktuelle_sekundarleistung': 'current_secondary_power',
+  'sensor.heizgerat_kesseltemperatur': 'boiler_water_temperature', 'sensor.heizgerat_kesselsolltemperatur': 'set_boiler_temperature',
+  'sensor.heizgerat_rucklauftemperatur': 'return_temperature', 'sensor.heizgerat_sammlertemperatur': 'header_temperature',
+  'sensor.heizgerat_heizkreisdurchfluss': 'hc_flow_rate', 'sensor.heizgerat_aussentemperatur_heizung': 'outside_temperature',
+  'sensor.bedienmodul_bm_2_gemittelte_aussentemperatur': 'average_outside_temperature',
+  'sensor.heizgerat_3_wege_umschaltventil_hz_ww': '3_way_diverter_valve_htg_dhw', 'sensor.heizgerat_3_wege_umschaltventil_hz_k': '3_way_diverter_valve_htg_clg',
+  'sensor.heizgerat_e_heizung': 'electric_booster_heater', 'sensor.heizgerat_warmwassertemperatur': 'dhw_temperature',
+  'sensor.heizgerat_warmwassersolltemperatur': 'set_dhw_temperature_adjusted', 'sensor.wolf_cha_warmwasser_status': 'dhw_status',
+  'sensor.bedienmodul_bm_2_vorlauftemperatur': 'flow_temperature', 'sensor.bedienmodul_bm_2_mischerkreis_status': 'mixer_circuit_status',
+  'sensor.bedienmodul_bm_2_anforderung_mischerkreis': 'mixer_circuit_demand', 'sensor.wolf_cha_mischerkreispumpe': 'mixer_circuit_pump',
+  'sensor.heizgerat_heizkreispumpe': 'heating_circuit_pump', 'sensor.heizgerat_anlagendruck': 'system_pressure',
+  'number.bedienmodul_bm_2_tagtemperatur_heizung_mischerkreis_1': 'day_temperature_mixer_circuit_1',
+  'number.wolf_cha_warmwassersolltemperatur_eingestellt': 'set_dhw_temperature',
+  'sensor.heizgerat_betriebsstunden_verdichter': 'compressor_operating_hours', 'sensor.heizgerat_betriebsstunden_e_heizung': 'e_heating_operating_hours',
+  'sensor.heizgerat_energiemenge_hz': 'energy_amount_htg', 'sensor.heizgerat_energiemenge_ww': 'energy_amount_dhw', 'sensor.heizgerat_energiemenge_kuhl': 'clg_energy_amount',
+  'sensor.heizgerat_erzeugte_warmemenge_vortag': 'heat_generated_previous_day', 'sensor.heizgerat_erzeugte_warmemenge_aktueller_monat': 'heat_generated_current_month',
+  'sensor.heizgerat_erzeugte_warmemenge_aktuelles_jahr': 'heat_generated_current_year',
+};
+const wolfSmartsetStates = (s) => ({
+  'sensor.heizgerat_betriebsart_heizgerat': { heat: 'Heizbetrieb', dhw: 'Warmwasser', defrost: 'Abtaubetrieb', idle: 'Standby' }[s],
+  'sensor.heizgerat_verdichterstatus': { heat: 'Betrieb', dhw: 'Betrieb', defrost: 'Abtaubetrieb', idle: 'Standby' }[s],
+  'sensor.heizgerat_verdichterfrequenz': [{ heat: '38', dhw: '50', defrost: '45', idle: '0' }[s], 'Hz'],
+  'sensor.heizgerat_aktuelle_leistungsvorgabe_verdichter': [{ heat: '46', dhw: '70', defrost: '60', idle: '0' }[s], '%'],
+  'sensor.heizgerat_leistungsaufnahme_wp_ehz': [{ heat: '1.2', dhw: '1.7', defrost: '0.9', idle: '0' }[s], 'kW'],
+  'sensor.heizgerat_aktuelle_sekundarleistung': [{ heat: '4.1', dhw: '4.9', defrost: '0', idle: '0' }[s], 'kW'],
+  'sensor.heizgerat_kesseltemperatur': [{ heat: '31.4', dhw: '49.0', defrost: '22.0', idle: '28.8' }[s], '°C'],
+  'sensor.heizgerat_kesselsolltemperatur': ['31.0', '°C'],
+  'sensor.heizgerat_rucklauftemperatur': [{ heat: '26.9', dhw: '44.2', defrost: '25.0', idle: '24.6' }[s], '°C'],
+  'sensor.heizgerat_sammlertemperatur': [{ heat: '30.8', dhw: '29.6', defrost: '29.8', idle: '29.4' }[s], '°C'],
+  'sensor.heizgerat_heizkreisdurchfluss': [s === 'idle' ? '0' : '17.6', 'L/min'],
+  'sensor.heizgerat_aussentemperatur_heizung': ['4.5', '°C'], 'sensor.bedienmodul_bm_2_gemittelte_aussentemperatur': ['5.2', '°C'],
+  'sensor.heizgerat_3_wege_umschaltventil_hz_ww': s === 'dhw' ? 'Warmwasser' : 'Heizen', 'sensor.heizgerat_3_wege_umschaltventil_hz_k': 'Heizen',
+  'sensor.heizgerat_e_heizung': 'Aus',
+  'sensor.heizgerat_warmwassertemperatur': [s === 'dhw' ? '44' : '47', '°C'], 'sensor.heizgerat_warmwassersolltemperatur': ['48', '°C'],
+  'sensor.wolf_cha_warmwasser_status': s === 'dhw' ? 'Ein' : 'Bereit, keine Ladung',
+  'sensor.bedienmodul_bm_2_vorlauftemperatur': ['30.1', '°C'],
+  'sensor.bedienmodul_bm_2_mischerkreis_status': s === 'idle' ? 'AT Abschaltung' : 'Heizbetrieb',
+  'sensor.bedienmodul_bm_2_anforderung_mischerkreis': 'Automatik ein',
+  'sensor.wolf_cha_mischerkreispumpe': s === 'idle' ? 'Aus' : 'Ein', 'sensor.heizgerat_heizkreispumpe': 'Aus',
+  'sensor.heizgerat_anlagendruck': ['1.65', 'bar'],
+  'number.bedienmodul_bm_2_tagtemperatur_heizung_mischerkreis_1': { state: '20', attributes: { unit_of_measurement: '°C', min: 5, max: 30, step: 0.5, friendly_name: 'Tagtemperatur (Heizung) (Mischerkreis 1)' } },
+  'number.wolf_cha_warmwassersolltemperatur_eingestellt': { state: '48', attributes: { unit_of_measurement: '°C', min: 10, max: 60, step: 1, friendly_name: 'Warmwassersolltemperatur eingestellt' } },
+  'sensor.heizgerat_betriebsstunden_verdichter': { state: '7500', attributes: { unit_of_measurement: 'h', state_class: 'total_increasing' } },
+  'sensor.heizgerat_betriebsstunden_e_heizung': { state: '3', attributes: { unit_of_measurement: 'h', state_class: 'total_increasing' } },
+  'sensor.heizgerat_energiemenge_hz': { state: '28534', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heizgerat_energiemenge_ww': { state: '11218', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heizgerat_energiemenge_kuhl': { state: '0', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heizgerat_erzeugte_warmemenge_vortag': ['51', 'kWh'], 'sensor.heizgerat_erzeugte_warmemenge_aktueller_monat': ['732', 'kWh'],
+  'sensor.heizgerat_erzeugte_warmemenge_aktuelles_jahr': ['11865', 'kWh'],
+});
 // Vaillant aroTHERM plus via ebusd (HMU + VWZ hydraulic station + sensoCOMFORT), entity ids from a real installation:
 // most carry the topic prefix, newer ones also the device name (sensor.heating_ebusd_…). Underfloor + radiator circuit.
 const ebusdStates = (s) => ({
@@ -544,5 +600,16 @@ const setups = [
       tiles: ['cop_heating:total', 'cop_dhw:total', 'energy_heating:total', 'heat:total', 'hours:total', 'spread'],
     },
   },
+  {
+    name: 'Wolf CHA (wolf_smartset)', sub: 'wolf_smartset integration, German entity ids found by translation key, buffer from the header sensor',
+    states: wolfSmartsetStates,
+    registry: Object.fromEntries(Object.entries(wolfSmartsetReg).map(([id, tk]) => [id, { platform: 'wolf_smartset', translation_key: tk }])),
+    statistics: { 'sensor.heizgerat_energiemenge_hz': { today: 38.6, month: 612 }, 'sensor.heizgerat_energiemenge_ww': { today: 7.9, month: 120 } },
+    config: {
+      preset: 'wolf', title: 'Wolf CHA (SmartSet)',
+      entities: { buffer_top: 'sensor.heizgerat_sammlertemperatur' },
+      tiles: ['heat_heating', 'heat_dhw', 'heat:yesterday', 'heat:month', 'hours:total', 'spread', 'hc_pressure'],
+    },
+  },
 ];
-const scenarios = [['heat', 'Heating'], ['dhw', 'Hot water'], ['defrost', 'Defrost'], ['idle', 'Standby + error']];
+const scenarios =[['heat', 'Heating'], ['dhw', 'Hot water'], ['defrost', 'Defrost'], ['idle', 'Standby + error']];
