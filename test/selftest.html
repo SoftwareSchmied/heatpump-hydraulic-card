@@ -125,6 +125,44 @@
   check(!detects('vicare', { 'sensor.vitodens_outside_temperature': '5', 'sensor.vitodens_boiler_temperature': '60' },
     { 'sensor.vitodens_outside_temperature': { platform: 'vicare', translation_key: 'outside_temperature' } }), 'ViCare gas boiler is not a heat pump');
   check(!detects('lambda', { 'sensor.other_hp1_operating_state': 'x' }, { 'sensor.other_hp1_operating_state': { platform: 'something_else' } }), 'foreign hp1_operating_state is not Lambda');
+  {
+    const states = {}; const registry = {};
+    const add = (domain, key, state) => {
+      const id = `${domain}.vitocal_${key}`;
+      states[id] = state;
+      registry[id] = { platform: 'open3e', translation_key: key };
+      return id;
+    };
+    const ids = {
+      mode: add('sensor', 'refrigeration_circuit_mode', 'heating'),
+      compressor: add('binary_sensor', 'heat_pump_compressor_active', 'on'),
+      valve: add('sensor', 'four_three_way_valve_position', 'hot_water'),
+      flow: add('sensor', 'flow_temperature', '42'),
+      return: add('sensor', 'return_temperature', '35'),
+      dhwTop: add('sensor', 'dhw_buffer_top_temperature', '52'),
+      dhwMiddle: add('sensor', 'dhw_buffer_mid_temperature', '48'),
+      dhwBottom: add('sensor', 'dhw_buffer_bottom_temperature', '40'),
+      circuitFlow: add('sensor', 'flow_circuit1_temperature', '38'),
+      circuitTarget: add('sensor', 'flow_circuit_1_supply_temp_setpoint', '40'),
+      circuitPump: add('binary_sensor', 'circuit_1_pump', 'on'),
+      cop: add('sensor', 'cop_heating_today', '4.2'),
+    };
+    const hass = hassOf(toStates(states), registry);
+    const stubConfig = C.getStubConfig(hass);
+    const resolved = C._resolve({ preset: 'open3e' }, hass);
+    check(stubConfig.preset === 'open3e', `Open3E Vitocal preset detected (${stubConfig.preset})`);
+    check(resolved.ready && resolved.entities.mode === ids.mode && resolved.entities.compressor === ids.compressor
+      && resolved.entities.valve === ids.valve, 'Open3E preset maps mode, compressor and diverter valve');
+    check(resolved.entities.dhw_top === ids.dhwTop && resolved.entities.dhw_middle === ids.dhwMiddle
+      && resolved.entities.dhw_bottom === ids.dhwBottom, 'Open3E preset maps DHW tank temperature levels');
+    check(resolved.entities.hc_flow === ids.circuitFlow && resolved.entities.hc_setpoint === ids.circuitTarget
+      && resolved.entities.hc_pump === ids.circuitPump && resolved.tiles.cop_heating.today === ids.cop,
+    'Open3E preset maps circuit and daily COP entities');
+    const card = mount({ preset: 'open3e' }, hass);
+    check(/Hot water/.test(card.shadowRoot.getElementById('chip-mode')?.textContent || ''), 'Open3E hot_water valve state selects DHW mode');
+    card.remove();
+  }
+
   check(!detects('ebusd', { 'sensor.ebusd_hmu_rundatastatuscode': 'standby' }, { 'sensor.ebusd_hmu_rundatastatuscode': { platform: 'something_else' } }), 'ebusd needs the MQTT platform');
 
   // Wolf (wolflink): heat pumps only, prefix = device slug; gas boilers and other platforms with the same names are not detected.
