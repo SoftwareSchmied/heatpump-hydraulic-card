@@ -609,6 +609,81 @@ const HFC_PRESETS = {
     },
   },
 
+  // Heat pumps with a Luxtronik controller (Alpha Innotec, Novelan, Roth, Siemens, Elco, Buderus, Nibe, Wolf) through the
+  // "Luxtronik" integration (BenPru/luxtronik, HACS, domain luxtronik2). Built from the integration source, not tested on an
+  // installation: the SensorKey values are the translation keys, so entity ids and the HA language do not matter. Flow (Vorlauf,
+  // TVL) is flow_in_temperature and return (Rücklauf, TRL) is flow_out_temperature, "in" and "out" as seen from the heating system.
+  // The mixing circuits 1 to 3 are circuits 1 to 3 of the card, but only where they report a flow and a target; without a mixing
+  // circuit the card draws the heat pump flow as the circuit flow. The last error (error_reason) stays after a reset and the
+  // buffer is not exposed, so neither is mapped.
+  luxtronik: {
+    name: 'Luxtronik (Alpha Innotec, Novelan, Roth …)',
+    auto_circuits: false,
+    detect: (ctx) => (ctx.key('luxtronik2', 'sensor', 'status') || ctx.key('luxtronik2', 'sensor', 'flow_in_temperature') ? '' : undefined),
+    entities: (p, i, ctx) => {
+      const s = (tk) => ctx.key('luxtronik2', 'sensor', tk);
+      const b = (tk) => ctx.key('luxtronik2', 'binary_sensor', tk);
+      const n = i.hc;
+      // A mixing circuit that is not installed still has its sensors; it counts when flow and target are plain numbers.
+      const mixFlow = n <= 3 ? s(`flow_in_circuit${n}_temperature`) : undefined;
+      const mixTarget = n <= 3 ? s(`flow_in_circuit${n}_target_temperature`) : undefined;
+      const mixer = Number.isFinite(parseFloat(ctx.state(mixFlow))) && parseFloat(ctx.state(mixTarget)) >= 10;
+      return {
+        mode: s('status'),
+        compressor: b('compressor'),
+        // Both are disabled in the integration by default: enable "Current power consumption" and "Current heat output".
+        power: s('current_power_consumption'),
+        heat: s('current_heat_output'),
+        flow: s('flow_in_temperature'),
+        return: s('flow_out_temperature'),
+        volume: s('heat_amount_flow_rate'),
+        source_volume: s('heat_source_flow_rate'),
+        source_in: s('heat_source_input_temperature'),
+        source_out: s('heat_source_output_temperature'),
+        outdoor: s('outdoor_temperature'),
+        heater: b('additional_heat_generator'),
+        dhw_top: s('dhw_temperature'),
+        dhw_target: ctx.key('luxtronik2', 'number', 'dhw_target_temperature'),
+        solar_collector: s('solar_collector_temperature'),
+        solar_pump: b('solar_pump'),
+        hc_flow: mixer ? mixFlow : undefined,
+        hc_setpoint: mixer ? mixTarget : undefined,
+        hc_pump: n === 1 ? b('circulation_pump_heating') : undefined,
+        room: n === 1 ? s('room_thermostat_temperature') : undefined,
+        room_target: n === 1 ? s('room_thermostat_temperature_target') : undefined,
+        program: ctx.key('luxtronik2', 'select', 'heating_mode'),
+        hours: [s('compressor1_operation_hours'), s('operation_hours')],
+        starts_total: s('compressor1_impulses'),
+        aux_hours: s('additional_heat_generator_operation_hours'),
+        heat_total: s('heat_amount_counter'),
+        hot_gas: s('hot_gas_temperature'),
+        suction_temp: s('suction_compressor_temperature'),
+        superheat: s('overheating_temperature'),
+        high_pressure: s('high_pressure'),
+        low_pressure: s('low_pressure'),
+      };
+    },
+    // The kWh counters per use (P1136 to P1139 and the heat amounts) exist on newer firmware only; each tile appears where its counter does.
+    tiles: (p, i, ctx) => {
+      const s = (tk) => ctx.key('luxtronik2', 'sensor', tk);
+      return {
+        energy_heating: { total: s('heat_energy_input') }, energy_dhw: { total: s('dhw_energy_input') }, energy_cooling: { total: s('cooling_energy_input') },
+        energy_aux: { total: s('additional_heat_generator_energy') },
+        heat: { total: s('heat_amount_counter') }, heat_heating: { total: s('heat_amount_heating') }, heat_dhw: { total: s('dhw_heat_amount') },
+        heat_cooling: { total: s('cooling_heat_amount') },
+        hours: { total: [s('compressor1_operation_hours'), s('operation_hours')] }, aux_hours: { total: s('additional_heat_generator_operation_hours') },
+        starts: { total: s('compressor1_impulses') },
+      };
+    },
+    // Status values (LuxOperationMode); the pool and solar mode and an external heat source count as heating.
+    mode_map: {
+      heating: 'heating', hot_water: 'dhw', swimming_pool_solar: 'heating', heating_external_source: 'heating', cooling: 'cooling',
+      defrost: 'defrost', evu: 'blocked', no_request: 'idle',
+    },
+    // Heating mode select (LuxMode).
+    program_map: { Automatic: 'none', Off: 'none', 'Second heatsource': 'none', Party: 'party', Holidays: 'holiday' },
+  },
+
   // Vaillant aroTHERM / aroTHERM plus (HMU) on the eBUS via ebusd and its Home Assistant MQTT discovery.
   // Entity ids are <topic prefix>_<circuit>_<message>[_<field>]; Home Assistant may put the device name in front
   // (sensor.heating_ebusd_hmu_…), so every lookup accepts a leading part. Circuits: hmu (outdoor unit), vwzio (hydraulic
@@ -771,7 +846,7 @@ const HFC_I18N = {
       suction_temp: 'Suction gas', hot_gas: 'Hot gas', liquid_temp: 'Liquid line', low_pressure: 'Low pressure', high_pressure: 'High pressure',
       eev: 'Expansion valve', superheat: 'Superheat', subcooling: 'Subcooling',
     },
-    source_flow: 'Source', target: 'Target', middle: 'middle', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW', solar: 'Solar',
+    source_flow: 'Source', target: 'Target', return_short: 'RL', middle: 'middle', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW', solar: 'Solar',
     brine_pressure: 'Brine pressure', hc_pressure: 'Heating pressure', pressure_normal: 'normal', pressure_warning: 'warning', pressure_critical: 'critical',
     timeline_title: 'Last {h} hours', timeline_gap: 'No data', timeline_aria: 'Operating mode of the last {h} hours. Arrow keys select a period.',
     programs: { eco: 'Eco', night: 'Night', party: 'Party', holiday: 'Holiday' },
@@ -811,7 +886,7 @@ const HFC_I18N = {
       suction_temp: 'Sauggas', hot_gas: 'Heißgas', liquid_temp: 'Flüssigkeitsleitung', low_pressure: 'Niederdruck', high_pressure: 'Hochdruck',
       eev: 'Expansionsventil', superheat: 'Überhitzung', subcooling: 'Unterkühlung',
     },
-    source_flow: 'Quelle', target: 'Soll', middle: 'Mitte', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW', solar: 'Solar',
+    source_flow: 'Quelle', target: 'Soll', return_short: 'RL', middle: 'Mitte', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW', solar: 'Solar',
     brine_pressure: 'Soledruck', hc_pressure: 'Heizungsdruck', pressure_normal: 'normal', pressure_warning: 'Warnung', pressure_critical: 'kritisch',
     timeline_title: 'Letzte {h} Stunden', timeline_gap: 'Keine Daten', timeline_aria: 'Betriebsart der letzten {h} Stunden. Mit den Pfeiltasten einen Zeitraum wählen.',
     programs: { eco: 'Eco', night: 'Nacht', party: 'Party', holiday: 'Urlaub' },
@@ -863,7 +938,7 @@ const HFC_EDITOR = {
     flow_speed: 'Animation speed', source_spread: 'Show source spread',
     theme: 'Card theme', theme_auto: 'Automatic (dashboard)', theme_night: 'Night', theme_contrast: 'High contrast', fullscreen: 'Full-screen button',
     wall_timeout: 'Hide controls after (seconds, 0 = never)',
-    hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name', hc4_name: 'Circuit 4 name', hc5_name: 'Circuit 5 name', hc6_name: 'Circuit 6 name',
+    hc_return_label: 'Show circuit return temperature', hc_name: 'Circuit 1 name', hc2_name: 'Circuit 2 name', hc3_name: 'Circuit 3 name', hc4_name: 'Circuit 4 name', hc5_name: 'Circuit 5 name', hc6_name: 'Circuit 6 name',
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_hc4: 'Heating circuit 4', sec_hc5: 'Heating circuit 5', sec_hc6: 'Heating circuit 6', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit', sec_cutouts: 'Details: cut-out counters',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
     from_preset: 'Found by the preset',
@@ -925,7 +1000,7 @@ const HFC_EDITOR = {
     flow_speed: 'Animationsgeschwindigkeit', source_spread: 'Quellenspreizung anzeigen',
     theme: 'Kartendarstellung', theme_auto: 'Automatisch (Dashboard)', theme_night: 'Nacht', theme_contrast: 'Hoher Kontrast', fullscreen: 'Vollbild-Schaltfläche',
     wall_timeout: 'Bedienelemente ausblenden nach (Sekunden, 0 = nie)',
-    hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3', hc4_name: 'Name Heizkreis 4', hc5_name: 'Name Heizkreis 5', hc6_name: 'Name Heizkreis 6',
+    hc_return_label: 'Heizkreis-Rücklauf anzeigen', hc_name: 'Name Heizkreis 1', hc2_name: 'Name Heizkreis 2', hc3_name: 'Name Heizkreis 3', hc4_name: 'Name Heizkreis 4', hc5_name: 'Name Heizkreis 5', hc6_name: 'Name Heizkreis 6',
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_hc4: 'Heizkreis 4', sec_hc5: 'Heizkreis 5', sec_hc6: 'Heizkreis 6', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis', sec_cutouts: 'Details: Abschaltzähler',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
     from_preset: 'Von der Voreinstellung gefunden',
@@ -1183,6 +1258,7 @@ class HeatpumpFlowCard extends HTMLElement {
                 .map((name) => ({ name, selector: { number: { min: 0, max: 20, step: 0.1, mode: 'box', unit_of_measurement: 'bar' } } })),
               { name: 'language', selector: { select: { mode: 'dropdown', options: languageOptions } } },
               { name: 'fullscreen', selector: { boolean: {} } },
+              { name: 'hc_return_label', selector: { boolean: {} } },
               ...['hc_name', 'hc2_name', 'hc3_name', 'hc4_name', 'hc5_name', 'hc6_name'].filter(keep).map((name) => ({ name, selector: { text: {} } })),
               { name: 'unit_style', selector: { select: { mode: 'dropdown', options: HFC_UNIT_STYLES.map((v) => ({ value: v, label: L[`unit_${v}`] })) } } },
               ...(config && (config.unit_style === 'vaillant' || ((!config.unit_style || config.unit_style === 'auto') && config.preset === 'vaillant'))
@@ -1731,7 +1807,7 @@ class HeatpumpFlowCard extends HTMLElement {
   // Status line of heating circuit n under its emitter: the mode (or "running") and, for circuits 2 to 6, the room temperature and
   // target of that circuit as a part of its own (tap target and screen reader label), e.g. "Heating · Room 21.4 °C · Target 22.0".
   // The two texts are centred together and anchored at the gap between them, so they never overlap. They stay right of the risers
-  // of the further circuits (from x 692) and inside the schematic (up to x 996); where both do not fit, the room target is left out.
+  // of the further circuits (from x 692, or from x 760 with the return label of the circuit) and inside the schematic (up to x 996); where both do not fit, the room target is left out.
   // k2 is the type scale of narrow schematics.
   _hcStatus(n, status, k2) {
     const s = n === 1 ? '' : String(n);
@@ -1747,7 +1823,9 @@ class HeatpumpFlowCard extends HTMLElement {
     const both = !!status && !!(value || rest);
     this._txt(`t-hc-mode${s}`, both ? `${status} ·` : status);
     if (!mode || !room) return;
-    const key = `${status}|${value}|${rest}|${k2}`;
+    // The return label of the circuit sits under its return pipe up to x ~750 on the same line.
+    const minX = this._config.hc_return_label && this._has(`hc${n}_return`) ? 760 : 692;
+    const key = `${status}|${value}|${rest}|${k2}|${minX}`;
     if (room._k === key) return;
     room.textContent = '';
     if (value) {
@@ -1768,8 +1846,8 @@ class HeatpumpFlowCard extends HTMLElement {
       };
       const wm = width(mode); const gap = 5 * k2;
       let wr = width(room);
-      if (value && target && wm + gap + wr > 996 - 692) { target.remove(); wr = width(room); }
-      const left = Math.max(Math.min(880 - (wm + gap + wr) / 2, 996 - wm - gap - wr), 692);
+      if (value && target && wm + gap + wr > 996 - minX) { target.remove(); wr = width(room); }
+      const left = Math.max(Math.min(880 - (wm + gap + wr) / 2, 996 - wm - gap - wr), minX);
       xm = left + wm; xr = xm + gap;
     }
     mode.setAttribute('x', +xm.toFixed(1)); mode.setAttribute('text-anchor', both ? 'end' : 'middle');
@@ -2512,6 +2590,7 @@ class HeatpumpFlowCard extends HTMLElement {
       ${em.art.split('__S__').join(s)}${pp(`hc-vl${s}`, vl)}${pp(`hc-body${s}`, em.body)}${pp(`hc-rl${s}`, rl)}
       <g class="tap" ${de(k('flow'))}><text class="pipe-label" id="t-hc${s}" x="740" y="334" text-anchor="middle"></text></g>
       <g class="tap" ${de(k('volume'))}><text class="vol-label" id="t-hc-vol${s}" x="720" y="394" text-anchor="middle"></text></g>
+      ${this._config.hc_return_label ? `<g class="tap" ${de(k('return'))}><text class="vol-label" id="t-hc-rl${s}" x="690" y="515" text-anchor="start"></text></g>` : ''}
       ${n === 1 && e.hc_pressure ? `<g class="tap pressure" id="pressure-hc" ${de('hc_pressure')}><text class="pressure-label" id="t-hc-pressure" x="700" y="430" text-anchor="middle"></text></g>` : ''}
       <g class="tap" ${de(e[k('pump')] ? k('pump') : k('mode'))}>
         <circle class="pump" cx="720" cy="360" r="16"/>
@@ -3219,6 +3298,8 @@ class HeatpumpFlowCard extends HTMLElement {
         this._txt(`t-hc${s}`, showFlow ? `${this._t(tHc)}${Number.isFinite(set) ? ` · ${i.target} ${this._fmt(set)}` : ''}` : '');
         const hcVol = this._lh(k('volume'));
         this._txt(`t-hc-vol${s}`, this._has(k('volume')) && Number.isFinite(hcVol) ? `${this._fmt(hcVol, 0)} l/h` : '');
+        // Own return sensor of the circuit only; the fallback to the buffer or heat pump return would repeat another label.
+        if (this._config.hc_return_label) this._txtPre(`t-hc-rl${s}`, i.return_short, this._has(k('return')) && Number.isFinite(this._n(k('return'))) ? this._t(this._n(k('return'))) : '');
         this._hcStatus(n, this._has(k('mode')) ? this._modeLabel(cMode, this._s(k('mode'))) : (hcOn ? i.running : ''), k2);
         if (n === 1 && this._has('hc_pressure')) this._updatePressure('hc_pressure', 'hc', 'pressure-hc', 't-hc-pressure', i.hc_pressure);
       }

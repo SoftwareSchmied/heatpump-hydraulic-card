@@ -48,6 +48,7 @@ diagnostic_failed
 fullscreen_open
 fullscreen_close
 source_flow
+return_short
 target
 middle
 bottom
