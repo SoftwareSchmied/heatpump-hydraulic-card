@@ -28,6 +28,8 @@ const HFC_SCRIPT_URL = (() => {
 //   *_mode_map                 → raw state → normalized mode
 // ctx.key(platform, domain, translation_key) finds entities via the entity registry (language-independent),
 // ctx.match(regex, platform) finds the first entity id matching a pattern, ctx.state(entity_id) reads a current state.
+// Wolf: the prefix '' marks the wolf_smartset branch (sensors by translation key), a device slug the wolflink branch (entity ids).
+const hfcWolfSensor = (p, ctx) => (p === '' ? (tk) => ctx.key('wolf_smartset', 'sensor', tk) : (name) => `sensor.${p}_${name}`);
 const HFC_PRESETS = {
   lambda: {
     name: 'Lambda (lambda_heat_pumps)',
@@ -481,6 +483,8 @@ const HFC_PRESETS = {
   // list states as German texts or slugs (Abtaubetrieb, heizbetrieb, at_abschaltung); names that repeat get _2, _3 in no fixed
   // order and are not used. wolf_smartset: entities found by translation_key (the wolflink suffixes), list states as Wolf's
   // German texts (Heizbetrieb, AT Abschaltung, Ein). The prefix tells the branches apart: '' is wolf_smartset, a slug is wolflink.
+  // wolf_smartset spreads its entities over several HA devices (Heizgerät, Bedienmodul BM-2, Mischermodul MM1, the system), so the
+  // `device` option, which limits every registry lookup to one device, must stay unset for it.
   wolf: {
     name: 'Wolf (wolflink, wolf_smartset)',
     // Both integrations also serve gas and oil boilers; only heat pumps report a compressor status (Verdichterstatus).
@@ -492,7 +496,9 @@ const HFC_PRESETS = {
     },
     entities: (p, i, ctx) => {
       const sm = p === '';
-      const s = sm ? (tk) => ctx.key('wolf_smartset', 'sensor', tk) : (name) => `sensor.${p}_${name}`;
+      const s = hfcWolfSensor(p, ctx);
+      // One mixer circuit only (neither the wolflink names nor the wolf_smartset keys carry a circuit number): further circuits map nothing.
+      const hc = (v) => (i.hc === 1 ? v : undefined);
       return {
         mode: s('operating_mode_heater'),
         status: s('compressor_status'),
@@ -507,11 +513,13 @@ const HFC_PRESETS = {
         valve: s('3_way_diverter_valve_htg_dhw'),
         heater: s('electric_booster_heater'),
         dhw_top: s('dhw_temperature'),
-        dhw_target: s('set_dhw_temperature_adjusted'),
-        hc_flow: s('flow_temperature'),
+        // wolf_smartset binds set_dhw_temperature_adjusted to the read-only "Warmwassersolltemperatur" (10 °C on the reference
+        // installation) and the setting "Warmwassersolltemperatur eingestellt" to the number set_dhw_temperature, the reverse of wolflink.
+        dhw_target: sm ? [ctx.key('wolf_smartset', 'number', 'set_dhw_temperature'), s('set_dhw_temperature_adjusted')] : s('set_dhw_temperature_adjusted'),
+        hc_flow: hc(s('flow_temperature')),
         // In wolf_smartset "Ausgang MKP" duplicates "Mischerkreispumpe" and starts disabled, so the pump of the system tab comes first.
-        hc_pump: sm ? [s('mixer_circuit_pump'), s('mkp_mixer_circuit_pump')] : s('mkp_mixer_circuit_pump'),
-        hc_mode: s('mixer_circuit_status'),
+        hc_pump: hc(sm ? [s('mixer_circuit_pump'), s('mkp_mixer_circuit_pump')] : s('mkp_mixer_circuit_pump')),
+        hc_mode: hc(s('mixer_circuit_status')),
         hc_pressure: s('system_pressure'),
         room: s('room_temperature'),
         room_target: sm ? ctx.key('wolf_smartset', 'number', 'day_temperature_mixer_circuit_1') : s('day_temperature'),
@@ -523,7 +531,7 @@ const HFC_PRESETS = {
     },
     // Heat counters only: the electricity counters stay 0 without an energy meter at the heat pump, which would give empty COP tiles.
     tiles: (p, i, ctx) => {
-      const s = p === '' ? (tk) => ctx.key('wolf_smartset', 'sensor', tk) : (name) => `sensor.${p}_${name}`;
+      const s = hfcWolfSensor(p, ctx);
       return {
         heat: { yesterday: s('heat_generated_previous_day'), month: s('heat_generated_current_month'), year: s('heat_generated_current_year') },
         heat_heating: { total: s('energy_amount_htg') }, heat_dhw: { total: s('energy_amount_dhw') }, heat_cooling: { total: s('clg_energy_amount') },
