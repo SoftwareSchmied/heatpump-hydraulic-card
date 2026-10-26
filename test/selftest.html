@@ -1331,6 +1331,11 @@
     check(o.entities.power === `sensor.${p}_main_heat_power_consumption` && o.tiles.energy_heating?.now === `sensor.${p}_main_heat_power_consumption`, 'HeishaMon still finds the Power spelling');
     check(o.entities.hc_setpoint === `sensor.${p}_main_main_target_temp` || o.entities.hc_setpoint === `sensor.${p}_main_z1_water_target_temp`, 'HeishaMon without zone target keeps a setpoint entity');
     check(o.entities.program === `sensor.${p}_main_holiday_mode_state`, 'HeishaMon prefers the holiday sensor when it exists');
+    // #56: the holiday sensor exists but is unavailable on this model, the switch has the value
+    const u = C._resolve({ preset: 'heishamon' }, hassOf(toStates({ ...old, [`sensor.${p}_main_holiday_mode_state`]: 'unavailable', [`switch.${p}_main_holiday_mode_state`]: 'off' })));
+    check(u.entities.program === `switch.${p}_main_holiday_mode_state`, `HeishaMon skips an unavailable holiday sensor (${u.entities.program})`);
+    const u2 = C._resolve({ preset: 'heishamon' }, hassOf(toStates({ ...old, [`sensor.${p}_main_holiday_mode_state`]: 'unavailable' })));
+    check(u2.entities.program === `sensor.${p}_main_holiday_mode_state`, 'an unavailable candidate is kept when nothing else exists');
   }
 
   // 18e. Kronoterm: translation keys of Cloud and Modbus, the hot water tank from the DHW thermostat, defrost over the mode

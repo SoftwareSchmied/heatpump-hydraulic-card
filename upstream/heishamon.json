@@ -1,9 +1,9 @@
 {
   "preset": "heishamon",
   "reviewed": {
-    "date": "2026-10-25",
-    "version": "2.11.4",
-    "note": "Entity ids checked against 2.11.4 for #56 and #58."
+    "date": "2026-10-26",
+    "version": "2.12.1",
+    "note": "Reviewed from source (2.11.4..2.12.1, no installation): no entity id or translation key of the preset changed. K/L-series entities are now enabled by default (#77)."
   },
   "sources": [
     {

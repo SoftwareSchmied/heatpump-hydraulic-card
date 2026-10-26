@@ -1370,7 +1370,9 @@ class HeatpumpFlowCard extends HTMLElement {
     const fromPreset = {};
     const take = (k, v) => {
       const list = (Array.isArray(v) ? v : [v]).filter(Boolean);
-      const hit = list.find((id) => hass.states[id]) || list[0];
+      // First candidate with a value; one that exists but is unavailable or unknown (not reported by this model) yields to a later one.
+      const live = (id) => hass.states[id] && !['unknown', 'unavailable'].includes(hass.states[id].state);
+      const hit = list.find(live) || list.find((id) => hass.states[id]) || list[0];
       if (hit) fromPreset[k] = hit;
     };
     if (preset) Object.entries(preset.entities(prefix, idx, ctx)).forEach(([k, v]) => take(k, v));
