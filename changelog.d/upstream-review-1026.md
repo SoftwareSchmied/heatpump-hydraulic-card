@@ -1,0 +1,2 @@
+- Kronoterm: with integration v1.7.3 the heating system pressure (`hc_pressure`) shows the measured pressure (register 2326) instead of the low-pressure alarm limit (register 2325). The preset needs no change. Modbus energy values stay unavailable until the integration has selected its thermal scaling (0.1 or 1.0), see its v1.7.3 notes (#78).
+- Upstream review of the HeishaMon (2.12.1) and Kronoterm (v1.7.3) integrations: no entity id or translation key used by the presets changed (#77, #78).

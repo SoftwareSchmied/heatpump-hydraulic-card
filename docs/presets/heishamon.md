@@ -17,7 +17,7 @@ Source: [HeishaMon](https://github.com/heishamon/HeishaMon) firmware and the [he
 
 - `dhw_heater`: `…_main_dhw_heater_state` (TOP58) and `…_room_heater_state` (TOP59) show if the heater is *permitted*, not if it runs.
 - `hc_pump`: `…_main_z1_pump_state` (TOP124) is the zone pump of the zone kit; on a single-zone system without that kit it stays `off` while the heat pump's pump runs.
-- `hc_pressure`: `…_main_water_pressure` (TOP115) exists only on K/L series and is disabled by default; not checked on a real installation.
+- `hc_pressure`: `…_main_water_pressure` (TOP115) exists only on K/L series. heishamon-homeassistant 2.12.0 enables it (and the other K/L-series entities TOP116 to TOP118 and the DHW sensor selection) by default when it detects a K/L model; before that it was disabled. The id is taken from the integration source and not checked on a real installation, so it is still not mapped.
 - `cond_temp`: no condensation temperature sensor, so the card computes no subcooling.
 - `mode`, `status`, `room_target`, cut-outs, daily statistics: no matching value.
 - S0 meters (`sensor.<prefix>_s0_watt_<port>`): which port measures what depends on the wiring. Set them as `power` (one entity or a list).

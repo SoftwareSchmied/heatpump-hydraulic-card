@@ -1,9 +1,9 @@
 {
   "preset": "kronoterm",
   "reviewed": {
-    "date": "2026-10-25",
-    "version": "v1.7.2",
-    "note": "Cloud API mapping checked against 1.7.2 for the Kronoterm preset."
+    "date": "2026-10-26",
+    "version": "v1.7.3",
+    "note": "Reviewed from source (v1.7.2..v1.7.3, no installation): translation keys of the preset unchanged; heating_system_pressure now reads register 2326 (#78)."
   },
   "sources": [
     {
