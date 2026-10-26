@@ -1166,6 +1166,7 @@
     check(room('Water Temperature', noRemote) === `sensor.${p}_main_z1_temp`, 'HeishaMon without remote control sensor keeps the zone temperature');
     const card = mount({ preset: 'heishamon' }, hassOf(toStates({ ...base, [`sensor.${p}_main_z1_sensor_settings`]: 'Water Temperature' }))); await wait(20);
     check(card._n('room') === 23, `HeishaMon card shows the room temperature, not the zone water (${card._n('room')})`);
+    card.remove();
   }
 
   // 18e. HeishaMon: error sensor, kWh counters, zone water temperature without a zone sensor (real installation, WH-MDC05J3E5)
