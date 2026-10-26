@@ -1,6 +1,6 @@
 /*
  * Heatpump Flow Card
- * Animated hydraulic schematic for air-to-water heat pumps in Home Assistant:
+ * Animated hydraulic schematic for heat pumps (air, ground or groundwater source) in Home Assistant:
  * power sources (PV / battery / grid) → heat pump → diverter valve → DHW tank / buffer → heating circuit.
  * Vendor-neutral core with built-in presets for several brands (list: README preset table).
  *
