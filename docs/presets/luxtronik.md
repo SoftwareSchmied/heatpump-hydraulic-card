@@ -10,7 +10,13 @@ The integration sets the translation key of every entity to its `SensorKey` valu
 - `compressor`: `compressor` (output VD1).
 - `flow` / `return`: `flow_in_temperature` (TVL, Vorlauf) / `flow_out_temperature` (TRL, Rücklauf). "In" and "out" are seen from the heating system.
 - `volume`: `heat_amount_flow_rate` (l/h). With it the card computes the heat output from flow rate and spread when `heat` is missing.
-- `power` / `heat`: `current_power_consumption` / `current_heat_output`. **Both are disabled in the integration by default.** The power value is a calculation without a documented name in the controller (`Unknown_Calculation_268`); compare it with a meter before trusting the COP.
+- `power` / `heat`: `current_power_consumption` / `current_heat_output`. **Both are disabled in the integration by default.** The power value is a calculation without a documented name in the controller (`Unknown_Calculation_268`); compare it with a meter before trusting the COP. **Not every controller fills them:** on an Alpha Innotec WWC 100 H/X the heat output reads 0 all the time and the power value is not available ([#75](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/75)). The card takes a mapped heat entity at its word, so a 0 stays 0. For such a controller set `power` to an electricity meter of your own and remove the heat entity with `heat: none`; the card then estimates the heat output from `volume` and the flow/return spread, if the controller reports a flow rate:
+
+  ```yaml
+  entities:
+    power: sensor.my_heat_pump_power
+    heat: none
+  ```
 - `outdoor`: `outdoor_temperature`. `source_in` / `source_out` / `source_volume`: `heat_source_input_temperature` / `heat_source_output_temperature` / `heat_source_flow_rate`.
 - `dhw_top`: `dhw_temperature`. `dhw_target`: the number `dhw_target_temperature`.
 - `heater`: binary sensor `additional_heat_generator`. `aux_hours`: `additional_heat_generator_operation_hours`.
@@ -35,4 +41,4 @@ The integration sets the translation key of every entity to its `SensorKey` valu
 - Do `flow_in_circuit1_temperature` and its target read sensible values on a system with only a direct circuit, or are they unavailable? (Rule above assumes a plain number and a target of 10 °C or more.)
 - Is `current_power_consumption` the electrical input of the heat pump, and does `current_heat_output` match the heat meter?
 - How is the multifunction storage connected (buffer for heating only, or also hot water)?
-- Which of `compressor1_operation_hours` and `operation_hours` is the better compressor counter?
+- Does the controller report a flow rate (`heat_amount_flow_rate`) while it runs? Without one the heat output cannot be estimated when `current_heat_output` stays 0.
