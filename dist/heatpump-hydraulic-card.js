@@ -571,6 +571,7 @@ const HFC_EDITOR = {
     sec_hc2: 'Heating circuit 2', sec_hc3: 'Heating circuit 3', sec_hc4: 'Heating circuit 4', sec_hc5: 'Heating circuit 5', sec_hc6: 'Heating circuit 6', sec_details: 'Details: operation', sec_refrigerant: 'Details: refrigerant circuit', sec_cutouts: 'Details: cut-out counters',
     controls: 'Quick controls (switch, button, select, number …)', details_open: 'Details open by default',
     from_preset: 'Found by the preset',
+    sum_help: 'Sum of these entities',
     sec_advanced: 'Advanced',
     tiles_custom: 'Own tile selection', tiles: 'Tiles (drag to sort)',
     tiles_custom_help: 'Off: default tiles. On: pick tiles and periods from what this installation provides; an empty list hides the row.',
@@ -632,6 +633,7 @@ const HFC_EDITOR = {
     sec_hc2: 'Heizkreis 2', sec_hc3: 'Heizkreis 3', sec_hc4: 'Heizkreis 4', sec_hc5: 'Heizkreis 5', sec_hc6: 'Heizkreis 6', sec_details: 'Details: Betrieb', sec_refrigerant: 'Details: Kältekreis', sec_cutouts: 'Details: Abschaltzähler',
     controls: 'Schnellbedienung (Schalter, Taste, Auswahl, Zahl …)', details_open: 'Details standardmäßig offen',
     from_preset: 'Von der Voreinstellung gefunden',
+    sum_help: 'Summe dieser Entitäten',
     sec_advanced: 'Erweitert',
     tiles_custom: 'Eigene Kachelauswahl', tiles: 'Kacheln (zum Sortieren ziehen)',
     tiles_custom_help: 'Aus: Standardkacheln. An: Kacheln und Zeiträume aus dem wählen, was diese Anlage liefert; eine leere Liste blendet die Zeile aus.',
@@ -823,9 +825,11 @@ class HeatpumpFlowCard extends HTMLElement {
     const keep = (name) => { const m = /^hc([2-6])_/.exec(name); return !m || +m[1] <= hcCount; };
     const groups = Object.entries(HFC_ENTITY_GROUPS).filter(([sec]) => keep(sec.replace('sec_', '') + '_'));
     const hcTypeSel = (name) => ({ name, selector: { select: { mode: 'dropdown', options: HFC_EMITTERS.map((value) => ({ value, label: L[`hc_${value}`] })) } } });
+    // A YAML list (sum of several entities) keeps a picker for several entities.
     const entitySchema = (key) => ({
       name: key,
-      selector: { entity: HFC_BINARY_KEYS.includes(key) ? { domain: ['binary_sensor', 'switch', 'input_boolean', 'sensor'] } : {} },
+      selector: { entity: HFC_BINARY_KEYS.includes(key) ? { domain: ['binary_sensor', 'switch', 'input_boolean', 'sensor'] }
+        : Array.isArray(config?.entities?.[key]) ? { multiple: true } : {} },
     });
     return {
       schema: [
@@ -1072,10 +1076,16 @@ class HeatpumpFlowCard extends HTMLElement {
       Object.entries(rawN).filter(([k]) => k.startsWith('hc_')).forEach(([k, v]) => take(`hc${n}_${k.slice(3)}`, v));
     }
     const e = { ...fromPreset };
+    const sums = {};
     // User entities override the preset; null or "none" removes a preset entity.
+    // A list adds the values of its entities (power, heat and the power sources), e.g. two S0 meters; the first one stands for the key.
     Object.entries(config.entities || {}).forEach(([k, v]) => {
       if (v === null || v === 'none') delete e[k];
-      else if (v) e[k] = v;
+      else if (Array.isArray(v)) {
+        const ids = v.filter(Boolean);
+        if (ids.length) e[k] = ids[0];
+        if (ids.length > 1) sums[k] = ids;
+      } else if (v) e[k] = v;
     });
     const presetErrors = preset && preset.errors ? preset.errors(prefix, idx, ctx) : [];
     const errors = config.errors !== undefined ? config.errors : presetErrors;
@@ -1091,7 +1101,7 @@ class HeatpumpFlowCard extends HTMLElement {
     [['energy_total', 'energy'], ['env_energy', 'env_energy'], ['heat_total', 'heat']].forEach(([entityKey, tileKey]) => {
       if (e[entityKey] && hass.states[e[entityKey]]) (tiles[tileKey] = tiles[tileKey] || {}).total = e[entityKey];
     });
-    return { preset, prefix, ready, idx, fromPreset, entities: e, presetErrors, errors, tiles };
+    return { preset, prefix, ready, idx, fromPreset, entities: e, sums, presetErrors, errors, tiles };
   }
 
   // Plain-text support report. It is created locally and contains only the mappings used by this card, never registry
@@ -1125,7 +1135,7 @@ class HeatpumpFlowCard extends HTMLElement {
       `Layout: ${config.layout || 'default'}`,
       '',
       'Entity mappings:',
-      ...keys.map((key) => entityLine(key, r.entities[key])),
+      ...keys.flatMap((key) => (r.sums[key] ? r.sums[key].map((id, n) => entityLine(`${key} (sum ${n + 1})`, id)) : [entityLine(key, r.entities[key])])),
       '',
       'Error entities:',
       ...(r.errors?.length ? r.errors.map((id, n) => entityLine(`error_${n + 1}`, id)) : ['- none']),
@@ -1139,6 +1149,7 @@ class HeatpumpFlowCard extends HTMLElement {
   _build() {
     const r = HeatpumpFlowCard._resolve(this._config, this._hass);
     this._e = r.entities;
+    this._sums = r.sums;
     this._errors = r.errors;
     this._tileMap = r.tiles;
     // An action for a key without an entity does nothing; say so once instead of failing silently.
@@ -1271,9 +1282,15 @@ class HeatpumpFlowCard extends HTMLElement {
   _s(key) { return this._st(key)?.state; }
   _n(key) { const v = parseFloat(this._s(key)); return Number.isFinite(v) ? v : NaN; }
   _unit(key) { return String(this._st(key)?.attributes?.unit_of_measurement || '').toLowerCase(); }
-  // Unit-aware readings: power in W, heat in kW, flow rates in l/h.
-  _w(key) { const v = this._n(key); return this._unit(key) === 'kw' ? v * 1000 : v; }
-  _kw(key) { const v = this._n(key); return this._unit(key) === 'w' ? v / 1000 : v; }
+  // Unit-aware readings: power in W, heat in kW, flow rates in l/h. A list of entities gives the sum of the members that report a number.
+  _w(key) { return this._sum(key, 'kw', (v) => v * 1000); }
+  _kw(key) { return this._sum(key, 'w', (v) => v / 1000); }
+  _sum(key, unit, convert) {
+    const read = (st) => { const v = parseFloat(st?.state); return String(st?.attributes?.unit_of_measurement || '').toLowerCase() === unit ? convert(v) : v; };
+    if (!this._sums?.[key]) { const v = read(this._st(key)); return Number.isFinite(v) ? v : NaN; }
+    const values = this._sums[key].map((id) => read(this._hass?.states[id])).filter(Number.isFinite);
+    return values.length ? values.reduce((a, b) => a + b, 0) : NaN;
+  }
   _lh(key) {
     const v = this._n(key); const u = this._unit(key).replace('³', '3');
     if (u === 'm3/h') return v * 1000;
@@ -1726,7 +1743,7 @@ class HeatpumpFlowCard extends HTMLElement {
   // Editor: the tiles this installation can fill as select options, the current selection as option values and the default set.
   static _tileOptions(config, r, hass) {
     const I = HeatpumpFlowCard._texts(config, hass);
-    const probe = Object.assign(Object.create(HeatpumpFlowCard.prototype), { _hass: hass, _e: r.entities, _tileMap: r.tiles, _config: config });
+    const probe = Object.assign(Object.create(HeatpumpFlowCard.prototype), { _hass: hass, _e: r.entities, _sums: r.sums, _tileMap: r.tiles, _config: config });
     const options = [];
     const periodsOf = {};
     // The cost tile needs a price (global `price`).
@@ -3351,6 +3368,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       if (['energy_total', 'env_energy', 'heat_total'].includes(s.name)) return L.total_cop_help;
       if (s.name === 'language') return L.language_help;
       if (own[s.name] === undefined && this._fromPreset[s.name]) return L.from_preset;
+      if (Array.isArray(own[s.name])) return L.sum_help;
       if (['pv', 'battery', 'grid'].includes(s.name) && !own[s.name] && this._config.power_sources !== 'manual') return L.from_energy;
       return '';
     };
