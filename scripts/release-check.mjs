@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
@@ -40,6 +40,13 @@ else if (process.env.GITHUB_REF?.startsWith('refs/tags/')) tag = process.env.GIT
 if (tag && tag !== `v${packageJson.version}`) {
   failures.push(`Tag ${tag} does not match v${packageJson.version}.`);
 }
+
+// Changelog fragments must be bullet lists. A release must not leave any behind: they would be missing from the changelog.
+const fragments = (await readdir(resolve(root, 'changelog.d'))).filter((n) => n.endsWith('.md') && n !== 'README.md');
+for (const name of fragments) {
+  if (!(await readText(`changelog.d/${name}`)).trim().startsWith('- ')) failures.push(`changelog.d/${name} must start with a bullet ("- ").`);
+}
+if (tag && fragments.length) failures.push(`changelog.d still has ${fragments.length} fragment(s); run npm run changelog:compile.`);
 
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join('\n'));

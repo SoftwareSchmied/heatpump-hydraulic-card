@@ -89,6 +89,6 @@ Pump counters remain follow-up work in [#31](https://github.com/Sturmi77/heatpum
 
 - [#3 History replay](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/3): benefit is unproven and implementation is XL.
 - Remaining brand drawings in [#5](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/5): one brand per issue when original references are available.
-- [#33 More heating circuits](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/33) and [#36 wood-stove topology](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/36): separate large layout/integration work.
+- [#36 wood-stove topology](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/36): separate large layout/integration work.
 - [#32 DHW standby-loss analysis](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/32) and [#34 circulation time windows](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/34): require robust time-window semantics and real entity samples.
 - [#15 Video promotion](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/15): operational work after a stable patch release and HACS default listing.
