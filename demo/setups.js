@@ -220,6 +220,39 @@ const wolfStates = (s) => {
   };
   return Object.fromEntries(Object.entries(v).map(([k, val]) => [`${x}${k}`, val]));
 };
+// Vaillant aroTHERM plus via ebusd (HMU + VWZ hydraulic station + sensoCOMFORT), entity ids from a real installation:
+// most carry the topic prefix, newer ones also the device name (sensor.heating_ebusd_…). Underfloor + radiator circuit.
+const ebusdStates = (s) => ({
+  'sensor.ebusd_hmu_rundatastatuscode': { heat: 'heat_compressor_active', dhw: 'hwc_compressor_active', defrost: 'deicing_active', idle: 'standby' }[s],
+  'sensor.ebusd_hmu_rundatacompressorspeed': [{ heat: '70.8', dhw: '88.0', defrost: '60.0', idle: '0' }[s], 'rps'],
+  'sensor.ebusd_vwzio_statusdhw_dhwactive': s === 'dhw' ? 'on' : 'off',
+  'sensor.ebusd_hmu_currentconsumedpower': [{ heat: '0.9', dhw: '1.6', defrost: '0.7', idle: '0' }[s], 'kW'],
+  'sensor.ebusd_hmu_currentyieldpower': [{ heat: '2.3', dhw: '3.4', defrost: '0', idle: '0' }[s], 'kW'],
+  'sensor.ebusd_hmu_rundataflowtemp': [{ heat: '45.3', dhw: '55.1', defrost: '24.0', idle: '30.2' }[s], '°C'],
+  'sensor.ebusd_hmu_rundatareturntemp': [{ heat: '42.4', dhw: '50.2', defrost: '27.5', idle: '29.8' }[s], '°C'],
+  'sensor.ebusd_hmu_buildingcircuitflow': [s === 'idle' ? '0' : '1201', 'l/h'],
+  'sensor.ebusd_hmu_rundataairinlettemp': ['7.2', '°C'], 'sensor.ebusd_broadcast_outsidetemp': ['9.0', '°C'],
+  'sensor.ebusd_hmu_flowpressure': [s === 'idle' ? '1.2' : '1.41', 'bar'],
+  'sensor.ebusd_ctlv2_hwcstoragetemp': ['45.5', '°C'], 'sensor.ebusd_ctlv2_hwctempdesired': ['48', '°C'],
+  'sensor.ebusd_ctlv2_hc1flowtemp': ['33.9', '°C'], 'sensor.ebusd_ctlv2_hc1actualflowtempdesired': ['33.8', '°C'],
+  'sensor.ebusd_ctlv2_hc1pumpstatus': s === 'idle' ? '0' : '1',
+  'sensor.ebusd_ctlv2_hc2flowtemp': ['43.8', '°C'], 'sensor.ebusd_ctlv2_hc2actualflowtempdesired': ['43.8', '°C'],
+  'sensor.ebusd_ctlv2_hc2pumpstatus': s === 'heat' ? '1' : '0',
+  'sensor.ebusd_ctlv2_hc3flowtemp': 'unknown', 'sensor.ebusd_ctlv2_hc3pumpstatus': '0',
+  'sensor.ebusd_ctlv2_z1roomtemp': ['21.4', '°C'], 'sensor.ebusd_ctlv2_z1actualroomtempdesired': ['21.5', '°C'],
+  'sensor.ebusd_hmu_runstatscompressorhours': { state: '7927', attributes: { unit_of_measurement: 'h', state_class: 'total_increasing' } },
+  'sensor.ebusd_hmu_runstatscompressorstarts': { state: '9309', attributes: { state_class: 'total_increasing' } },
+  'sensor.ebusd_vwzio_immersionheaterhours': ['116', 'h'],
+  'sensor.ebusd_hmu_statelectricenergysum': { state: '20612.3', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.ebusd_hmu_statelectricenergysumhc': { state: '13515.2', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.ebusd_hmu_statelectricenergysumhwc': { state: '7081.8', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.ebusd_hmu_statenvironmentenergysum': { state: '31922.9', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heating_ebusd_hmu_rundataevaporationtemp': ['3.2', '°C'],
+  'sensor.ebusd_hmu_rundatacompressorinlettemp': ['1.7', '°C'], 'sensor.ebusd_hmu_rundatacompressoroutlettemp': ['55.5', '°C'],
+  'sensor.ebusd_hmu_rundatahighpressure': ['15.2', 'bar'], 'sensor.ebusd_hmu_rundataeevpositionabs': '143',
+  'sensor.heating_ebusd_hmu_rundataoverheatingactualvalue': ['0.2', 'K'],
+  'sensor.ebusd_hmu_currenterror_error': s === 'idle' ? '1100' : 'unknown',
+});
 const regOf = (fn, platform) => Object.fromEntries(Object.keys(fn('heat')).map((id) => [id, { platform }]));
 
 // Kronoterm via the Kronoterm integration (Cloud API), resolved via translation_key. Entity ids and values as on a real
@@ -404,6 +437,19 @@ const setups = [
     config: {
       preset: 'kronoterm', title: 'Kronoterm ADAPT', hc_count: 2, hc2_type: 'radiator',
       tiles: ['energy', 'energy_heating', 'energy_dhw', 'energy:month', 'cop_live', 'cop_total', 'cycles_heating', 'spread'],
+    },
+  },
+  {
+    name: 'Vaillant aroTHERM plus', sub: 'ebusd, underfloor and radiator circuit, environmental energy',
+    states: ebusdStates, registry: regOf(ebusdStates, 'mqtt'),
+    statistics: {
+      'sensor.ebusd_hmu_statelectricenergysum': { today: 21.8, month: 412, year: 4210 },
+      'sensor.ebusd_hmu_statenvironmentenergysum': { today: 32.6, month: 690, year: 6830 },
+      'sensor.ebusd_hmu_runstatscompressorstarts': { today: 6 }, 'sensor.ebusd_hmu_runstatscompressorhours': { today: 9 },
+    },
+    config: {
+      preset: 'ebusd', title: 'aroTHERM plus', hc_count: 2, hc_name: 'Underfloor', hc2_type: 'radiator', hc2_name: 'Radiators',
+      tiles: ['cop_live', 'cop_total', 'energy', 'env_energy', 'starts', 'hours_per_start', 'hc_pressure'],
     },
   },
 ];
