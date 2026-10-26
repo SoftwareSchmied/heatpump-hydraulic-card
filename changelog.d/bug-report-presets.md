@@ -1,1 +1,0 @@
-- Bug report template: the preset list now contains every preset (open3e, ebusd, wolf, luxtronik and samsung were missing), and the preset feedback template names the presets that are still untested.

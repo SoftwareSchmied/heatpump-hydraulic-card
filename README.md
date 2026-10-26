@@ -49,13 +49,11 @@ Additional real-installation reports with manual entity mappings are tracked sep
 
 ## Current status
 
-The current release is **[0.11.0](https://github.com/Sturmi77/heatpump-hydraulic-card/releases/tag/v0.11.0)**. Its HACS, quality, Chromium and Firefox checks pass, including 524 browser self-tests. The shipped presets and features are covered with simulated data; Lambda and HeishaMon have also been confirmed on real installations.
+The current release is **[0.12.0](https://github.com/Sturmi77/heatpump-hydraulic-card/releases/tag/v0.12.0)**. Its HACS, quality, Chromium and Firefox checks pass, including 833 browser self-tests. The shipped presets and features are covered with simulated data; Lambda and HeishaMon have also been confirmed on real installations.
 
-The next release, **0.12.0**, is in preparation (see the [milestone](https://github.com/Sturmi77/heatpump-hydraulic-card/milestone/4)). On `main` it adds the presets Wolf, Kronoterm, ebusd, Open3E, Luxtronik and Samsung, up to six heating circuits, the circuit return label and room temperature per circuit, and fixes for the HeishaMon preset. Until it is released, HACS offers 0.11.0.
+Release 0.12.0 adds the presets Wolf, Kronoterm, ebusd, Open3E, Luxtronik and Samsung, up to six heating circuits, the circuit return label and room temperature per circuit; the new presets are listed as untested above unless a real installation has confirmed them. Real-installation feedback for Viessmann (ViCare, Open3E), Vaillant, EMS-ESP, Wolf and Luxtronik is therefore the highest-priority follow-up; reports from additional HeishaMon models and generations remain welcome. Please use the [tester issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) or the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and review the diagnostic report for private entity names before posting it.
 
-Real-installation feedback for Viessmann (ViCare, Open3E), Vaillant and EMS-ESP is therefore the highest-priority follow-up; reports from additional HeishaMon models and generations remain welcome. Please use the [tester issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) or the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and review the diagnostic report for private entity names before posting it.
-
-The completed release history and the prioritized post-0.11.0 backlog are maintained in the [development plan](docs/ROADMAP.md).
+The completed release history and the prioritized post-0.12.0 backlog are maintained in the [development plan](docs/ROADMAP.md).
 
 ## Features
 
