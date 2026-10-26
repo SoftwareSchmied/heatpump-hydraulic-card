@@ -1249,6 +1249,17 @@
     const sh = rows.find((x) => x[0] === 'superheat');
     check(sh && sh[3]() === '2.0 K', `HeishaMon superheat from suction gas and evaporation (${sh && sh[3] ? sh[3]() : 'none'})`);
     card.remove();
+    // In defrost the circuit runs backwards: the outdoor pipe is no evaporation temperature then.
+    const value = (c, key) => c._drawerRows().flatMap(([, list]) => list).find((x) => x[0] === key)?.[3]();
+    const defrost = mount({ preset: 'heishamon' }, hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'on' }))); await wait(20);
+    check(['evap_temp', 'suction_temp', 'liquid_temp', 'superheat'].every((k) => value(defrost, k) === '–') && /49/.test(value(defrost, 'hot_gas')),
+      `HeishaMon defrost hides the heating-only refrigerant roles (${['evap_temp', 'superheat', 'hot_gas'].map((k) => value(defrost, k)).join(', ')})`);
+    defrost.hass = hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'off' })); await wait(5);
+    check(value(defrost, 'superheat') === '2.0 K' && /1/.test(value(defrost, 'evap_temp')), 'after defrost the roles come back');
+    defrost.remove();
+    const own = mount({ preset: 'heishamon', entities: { evap_temp: `sensor.${p}_main_outside_pipe_temp` } }, hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'on' }))); await wait(20);
+    check(value(own, 'evap_temp') !== '–' && value(own, 'suction_temp') === '–', 'an entity set in the config keeps its value in defrost');
+    own.remove();
   }
 
   // 19. diagnostic report, full-screen layer, custom texts and built-in card themes

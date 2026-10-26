@@ -382,6 +382,8 @@ const HFC_PRESETS = {
         eev: `sensor.${m}expansion_valve`,
       };
     },
+    // The pipe sensors above have these roles only in heating: in defrost and cooling the circuit runs backwards.
+    heating_roles: ['evap_temp', 'suction_temp', 'liquid_temp'],
     // TOP44 "Last Error": "No error", or an H/F code (H76, F12 …) until the error is reset.
     errors: (p) => [`sensor.${p}_main_error`],
     error_ok: ['No error'],
@@ -1169,6 +1171,8 @@ class HeatpumpFlowCard extends HTMLElement {
     this._sums = r.sums;
     this._errors = r.errors;
     this._tileMap = r.tiles;
+    // Preset sensors whose refrigerant role holds only in heating; an entity set in the config keeps its role.
+    this._heatingRoles = (r.preset?.heating_roles || []).filter((k) => this._e[k] && this._e[k] === r.fromPreset[k] && !(this._config.entities || {})[k]);
     // An action for a key without an entity does nothing; say so once instead of failing silently.
     if (r.ready && this._config.actions) {
       const lost = Object.keys(this._config.actions).filter((k) => !this._e[k] && !(this._warned || (this._warned = {}))[k]);
@@ -1343,6 +1347,11 @@ class HeatpumpFlowCard extends HTMLElement {
     group.dataset.a11y = `${label}: ${this._pressureText(key)}, ${this._i[`pressure_${state}`]}`;
   }
   _on(key) { return ['on', 'true', 'open', '1', 'ein'].includes(String(this._s(key)).toLowerCase()); }
+  // Defrost and cooling run the refrigerant circuit backwards: the outdoor heat exchanger is the condenser then.
+  _reversedCycle() {
+    return ['defrost', 'cooling'].includes(this._norm(this._maps.mode, this._s('mode')))
+      || String(this._s('status') || '').toUpperCase().includes('DEFROST') || (this._has('defrost') && this._on('defrost'));
+  }
   // Compressor modulation 0..1 from `compressor_speed` (percent; Hz or rpm against `compressor_speed_max`), NaN without a usable value.
   _speedFraction() {
     const v = this._n('compressor_speed');
@@ -2084,13 +2093,16 @@ class HeatpumpFlowCard extends HTMLElement {
         return Number.isFinite(c) && c > 0 ? `≈${this._fmt(c, 2)}` : '–';
       }]);
     }
-    const rf = ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev'].map(row);
+    // A sensor with a heating-only role shows '–' while the cycle runs backwards (defrost, cooling).
+    const reversed = (key) => (this._heatingRoles || []).includes(key) && this._reversedCycle();
+    const rf = ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev'].map(row)
+      .map((r) => (r && (this._heatingRoles || []).includes(r[0]) ? [...r.slice(0, 3), () => (reversed(r[0]) ? '–' : r[3]())] : r));
     // Cut-out counters are event counts, shown as plain numbers with a times sign, never with a unit of pressure or temperature.
     const cutouts = ['cutout_high_pressure', 'cutout_low_pressure', 'cutout_temperature'].filter(ok).map((key) => [key, D[key], this._e[key], () => this._countText(key)]);
     const hydraulic = [['brine_pressure', i.brine_pressure], ['hc_pressure', i.hc_pressure]].filter(([key]) => ok(key))
       .map(([key, label]) => [key, label, this._e[key], () => this._pressureText(key)]);
     // Superheat = suction gas − evaporation, subcooling = condensation − liquid line, unless the integration provides them.
-    const diff = (a, b) => { const v = this._n(a) - this._n(b); return Number.isFinite(v) ? `${this._fmt(v, 1)} K` : '–'; };
+    const diff = (a, b) => { const v = this._n(a) - this._n(b); return Number.isFinite(v) && !reversed(a) && !reversed(b) ? `${this._fmt(v, 1)} K` : '–'; };
     rf.push(row('superheat') || (ok('suction_temp') && ok('evap_temp') ? ['superheat', D.superheat, this._e.suction_temp, () => diff('suction_temp', 'evap_temp')] : null));
     rf.push(row('subcooling') || (ok('cond_temp') && ok('liquid_temp') ? ['subcooling', D.subcooling, this._e.liquid_temp, () => diff('cond_temp', 'liquid_temp')] : null));
     const more = (this._config.details || []).map((d, n) => (typeof d === 'string' ? { entity: d } : d)).filter((d) => d && this._hass.states[d.entity])
