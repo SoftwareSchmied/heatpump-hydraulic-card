@@ -1,0 +1,22 @@
+{
+  "preset": "open3e",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": null,
+    "note": "Baseline: changes before this date were not tracked."
+  },
+  "sources": [
+    {
+      "repo": "MojoOli/open3e-ha",
+      "branch": "master",
+      "paths": [
+        "custom_components/open3e/definitions/sensors.py",
+        "custom_components/open3e/definitions/binary_sensors.py",
+        "custom_components/open3e/definitions/climate.py",
+        "custom_components/open3e/definitions/select.py",
+        "custom_components/open3e/definitions/open3e_data.py",
+        "custom_components/open3e/translations/en.json"
+      ]
+    }
+  ]
+}
