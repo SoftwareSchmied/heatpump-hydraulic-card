@@ -222,6 +222,77 @@ const wolfStates = (s) => {
 };
 const regOf = (fn, platform) => Object.fromEntries(Object.keys(fn('heat')).map((id) => [id, { platform }]));
 
+// Kronoterm via the Kronoterm integration (Cloud API), resolved via translation_key. Entity ids and values as on a real
+// Hydro S + ADAPT installation: the hot water tank exists only as the DHW thermostat (climate), loop 1 has a room thermostat.
+const kronotermReg = {
+  'sensor.kronoterm_working_function_2': 'working_function', 'sensor.kronoterm_operation_regime_2': 'operation_regime',
+  'sensor.kronoterm_error_warning_2': 'error_warning', 'sensor.kronoterm_heat_pump_hp_load': 'hp_load',
+  'binary_sensor.kronoterm_heat_pump_defrost_status': 'defrost_status', 'binary_sensor.kronoterm_heat_pump_dhw_circulation_pump': 'dhw_circulation_pump',
+  'binary_sensor.kronoterm_heat_pump_circulation_pump': 'circulation_pump', 'binary_sensor.kronoterm_heat_pump_main_circulation_pump': 'main_pump_status',
+  'binary_sensor.kronoterm_heat_pump_reserve_source_status': 'reserve_source_status',
+  'sensor.kronoterm_heat_pump_current_heating_cooling_power': 'current_heating_cooling_power',
+  'sensor.kronoterm_heat_pump_current_heating_cooling_capacity': 'current_heating_cooling_capacity', 'sensor.kronoterm_heat_pump_cop_value': 'cop_value',
+  'sensor.kronoterm_heat_pump_temperature_hp_outlet': 'hp_outlet_temperature', 'sensor.kronoterm_heat_pump_temperature_hp_inlet': 'hp_inlet_temperature',
+  'sensor.kronoterm_heat_pump_temperature_outside': 'temperature_outside', 'climate.kronoterm_dhw_temperature': 'dhw_temperature',
+  'climate.kronoterm_loop_1_temperature': 'loop_1_temperature', 'climate.kronoterm_loop_2_temperature': 'loop_2_temperature',
+  'climate.kronoterm_reservoir_temperature': 'reservoir_temperature', 'sensor.kronoterm_loop_1_temperature': 'loop_1_temperature',
+  'sensor.kronoterm_loop_2_temperature': 'loop_2_temperature', 'sensor.kronoterm_loop_1_inlet_temperature': 'loop_1_inlet_temperature',
+  'sensor.kronoterm_heat_pump_loop_1_thermostat_temperature': 'loop_1_thermostat_temperature',
+  'binary_sensor.kronoterm_heat_pump_circulation_loop_1': 'circulation_loop_1', 'binary_sensor.kronoterm_heat_pump_circulation_loop_2': 'circulation_loop_2',
+  'sensor.kronoterm_heat_pump_heating_system_pressure': 'heating_system_pressure', 'select.kronoterm_operational_mode': 'operational_mode',
+  'sensor.kronoterm_energy_combined': 'energy_combined', 'sensor.kronoterm_energy_heating': 'energy_heating', 'sensor.kronoterm_energy_dhw': 'energy_dhw',
+  'sensor.kronoterm_energy_heater': 'energy_heater', 'sensor.kronoterm_heat_pump_electrical_energy_heating_dhw': 'electrical_energy_heating_dhw',
+  'sensor.kronoterm_heat_pump_heating_energy_heating_dhw': 'heating_energy_heating_dhw', 'sensor.kronoterm_heat_pump_scop_value': 'scop_value',
+  'sensor.kronoterm_heat_pump_compressor_activations_heating_24_h': 'compressor_activations_heating',
+  'sensor.kronoterm_heat_pump_activations_boiler_24_h': 'activations_boiler', 'sensor.kronoterm_heat_pump_compressor_activations_cooling': 'compressor_activations_cooling',
+  'sensor.kronoterm_heat_pump_operating_hours_compressor_heating': 'operating_hours_compressor_heating',
+  'sensor.kronoterm_heat_pump_operating_hours_compressor_dhw': 'operating_hours_compressor_dhw',
+  'sensor.kronoterm_heat_pump_operating_hours_additional_source_1': 'operating_hours_additional_source_1',
+  'sensor.kronoterm_heat_pump_temperature_compressor_inlet': 'temperature_compressor_inlet',
+  'sensor.kronoterm_heat_pump_temperature_compressor_outlet': 'temperature_compressor_outlet',
+};
+const kronotermStates = (s) => ({
+  'sensor.kronoterm_working_function_2': { heat: 'heating', dhw: 'dhw', defrost: 'heating', idle: 'standby' }[s],
+  'sensor.kronoterm_operation_regime_2': 'heating', 'sensor.kronoterm_error_warning_2': s === 'idle' ? 'warning' : 'no_error',
+  'sensor.kronoterm_heat_pump_hp_load': [{ heat: '27', dhw: '100', defrost: '48', idle: '0' }[s], '%'],
+  'binary_sensor.kronoterm_heat_pump_defrost_status': s === 'defrost' ? 'on' : 'off',
+  'binary_sensor.kronoterm_heat_pump_dhw_circulation_pump': s === 'dhw' ? 'on' : 'off',
+  'binary_sensor.kronoterm_heat_pump_circulation_pump': 'off', 'binary_sensor.kronoterm_heat_pump_main_circulation_pump': s === 'idle' ? 'off' : 'on',
+  'binary_sensor.kronoterm_heat_pump_reserve_source_status': 'off',
+  // The Cloud reports the electrical power as capacity ÷ COP; both read 0 while the unit defrosts.
+  'sensor.kronoterm_heat_pump_current_heating_cooling_power': [{ heat: '1463.9', dhw: '2870.5', defrost: '0', idle: '0' }[s], 'W'],
+  'sensor.kronoterm_heat_pump_current_heating_cooling_capacity': [{ heat: '5475', dhw: '8991', defrost: '0', idle: '0' }[s], 'W'],
+  'sensor.kronoterm_heat_pump_cop_value': { heat: '3.74', dhw: '3.13', defrost: '0', idle: '0' }[s],
+  'sensor.kronoterm_heat_pump_temperature_hp_outlet': [{ heat: '35.6', dhw: '52.4', defrost: '30.1', idle: '29.4' }[s], '°C'],
+  'sensor.kronoterm_heat_pump_temperature_hp_inlet': [{ heat: '31.2', dhw: '47.0', defrost: '30.6', idle: '28.9' }[s], '°C'],
+  'sensor.kronoterm_heat_pump_temperature_outside': ['6.2', '°C'],
+  'climate.kronoterm_dhw_temperature': { state: 'heat', attributes: { current_temperature: { heat: 49.6, dhw: 46.8, defrost: 49.4, idle: 51.3 }[s], temperature: 50, friendly_name: 'DHW Thermostat' } },
+  'climate.kronoterm_loop_1_temperature': { state: 'heat', attributes: { current_temperature: 22.4, temperature: 22.7, friendly_name: 'Loop 1 Thermostat' } },
+  'climate.kronoterm_loop_2_temperature': { state: 'heat', attributes: { current_temperature: 30.5, temperature: 19.9, friendly_name: 'Loop 2 Thermostat' } },
+  'climate.kronoterm_reservoir_temperature': { state: 'heat', attributes: { current_temperature: 35.6, temperature: 19.9, friendly_name: 'Reservoir Thermostat' } },
+  'sensor.kronoterm_loop_1_temperature': ['22.4', '°C'], 'sensor.kronoterm_heat_pump_loop_1_thermostat_temperature': ['22.4', '°C'],
+  'sensor.kronoterm_loop_1_inlet_temperature': [{ heat: '33.2', dhw: '28.7', defrost: '31.3', idle: '27.5' }[s], '°C'],
+  'sensor.kronoterm_loop_2_temperature': [{ heat: '30.5', dhw: '24.9', defrost: '29.3', idle: '26.0' }[s], '°C'],
+  'binary_sensor.kronoterm_heat_pump_circulation_loop_1': s === 'heat' || s === 'defrost' ? 'on' : 'off',
+  'binary_sensor.kronoterm_heat_pump_circulation_loop_2': s === 'heat' || s === 'defrost' ? 'on' : 'off',
+  'sensor.kronoterm_heat_pump_heating_system_pressure': ['1.3', 'bar'],
+  'select.kronoterm_operational_mode': { state: s === 'idle' ? 'eco' : 'auto', attributes: { friendly_name: 'Operational Mode', options: ['auto', 'eco', 'comfort'] } },
+  'sensor.kronoterm_energy_combined': { state: '27.42', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.kronoterm_energy_heating': { state: '21.62', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.kronoterm_energy_dhw': { state: '4.94', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.kronoterm_energy_heater': { state: '0', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.kronoterm_heat_pump_electrical_energy_heating_dhw': { state: '13762', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  // Not mapped by the preset: on the reference installation it reads a tenth of the heat that the SCOP implies.
+  'sensor.kronoterm_heat_pump_heating_energy_heating_dhw': { state: '4728', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.kronoterm_heat_pump_scop_value': '3.43',
+  'sensor.kronoterm_heat_pump_compressor_activations_heating_24_h': '12245', 'sensor.kronoterm_heat_pump_activations_boiler_24_h': '641',
+  'sensor.kronoterm_heat_pump_compressor_activations_cooling': '0',
+  'sensor.kronoterm_heat_pump_operating_hours_compressor_heating': ['9692', 'h'], 'sensor.kronoterm_heat_pump_operating_hours_compressor_dhw': ['652', 'h'],
+  'sensor.kronoterm_heat_pump_operating_hours_additional_source_1': ['0', 'h'],
+  'sensor.kronoterm_heat_pump_temperature_compressor_inlet': [{ heat: '1.5', dhw: '-0.8', defrost: '-4.2', idle: '7.9' }[s], '°C'],
+  'sensor.kronoterm_heat_pump_temperature_compressor_outlet': [{ heat: '71.4', dhw: '91.6', defrost: '58.0', idle: '35.2' }[s], '°C'],
+});
+
 // Energy dashboard of the simulated house: power sensors (stat_rate) for PV, battery (+ = discharging) and grid (+ = import).
 const energyPrefs = { energy_sources: [
   { type: 'solar', stat_energy_from: 'sensor.pv_energy_today', stat_rate: 'sensor.pv_power' },
@@ -323,6 +394,16 @@ const setups = [
       preset: 'wolf', title: 'Wolf CHA',
       entities: { buffer_top: 'sensor.zuhause_header_temperature' },
       tiles: ['heat_heating', 'heat_dhw', 'heat:yesterday', 'heat:month', 'hours:total', 'spread', 'hc_pressure'],
+    },
+  },
+  {
+    name: 'Kronoterm ADAPT', sub: 'Kronoterm integration (Cloud API), hot water tank from the DHW thermostat, two circuits',
+    states: kronotermStates,
+    registry: Object.fromEntries(Object.entries(kronotermReg).map(([id, tk]) => [id, { platform: 'kronoterm', translation_key: tk }])),
+    statistics: { 'sensor.kronoterm_heat_pump_electrical_energy_heating_dhw': { yesterday: 24.9, week: 160.2, month: 512.6, year: 3871 } },
+    config: {
+      preset: 'kronoterm', title: 'Kronoterm ADAPT', hc_count: 2, hc2_type: 'radiator',
+      tiles: ['energy', 'energy_heating', 'energy_dhw', 'energy:month', 'cop_live', 'cop_total', 'cycles_heating', 'spread'],
     },
   },
 ];
