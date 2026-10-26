@@ -1,0 +1,21 @@
+{
+  "preset": "samsung",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": null,
+    "note": "Baseline: changes before this date were not tracked."
+  },
+  "sources": [
+    {
+      "repo": "Beormund/esphome-samsung-nasa",
+      "branch": "main",
+      "paths": [
+        "example.yaml",
+        "README.md",
+        "components/samsung_nasa/sensor",
+        "components/samsung_nasa/text_sensor",
+        "components/samsung_nasa/switch"
+      ]
+    }
+  ]
+}

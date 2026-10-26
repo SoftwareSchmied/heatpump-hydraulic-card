@@ -1,0 +1,25 @@
+{
+  "preset": "emsesp",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": null,
+    "note": "Baseline: changes before this date were not tracked."
+  },
+  "sources": [
+    {
+      "repo": "emsesp/EMS-ESP32",
+      "branch": "dev",
+      "paths": [
+        "src/core/mqtt.cpp",
+        "src/core/locale_translations.h",
+        "src/core/emsdevice.cpp",
+        "src/devices/boiler.cpp",
+        "src/devices/heatpump.cpp",
+        "src/devices/heatsource.cpp",
+        "src/devices/mixer.cpp",
+        "src/devices/thermostat.cpp",
+        "src/devices/water.cpp"
+      ]
+    }
+  ]
+}
