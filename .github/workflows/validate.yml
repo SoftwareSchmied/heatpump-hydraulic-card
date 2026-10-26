@@ -82,3 +82,28 @@ jobs:
             playwright-report/
           if-no-files-found: ignore
           retention-days: 7
+
+  # HACS reads the download counter of the release asset named in hacs.json (`filename`) and downloads the card from it.
+  # A release without that asset shows no download count on the HACS page, so every release tag attaches the file.
+  release-asset:
+    name: Release asset
+    if: github.ref_type == 'tag'
+    needs: [hacs, quality, browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Attach the card file to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          file="dist/$(jq -r .filename hacs.json)"
+          # gh release create pushes the tag first; wait until the release itself exists.
+          for attempt in $(seq 1 12); do
+            gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 && break
+            sleep 10
+          done
+          gh release upload "$GITHUB_REF_NAME" "$file" --clobber
