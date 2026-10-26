@@ -14,7 +14,7 @@
 
 ![Heat Pump Hydraulic Card overview with the animated schematic and feature callouts](docs/social-preview.png)
 
-An **animated hydraulic schematic** for air-to-water heat pumps in Home Assistant.
+An **animated hydraulic schematic** for heat pumps in Home Assistant: air, ground (brine) and groundwater sources.
 
 It shows electricity flowing from **PV, battery and grid** into the heat pump, the **diverter valve** switching between hot water and heating, colour-coded **tanks**, the **heating circuit** and your rooms. Animation speed follows the real flow rate. The core is vendor-neutral: **presets** make it zero-config for popular heat pumps:
 
@@ -50,6 +50,8 @@ Additional real-installation reports with manual entity mappings are tracked sep
 ## Current status
 
 The current release is **[0.11.0](https://github.com/Sturmi77/heatpump-hydraulic-card/releases/tag/v0.11.0)**. Its HACS, quality, Chromium and Firefox checks pass, including 524 browser self-tests. The shipped presets and features are covered with simulated data; Lambda and HeishaMon have also been confirmed on real installations.
+
+The next release, **0.12.0**, is in preparation (see the [milestone](https://github.com/Sturmi77/heatpump-hydraulic-card/milestone/4)). On `main` it adds the presets Wolf, Kronoterm, ebusd, Open3E, Luxtronik and Samsung, up to six heating circuits, the circuit return label and room temperature per circuit, and fixes for the HeishaMon preset. Until it is released, HACS offers 0.11.0.
 
 Real-installation feedback for Viessmann (ViCare, Open3E), Vaillant and EMS-ESP is therefore the highest-priority follow-up; reports from additional HeishaMon models and generations remain welcome. Please use the [tester issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) or the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and review the diagnostic report for private entity names before posting it.
 
@@ -102,7 +104,7 @@ The completed release history and the prioritized post-0.11.0 backlog are mainta
 
 | `unit_style` | Schematic based on | Brands / families covered | Automatic selection |
 |---|---|---|---|
-| `generic` | Neutral fan symbol | Any air-source heat pump | Fallback without a known style, also `preset: wolf` |
+| `generic` | Neutral fan symbol | Any air-source heat pump | Fallback without a known style, also `preset: wolf`; ground and groundwater sources show their loop symbol instead |
 | `lambda` | Lambda EU-L | Lambda | `preset: lambda` |
 | `viessmann` | Viessmann Vitocal 250-A | Viessmann Vitocal | `preset: vicare`, `preset: open3e` |
 | `vaillant` | Vaillant aroTHERM plus | Vaillant; default fallback for the shared myPyllant brands | `preset: vaillant` |
@@ -429,7 +431,19 @@ type: custom:heatpump-flow-card
 preset: luxtronik
 source_type: brine   # air (default), brine or water
 ```
-For heat pumps with a Luxtronik controller (Alpha Innotec, Novelan, Roth, Siemens, Elco, Buderus, Nibe, Wolf) with the [Luxtronik](https://github.com/BenPru/luxtronik) integration (HACS, platform `luxtronik2`). Entities are found through the entity registry (platform + translation key), so entity ids and the HA language don't matter. The controller does not tell the heat source, so set `source_type` for brine and water heat pumps. Details and the full mapping: [docs/presets/luxtronik.md](docs/presets/luxtronik.md).
+For heat pumps with a Luxtronik controller and the [Luxtronik](https://github.com/BenPru/luxtronik) integration (HACS, platform `luxtronik2`). The integration names these manufacturers as users of the controller:
+
+- Alpha Innotec
+- Novelan
+- Roth
+- Siemens
+- Elco
+- Buderus
+- Nibe
+- Wolf Heiztechnik
+
+The controller sits in air, brine and water heat pumps alike, so the card draws the generic fan for air units and the ground or water loop for `source_type: brine` or `water`; there is no manufacturer-specific outdoor-unit drawing yet.
+ Entities are found through the entity registry (platform + translation key), so entity ids and the HA language don't matter. The controller does not tell the heat source, so set `source_type` for brine and water heat pumps. Details and the full mapping: [docs/presets/luxtronik.md](docs/presets/luxtronik.md).
 
 What you get:
 - the operating status (heating, hot water, defrost, cooling, grid lock, idle) as the mode, the compressor as running
@@ -758,9 +772,9 @@ npm run dev
 `test/selftest.html` runs every installation in every scenario, broken entity states, edge-case configs, preset detection (gas boilers must not be detected as heat pumps) and the computed values. `npm run check` runs syntax and release-contract checks plus the self-test in Chromium and Firefox. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for focused and interactive commands and failure diagnostics.
 
 ## Deutsch (Kurzfassung)
-Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw.
+Animiertes Hydraulikschema für Wärmepumpen mit Luft, Erdreich (Sole) oder Grundwasser als Quelle: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw.
 Puffer → Heizkreis.
-Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon); Wolf-Wärmepumpen wie CHA (wolflink); Kronoterm (Kronoterm-Integration, Cloud oder Modbus); Vaillant aroTHERM über ebusd; Luxtronik-Regler (Alpha Innotec, Novelan, Roth …).
+Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon); Wolf-Wärmepumpen wie CHA (wolflink); Kronoterm (Kronoterm-Integration, Cloud oder Modbus); Vaillant aroTHERM über ebusd; Luxtronik-Regler (Alpha Innotec, Novelan, Roth, Siemens, Elco, Buderus, Nibe, Wolf).
 Samsung EHS über esphome-samsung-nasa.
 Lambda, HeishaMon und Kronoterm (Cloud-API) sind inzwischen mit echten Anlagen bestätigt; Viessmann, Vaillant, EMS-ESP, Wolf und Luxtronik warten noch auf diesen Praxistest – Rückmeldungen gern über das Preset-Formular mit dem zuvor geprüften Diagnosebericht.
 Andere Hersteller werden über `entities` und `mode_map` angebunden.
