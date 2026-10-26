@@ -477,6 +477,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | `hc_count` | Number of heating circuits, 1 (default) to 6. Presets fill the further circuits with the next circuit numbers. The schematic grows by one row per circuit. |
 | `hc2_type` to `hc6_type` | Emitter of circuits 2 to 6 (default `underfloor`). |
 | `hc_name`, `hc2_name` to `hc6_name` | Circuit titles (default "Heating circuit 1", "Heating circuit 2", …). |
+| `hc_return_label` | Show the return temperature of each heating circuit under its return pipe, from `hc_return`, `hc2_return` … (default `false`). Only the circuit's own return sensor is shown; narrow cards hide the label. The prefix `RL` is the text `return_short`. |
 | `source_type` | `air` (default), `brine` (ground loop) or `water` (groundwater wells). |
 | `title` | Card title (default: "Heat pump" / "Wärmepumpe"). |
 | `language` | `auto` (default), `en`, `de`, or a lowercase language code defined in `texts`. |
