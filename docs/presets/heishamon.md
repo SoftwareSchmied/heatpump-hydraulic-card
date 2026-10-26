@@ -11,6 +11,7 @@ Source: [HeishaMon](https://github.com/heishamon/HeishaMon) firmware and the [he
   - suction gas (`suction_temp`) from the evaporator outlet, `…_main_eva_outlet_temp`
   - liquid line (`liquid_temp`) from the indoor (plate heat exchanger) pipe, `…_main_inside_pipe_temp`
   - the card computes the superheat from suction gas and evaporation
+- Heating curve shift (`hc_curve_offset`) from `number.<prefix>_main_z1_heat_request_temp` (`z2_` for circuit 2). Only with the heating mode "compensation curve" (`sensor.<prefix>_main_heating_mode`): there the value shifts the curve by −5 to +5 K. `…_z1_water_target_temp` already contains the shift (both change in the same second), so the card shows "Target 36 °C (curve 34 °C + 2 K shift)" above the pump. In direct mode the number is the flow target itself and is left out. The mode is read when the card is built; reload the dashboard after a change of the heating mode.
 - Zone water temperature (`hc_flow`) only with a zone sensor. Without one HeishaMon reports about −78 to −128 °C; the preset then leaves `hc_flow` out and the circuit shows the heat pump's flow (direct system).
 
 ## Deliberately not mapped

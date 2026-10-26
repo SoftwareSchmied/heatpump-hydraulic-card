@@ -414,6 +414,7 @@ const HFC_PRESETS = {
       // The zone water temperature needs a zone sensor; without one HeishaMon reports about -78 to -128 °C.
       // Then the circuit has no own flow temperature and the card uses the heat pump's flow (direct system).
       const zoneFlow = parseFloat(ctx.state(`sensor.${m}${z}_water_temp`));
+      const curve = ctx.state(`sensor.${m}heating_mode`) === 'compensation curve';
       return {
         compressor: `sensor.${m}compressor_freq`,
         valve: `sensor.${m}threeway_valve_state`,
@@ -433,6 +434,8 @@ const HFC_PRESETS = {
         hc_flow: zoneFlow > -50 || Number.isNaN(zoneFlow) ? `sensor.${m}${z}_water_temp` : undefined,
         // main_target_temp follows the hot-water target while the valve is on the tank, so the zone target comes first.
         hc_setpoint: [`sensor.${m}${z}_water_target_temp`, i.hc === 1 ? `sensor.${m}main_target_temp` : undefined],
+        // With the compensation curve the heat request temperature shifts the curve (-5 to +5 K); in direct mode it is the target itself.
+        hc_curve_offset: curve ? [`number.${m}${z}_heat_request_temp`, `sensor.${m}${z}_heat_request_temp`] : undefined,
         room: zoneRoom ? `sensor.${m}z1_temp` : [`sensor.${m}room_thermostat_temp`, `sensor.${m}z1_temp`],
         program: [`sensor.${m}holiday_mode_state`, `switch.${m}holiday_mode_state`],
         hours: `sensor.${m}operations_hours`,
@@ -866,7 +869,7 @@ const HFC_I18N = {
       suction_temp: 'Suction gas', hot_gas: 'Hot gas', liquid_temp: 'Liquid line', low_pressure: 'Low pressure', high_pressure: 'High pressure',
       eev: 'Expansion valve', superheat: 'Superheat', subcooling: 'Subcooling',
     },
-    source_flow: 'Source', target: 'Target', return_short: 'RL', middle: 'middle', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW', solar: 'Solar',
+    source_flow: 'Source', target: 'Target', curve_offset: 'curve', curve_shift: 'shift', return_short: 'RL', middle: 'middle', bottom: 'bottom', error: 'Error', circulation: 'Circ.', valve_dhw: 'DHW', solar: 'Solar',
     brine_pressure: 'Brine pressure', hc_pressure: 'Heating pressure', pressure_normal: 'normal', pressure_warning: 'warning', pressure_critical: 'critical',
     timeline_title: 'Last {h} hours', timeline_gap: 'No data', timeline_aria: 'Operating mode of the last {h} hours. Arrow keys select a period.',
     programs: { eco: 'Eco', night: 'Night', party: 'Party', holiday: 'Holiday' },
@@ -906,7 +909,7 @@ const HFC_I18N = {
       suction_temp: 'Sauggas', hot_gas: 'Heißgas', liquid_temp: 'Flüssigkeitsleitung', low_pressure: 'Niederdruck', high_pressure: 'Hochdruck',
       eev: 'Expansionsventil', superheat: 'Überhitzung', subcooling: 'Unterkühlung',
     },
-    source_flow: 'Quelle', target: 'Soll', return_short: 'RL', middle: 'Mitte', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW', solar: 'Solar',
+    source_flow: 'Quelle', target: 'Soll', curve_offset: 'Kurve', curve_shift: 'Verschiebung', return_short: 'RL', middle: 'Mitte', bottom: 'unten', error: 'Fehler', circulation: 'Zirk.', valve_dhw: 'WW', solar: 'Solar',
     brine_pressure: 'Soledruck', hc_pressure: 'Heizungsdruck', pressure_normal: 'normal', pressure_warning: 'Warnung', pressure_critical: 'kritisch',
     timeline_title: 'Letzte {h} Stunden', timeline_gap: 'Keine Daten', timeline_aria: 'Betriebsart der letzten {h} Stunden. Mit den Pfeiltasten einen Zeitraum wählen.',
     programs: { eco: 'Eco', night: 'Nacht', party: 'Party', holiday: 'Urlaub' },
@@ -999,7 +1002,7 @@ const HFC_EDITOR = {
     dhw_top: 'DHW tank top', dhw_middle: 'DHW tank middle', dhw_bottom: 'DHW tank bottom', dhw_target: 'DHW target', dhw_mode: 'DHW mode',
     circulation: 'Circulation pump', buffer_top: 'Buffer top', buffer_middle: 'Buffer middle', buffer_bottom: 'Buffer bottom', buffer_mode: 'Buffer mode',
     hc_flow: 'Circuit flow temperature', hc_return: 'Circuit return temperature', hc_setpoint: 'Circuit flow target',
-    hc_mode: 'Circuit mode', hc_pump: 'Circuit pump running (binary)', hc_volume: 'Circuit flow rate', hc_pressure: 'Heating circuit pressure', brine_pressure: 'Brine circuit pressure',
+    hc_mode: 'Circuit mode', hc_pump: 'Circuit pump running (binary)', hc_volume: 'Circuit flow rate', hc_curve_offset: 'Heating curve shift (K)', hc_pressure: 'Heating circuit pressure', brine_pressure: 'Brine circuit pressure',
     cutout_high_pressure: 'High-pressure cut-outs (count of events, not a pressure)', cutout_low_pressure: 'Low-pressure cut-outs (count of events, not a pressure)', cutout_temperature: 'Temperature cut-outs (count of events, not a temperature)',
     room: 'Room temperature', room_target: 'Room target',
     env_energy: 'Environmental energy total', pv: 'Power from PV (W)', battery: 'Power from battery (W)', grid: 'Power from grid (W)',
@@ -1061,7 +1064,7 @@ const HFC_EDITOR = {
     dhw_top: 'WW-Speicher oben', dhw_middle: 'WW-Speicher Mitte', dhw_bottom: 'WW-Speicher unten', dhw_target: 'WW-Soll', dhw_mode: 'WW-Betriebsart',
     circulation: 'Zirkulationspumpe', buffer_top: 'Puffer oben', buffer_middle: 'Puffer Mitte', buffer_bottom: 'Puffer unten', buffer_mode: 'Puffer-Betriebsart',
     hc_flow: 'Heizkreis-Vorlauf', hc_return: 'Heizkreis-Rücklauf', hc_setpoint: 'Heizkreis-Vorlauf-Soll',
-    hc_mode: 'Heizkreis-Betriebsart', hc_pump: 'Heizkreispumpe läuft (binär)', hc_volume: 'Volumenstrom Heizkreis', hc_pressure: 'Heizkreis-Druck', brine_pressure: 'Solekreis-Druck',
+    hc_mode: 'Heizkreis-Betriebsart', hc_pump: 'Heizkreispumpe läuft (binär)', hc_volume: 'Volumenstrom Heizkreis', hc_curve_offset: 'Heizkurven-Verschiebung (K)', hc_pressure: 'Heizkreis-Druck', brine_pressure: 'Solekreis-Druck',
     cutout_high_pressure: 'Hochdruck-Abschaltungen (Anzahl der Ereignisse, kein Druck)', cutout_low_pressure: 'Niederdruck-Abschaltungen (Anzahl der Ereignisse, kein Druck)', cutout_temperature: 'Temperatur-Abschaltungen (Anzahl der Ereignisse, keine Temperatur)',
     room: 'Raumtemperatur', room_target: 'Raum-Soll',
     env_energy: 'Umweltenergie gesamt', pv: 'Strom aus PV (W)', battery: 'Strom aus Akku (W)', grid: 'Strom aus Netz (W)',
@@ -1077,13 +1080,13 @@ const hfcHcCount = (config) => Math.min(Math.max(Math.round(+config?.hc_count) |
 const HFC_ENTITY_GROUPS = {
   sec_hp: ['mode', 'status', 'compressor', 'defrost', 'power', 'heat', 'flow', 'return', 'volume', 'source_volume', 'source_in', 'source_out', 'brine_pressure', 'outdoor', 'valve', 'heater'],
   sec_storage: ['dhw_top', 'dhw_middle', 'dhw_bottom', 'dhw_target', 'dhw_mode', 'circulation', 'dhw_heater', 'buffer_top', 'buffer_middle', 'buffer_bottom', 'buffer_mode', 'buffer_heater', 'solar_collector', 'solar_pump'],
-  sec_hc: ['hc_flow', 'hc_return', 'hc_setpoint', 'hc_mode', 'hc_pump', 'hc_volume', 'hc_pressure', 'room', 'room_target', 'program'],
+  sec_hc: ['hc_flow', 'hc_return', 'hc_setpoint', 'hc_mode', 'hc_pump', 'hc_volume', 'hc_curve_offset', 'hc_pressure', 'room', 'room_target', 'program'],
   // The room of circuit 1 is the house (room, room_target); circuits 2 to 6 show theirs in their status line.
-  sec_hc2: ['hc2_flow', 'hc2_return', 'hc2_setpoint', 'hc2_mode', 'hc2_pump', 'hc2_volume', 'hc2_room', 'hc2_room_target'],
-  sec_hc3: ['hc3_flow', 'hc3_return', 'hc3_setpoint', 'hc3_mode', 'hc3_pump', 'hc3_volume', 'hc3_room', 'hc3_room_target'],
-  sec_hc4: ['hc4_flow', 'hc4_return', 'hc4_setpoint', 'hc4_mode', 'hc4_pump', 'hc4_volume', 'hc4_room', 'hc4_room_target'],
-  sec_hc5: ['hc5_flow', 'hc5_return', 'hc5_setpoint', 'hc5_mode', 'hc5_pump', 'hc5_volume', 'hc5_room', 'hc5_room_target'],
-  sec_hc6: ['hc6_flow', 'hc6_return', 'hc6_setpoint', 'hc6_mode', 'hc6_pump', 'hc6_volume', 'hc6_room', 'hc6_room_target'],
+  sec_hc2: ['hc2_flow', 'hc2_return', 'hc2_setpoint', 'hc2_mode', 'hc2_pump', 'hc2_volume', 'hc2_curve_offset', 'hc2_room', 'hc2_room_target'],
+  sec_hc3: ['hc3_flow', 'hc3_return', 'hc3_setpoint', 'hc3_mode', 'hc3_pump', 'hc3_volume', 'hc3_curve_offset', 'hc3_room', 'hc3_room_target'],
+  sec_hc4: ['hc4_flow', 'hc4_return', 'hc4_setpoint', 'hc4_mode', 'hc4_pump', 'hc4_volume', 'hc4_curve_offset', 'hc4_room', 'hc4_room_target'],
+  sec_hc5: ['hc5_flow', 'hc5_return', 'hc5_setpoint', 'hc5_mode', 'hc5_pump', 'hc5_volume', 'hc5_curve_offset', 'hc5_room', 'hc5_room_target'],
+  sec_hc6: ['hc6_flow', 'hc6_return', 'hc6_setpoint', 'hc6_mode', 'hc6_pump', 'hc6_volume', 'hc6_curve_offset', 'hc6_room', 'hc6_room_target'],
   sec_power: ['pv', 'battery', 'grid'],
   sec_details: ['hours', 'starts_total', 'aux_hours', 'energy_total', 'env_energy', 'heat_total'],
   sec_refrigerant: ['compressor_speed', 'evap_temp', 'cond_temp', 'suction_temp', 'hot_gas', 'liquid_temp', 'low_pressure', 'high_pressure', 'eev', 'superheat', 'subcooling'],
@@ -1822,6 +1825,35 @@ class HeatpumpFlowCard extends HTMLElement {
     el.setAttribute('y', wrapped ? 362 : 366);
     this._$('t-hp-power')?.setAttribute('y', wrapped ? 397 : 390);
     this._$('t-hp-cop')?.setAttribute('y', wrapped ? 416 : 412);
+  }
+
+  // Target of circuit n with the heating curve shift, e.g. "Target 36 °C (curve 34 °C + 2 K shift)": the target already contains the
+  // shift, so the curve gives target − shift. The text ends at the pump and runs left over the circuit pipe; where it does not fit
+  // (narrow schematics), the word for the shift and then the part in brackets are left out. A shift is a difference: °C shows as K.
+  _hcTarget(n, set, shift, unit) {
+    const el = this._$(`t-hc${n === 1 ? '' : n}`); if (!el) return;
+    const i = this._i;
+    const f = (v) => this._fmt(v, Number.isInteger(v) ? 0 : 1);
+    const u = ['', '°c', 'k'].includes(unit) ? 'K' : unit;
+    const part = Number.isFinite(shift) ? `${shift < 0 ? '−' : '+'} ${f(Math.abs(shift))} ${u}` : '';
+    let texts = [''];
+    if (Number.isFinite(set) && part) {
+      const head = `${i.target} ${f(set)} °C`; const curve = `${i.curve_offset} ${f(set - shift)} °C ${part}`;
+      texts = [`${head} (${curve} ${i.curve_shift})`, `${head} (${curve})`, head];
+    } else if (Number.isFinite(set)) texts = [`${i.target} ${f(set)} °C`];
+    else if (part) texts = [`${i.curve_shift} ${part}`];
+    const key = `${texts[0]}|${getComputedStyle(el).fontSize}`;
+    if (el._k === key) return;
+    let measured = true;
+    for (const t of texts) {
+      el.textContent = t;
+      let w = 0;
+      try { w = el.getComputedTextLength(); } catch (err) { w = 0; }
+      if (!(w > 0)) { measured = false; break; }
+      // From the pump (x 736) back to the riser of the diverter valve (x 386) with some air.
+      if (w <= 736 - 400) break;
+    }
+    el._k = measured ? key : '';
   }
 
   // Status line of heating circuit n under its emitter: the mode (or "running") and, for circuits 2 to 6, the room temperature and
@@ -2608,8 +2640,12 @@ class HeatpumpFlowCard extends HTMLElement {
       <defs><linearGradient id="g-rad${s}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" id="g-rad${s}-top"/><stop offset="100%" id="g-rad${s}-bottom"/></linearGradient>
       <linearGradient id="g-hcb${s}" gradientUnits="userSpaceOnUse" x1="0" y1="${gy[0]}" x2="0" y2="${gy[1]}"><stop offset="0" id="g-hcb${s}-a"/><stop offset="0.5" id="g-hcb${s}-m"/><stop offset="1" id="g-hcb${s}-b"/></linearGradient></defs>
       ${em.art.split('__S__').join(s)}${pp(`hc-vl${s}`, vl)}${pp(`hc-body${s}`, em.body)}${pp(`hc-rl${s}`, rl)}
-      <g class="tap" ${de(k('flow'))}><text class="pipe-label" id="t-hc${s}" x="740" y="334" text-anchor="middle"></text></g>
-      <g class="tap" ${de(k('volume'))}><text class="vol-label" id="t-hc-vol${s}" x="720" y="394" text-anchor="middle"></text></g>
+      ${e[k('curve_offset')]
+    // With a heating curve shift the target and its parts stand above the pump, ending at the pump; the flow temperature goes below it.
+    ? `<g class="tap" ${de(k('curve_offset'))}><text class="pipe-label" id="t-hc${s}" x="736" y="334" text-anchor="end"></text></g>
+      <g class="tap" ${de(k('flow'))}><text class="pipe-label" id="t-hc-now${s}" x="720" y="396" text-anchor="middle"></text></g>`
+    : `<g class="tap" ${de(k('flow'))}><text class="pipe-label" id="t-hc${s}" x="740" y="334" text-anchor="middle"></text></g>`}
+      <g class="tap" ${de(k('volume'))}><text class="vol-label" id="t-hc-vol${s}" x="720" y="${e[k('curve_offset')] ? 414 : 394}" text-anchor="middle"></text></g>
       ${this._config.hc_return_label ? `<g class="tap" ${de(k('return'))}><text class="vol-label" id="t-hc-rl${s}" x="690" y="515" text-anchor="start"></text></g>` : ''}
       ${n === 1 && e.hc_pressure ? `<g class="tap pressure" id="pressure-hc" ${de('hc_pressure')}><text class="pressure-label" id="t-hc-pressure" x="700" y="430" text-anchor="middle"></text></g>` : ''}
       <g class="tap" ${de(e[k('pump')] ? k('pump') : k('mode'))}>
@@ -3315,9 +3351,15 @@ class HeatpumpFlowCard extends HTMLElement {
         this._cls(`waves${s}`, hcOn && cMode !== 'cooling');
         const set = this._n(k('setpoint'));
         const showFlow = this._has(k('flow')) || (n === 1 && !P.buffer && this._has('flow'));
-        this._txt(`t-hc${s}`, showFlow ? `${this._t(tHc)}${Number.isFinite(set) ? ` · ${i.target} ${this._fmt(set)}` : ''}` : '');
         const hcVol = this._lh(k('volume'));
         this._txt(`t-hc-vol${s}`, this._has(k('volume')) && Number.isFinite(hcVol) ? `${this._fmt(hcVol, 0)} l/h` : '');
+        if (this._$(`t-hc-now${s}`)) {
+          // Heating curve shift: "Target 36 °C (curve 34 °C + 2 K shift)" above the pump, the flow temperature below it.
+          this._txt(`t-hc-now${s}`, showFlow ? this._t(tHc) : '');
+          this._hcTarget(n, set, this._n(k('curve_offset')), this._unit(k('curve_offset')));
+        } else {
+          this._txt(`t-hc${s}`, showFlow ? `${this._t(tHc)}${Number.isFinite(set) ? ` · ${i.target} ${this._fmt(set)}` : ''}` : '');
+        }
         // Own return sensor of the circuit only; the fallback to the buffer or heat pump return would repeat another label.
         if (this._config.hc_return_label) this._txtPre(`t-hc-rl${s}`, i.return_short, this._has(k('return')) && Number.isFinite(this._n(k('return'))) ? this._t(this._n(k('return'))) : '');
         this._hcStatus(n, this._has(k('mode')) ? this._modeLabel(cMode, this._s(k('mode'))) : (hcOn ? i.running : ''), k2);

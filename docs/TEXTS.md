@@ -50,6 +50,8 @@ fullscreen_close
 source_flow
 return_short
 target
+curve_offset
+curve_shift
 middle
 bottom
 brine_pressure
