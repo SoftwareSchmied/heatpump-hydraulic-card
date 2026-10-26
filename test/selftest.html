@@ -185,6 +185,97 @@
     check(!detects('wolf', w, Object.fromEntries(Object.keys(w).map((id) => [id, { platform: 'mqtt' }]))), 'same entity names on another platform are not Wolf');
   }
 
+  // 5a. Wolf (wolf_smartset): found by translation key with any entity ids, wolflink unchanged, wolf_smartset wins when both exist,
+  // Wolf's capitalised state texts (Heizbetrieb, Warmwasser, Ein, Aus, Betrieb) map like the wolflink slugs
+  {
+    const ws = setups.find((s) => s.name === 'Wolf CHA (wolf_smartset)'); const wl = setups.find((s) => s.name === 'Wolf CHA');
+    const regAs = (reg, patch) => Object.fromEntries(Object.entries(reg).map(([id, r]) => [id, { ...r, ...patch }]));
+    const without = (o, id) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== id));
+    const hassS = (scen) => hassOf(toStates(ws.states(scen)), ws.registry, null, ws);
+    const r = C._resolve(ws.config, hassS('heat')); const e = r.entities;
+    check(r.ready && r.prefix === '' && HFC_PRESETS.wolf.tested !== true, `wolf_smartset detected with prefix '' and still untested (${r.prefix} / ${r.ready})`);
+    check(C.getStubConfig(hassS('heat')).preset === 'wolf', 'stub config picks the wolf preset for wolf_smartset');
+    check(e.mode === 'sensor.heizgerat_betriebsart_heizgerat' && e.status === 'sensor.heizgerat_verdichterstatus' && e.compressor === 'sensor.heizgerat_verdichterfrequenz'
+      && e.compressor_speed === 'sensor.heizgerat_aktuelle_leistungsvorgabe_verdichter', `wolf_smartset mode, status and compressor (${e.mode} / ${e.status} / ${e.compressor})`);
+    check(e.power === 'sensor.heizgerat_leistungsaufnahme_wp_ehz' && e.heat === 'sensor.heizgerat_aktuelle_sekundarleistung' && e.flow === 'sensor.heizgerat_kesseltemperatur'
+      && e.return === 'sensor.heizgerat_rucklauftemperatur' && e.volume === 'sensor.heizgerat_heizkreisdurchfluss' && e.outdoor === 'sensor.heizgerat_aussentemperatur_heizung',
+      `wolf_smartset power, heat, flow, return, volume and outdoor (${e.power} / ${e.flow} / ${e.outdoor})`);
+    check(e.valve === 'sensor.heizgerat_3_wege_umschaltventil_hz_ww' && e.heater === 'sensor.heizgerat_e_heizung' && e.dhw_top === 'sensor.heizgerat_warmwassertemperatur'
+      && e.dhw_target === 'number.wolf_cha_warmwassersolltemperatur_eingestellt', `wolf_smartset valve, heater, tank and the number as DHW target (${e.valve} / ${e.dhw_target})`);
+    // without the number (no write access) the read-only sensor is the fallback
+    const numId = 'number.wolf_cha_warmwassersolltemperatur_eingestellt';
+    check(C._resolve({ preset: 'wolf' }, hassOf(toStates(without(ws.states('heat'), numId)), without(ws.registry, numId))).entities.dhw_target === 'sensor.heizgerat_warmwassersolltemperatur',
+      'wolf_smartset DHW target falls back to the read-only sensor');
+    check(e.hc_flow === 'sensor.bedienmodul_bm_2_0_vorlauftemperatur' && e.hc_pump === 'sensor.wolf_cha_mischerkreispumpe' && e.hc_mode === 'sensor.bedienmodul_bm_2_0_mischerkreis_status'
+      && e.hc_pressure === 'sensor.heizgerat_anlagendruck' && e.room_target === 'number.bedienmodul_bm_2_0_tagtemperatur_heizung_mischerkreis_1',
+      `wolf_smartset circuit: flow, system-tab pump, mode, pressure and the number as room target (${e.hc_pump} / ${e.room_target})`);
+    check(e.hours === 'sensor.heizgerat_betriebsstunden_verdichter' && e.aux_hours === 'sensor.heizgerat_betriebsstunden_e_heizung' && e.buffer_top === 'sensor.heizgerat_sammlertemperatur',
+      'wolf_smartset hours counters and the manual buffer line');
+    check(e.room === undefined && e.program === undefined, `wolf_smartset: no room sensor, no program (${e.room} / ${e.program})`);
+    // one mixer circuit only: a second circuit maps nothing instead of repeating circuit 1 (both branches)
+    const two = C._resolve({ ...ws.config, hc_count: 2 }, hassS('heat')).entities;
+    const twoL = C._resolve({ ...wl.config, hc_count: 2 }, hassOf(toStates(wl.states('heat')), wl.registry)).entities;
+    check(two.hc_flow && !two.hc2_flow && !two.hc2_pump && !two.hc2_mode && twoL.hc_flow && !twoL.hc2_flow && !twoL.hc2_pump && !twoL.hc2_mode,
+      `hc_count 2 leaves circuit 2 empty (${two.hc2_flow} / ${twoL.hc2_flow})`);
+    check(JSON.stringify(r.errors) === '[]', `wolf_smartset has no fault code, errors stay empty (${JSON.stringify(r.errors)})`);
+    check(r.tiles.heat?.yesterday === 'sensor.heizgerat_erzeugte_warmemenge_vortag' && r.tiles.heat?.month === 'sensor.heizgerat_erzeugte_warmemenge_aktueller_monat'
+      && r.tiles.heat_heating?.total === 'sensor.heizgerat_energiemenge_hz' && r.tiles.heat_dhw?.total === 'sensor.heizgerat_energiemenge_ww' && r.tiles.hours?.total === e.hours,
+      `wolf_smartset heat counter tiles by translation key (${JSON.stringify(r.tiles)})`);
+    // entity ids are irrelevant: rename every entity
+    const rename = (o) => Object.fromEntries(Object.entries(o).map(([id, v]) => [id.replace('.', '.x_'), v]));
+    const x = C._resolve({ preset: 'wolf' }, hassOf(toStates(rename(ws.states('heat'))), rename(ws.registry)));
+    check(x.ready && x.entities.mode === 'sensor.x_heizgerat_betriebsart_heizgerat' && x.entities.room_target === 'number.x_bedienmodul_bm_2_0_tagtemperatur_heizung_mischerkreis_1',
+      `wolf_smartset with arbitrary entity ids (${x.entities.mode})`);
+    // "Ausgang MKP" is the pump fallback when the system-tab pump is missing (it starts disabled in the integration)
+    const mkpId = 'sensor.mischermodul_mm1_ausgang_mkp'; const sysPump = 'sensor.wolf_cha_mischerkreispumpe';
+    const m = C._resolve({ preset: 'wolf' }, hassOf(toStates({ ...without(ws.states('heat'), sysPump), [mkpId]: 'Ein' }),
+      { ...without(ws.registry, sysPump), [mkpId]: { platform: 'wolf_smartset', translation_key: 'mkp_mixer_circuit_pump' } }));
+    check(m.entities.hc_pump === mkpId, `Ausgang MKP as the pump fallback (${m.entities.hc_pump})`);
+    // a boiler (no compressor status) and the same keys on another platform are not detected
+    const boiler = { 'sensor.heizgerat_kesseltemperatur': ['62', '°C'], 'sensor.heizgerat_aussentemperatur_heizung': ['5', '°C'],
+      'sensor.heizgerat_warmwassertemperatur': ['50', '°C'], 'sensor.heizgerat_anlagendruck': ['1.8', 'bar'] };
+    check(!detects('wolf', boiler, Object.fromEntries(Object.keys(boiler).map((id) => [id, ws.registry[id]]))), 'wolf_smartset boiler without a compressor status is not a heat pump');
+    check(!detects('wolf', ws.states('heat'), regAs(ws.registry, { platform: 'other' })), 'same translation keys on another platform are not Wolf');
+    // both installed: wolf_smartset wins; wolflink alone is unchanged
+    const both = C._resolve({ preset: 'wolf' }, hassOf(toStates({ ...wl.states('heat'), ...ws.states('heat') }), { ...wl.registry, ...ws.registry }));
+    check(both.prefix === '' && both.entities.mode === 'sensor.heizgerat_betriebsart_heizgerat' && both.errors.length === 0, `wolf_smartset wins over wolflink (${both.prefix} / ${both.entities.mode})`);
+    const l = C._resolve(wl.config, hassOf(toStates(wl.states('heat')), wl.registry)); const le = l.entities;
+    check(l.prefix === 'zuhause' && le.mode === 'sensor.zuhause_operating_mode_heater' && le.hc_pump === 'sensor.zuhause_mkp_mixer_circuit_pump' && le.room_target === 'sensor.zuhause_day_temperature'
+      && le.program === 'sensor.zuhause_holiday_mode' && JSON.stringify(l.errors) === '["sensor.zuhause_sub_fault_code"]' && l.tiles.heat_heating?.total === 'sensor.zuhause_energy_amount_htg',
+      `wolflink mapping unchanged (${l.prefix} / ${le.hc_pump} / ${le.program} / ${JSON.stringify(l.errors)})`);
+    // the entities sit on several HA devices (Heizgerät, Bedienmodul BM-2, the system), so the device option must stay unset:
+    // it keeps the heat pump keys but loses the circuit, or fails to detect altogether
+    const devReg = Object.fromEntries(Object.entries(ws.registry).map(([id, r]) => [id, { ...r, device_id: id.includes('heizgerat_') ? 'dev-hg' : (id.includes('bm_2_') ? 'dev-bm2' : 'dev-sys') }]));
+    const onHg = C._resolve({ preset: 'wolf', device: 'dev-hg' }, hassOf(toStates(ws.states('heat')), devReg));
+    check(onHg.ready && onHg.entities.mode && !onHg.entities.hc_flow && !onHg.entities.hc_pump && !onHg.entities.hc_mode && !onHg.entities.room_target && !onHg.entities.dhw_target?.startsWith('number.'),
+      `device: Heizgerät keeps the heat pump but loses the circuit and the DHW setting (${onHg.entities.hc_flow} / ${onHg.entities.dhw_target})`);
+    check(!C._resolve({ preset: 'wolf', device: 'dev-bm2' }, hassOf(toStates(ws.states('heat')), devReg)).ready, 'device: Bedienmodul is not detected at all');
+    // capitalised Wolf texts: the maps are case-insensitive, the four slugged AT/RT mixer states exist in both spellings
+    const card = mount(ws.config, hassS('heat')); await wait(20);
+    const $ = (id) => card.shadowRoot.getElementById(id);
+    const modes = { Heizbetrieb: 'heating', Warmwasser: 'dhw', Abtaubetrieb: 'defrost', Standby: 'idle', 'Aktive Kühlung': 'cooling', Antilegionellenfunktion: 'dhw' };
+    Object.entries(modes).forEach(([raw, mode]) => check(card._norm(card._maps.mode, raw) === mode, `wolf_smartset mode ${raw} = ${mode} (got ${card._norm(card._maps.mode, raw)})`));
+    const hc = { Heizbetrieb: 'heating', Aus: 'off', Absenkbetrieb: 'heating', 'AT Abschaltung': 'off', 'RT Frostschutz': 'frost', Warmwasservorrang: 'idle', at_abschaltung: 'off' };
+    Object.entries(hc).forEach(([raw, mode]) => check(card._norm(card._maps.hc, raw) === mode, `wolf_smartset circuit ${raw} = ${mode} (got ${card._norm(card._maps.hc, raw)})`));
+    check($('chip-mode').classList.contains('mode-heat') && $('impeller').classList.contains('on') && !$('heater-inline').classList.contains('on') && $('t-valve').textContent === 'Heating',
+      `Heizbetrieb, pump Ein, heater Aus, valve Heizen (${$('t-valve').textContent})`);
+    check(/1,200 W → 4\.1 kW/.test($('t-hp-power').textContent), `wolf_smartset kW power and heat (${$('t-hp-power').textContent})`);
+    card.remove();
+    const still = mount(ws.config, hassOf(toStates({ ...ws.states('heat'), 'sensor.heizgerat_verdichterfrequenz': ['0', 'Hz'], 'sensor.heizgerat_leistungsaufnahme_wp_ehz': ['0', 'kW'],
+      'sensor.heizgerat_aktuelle_sekundarleistung': ['0', 'kW'] }), ws.registry)); await wait(20);
+    check(still.shadowRoot.getElementById('t-hp-power').textContent !== still._i.compressor_off, `status Betrieb alone counts as running (${still.shadowRoot.getElementById('t-hp-power').textContent})`);
+    still.remove();
+    const dhw = mount(ws.config, hassS('dhw')); await wait(20);
+    check(dhw.shadowRoot.getElementById('chip-mode').classList.contains('mode-dhw') && dhw.shadowRoot.getElementById('t-valve').textContent === 'DHW', 'Warmwasser = DHW, valve Warmwasser = DHW');
+    dhw.remove();
+    const idle = mount(ws.config, hassS('idle')); await wait(20);
+    check(!idle.shadowRoot.getElementById('impeller').classList.contains('on') && idle.shadowRoot.getElementById('t-hp-power').textContent === idle._i.compressor_off,
+      `Standby: pump Aus, compressor off (${idle.shadowRoot.getElementById('t-hp-power').textContent})`);
+    idle.remove();
+    const opt = C._formSchema({}).schema[0].selector.select.options.find((o) => o.value === 'wolf');
+    check(/wolf_smartset/.test(opt.label), `preset dropdown names both integrations (${opt.label})`);
+  }
+
   // 6. computed values
   {
     const s = setups[1];
