@@ -253,6 +253,30 @@ const ebusdStates = (s) => ({
   'sensor.heating_ebusd_hmu_rundataoverheatingactualvalue': ['0.2', 'K'],
   'sensor.ebusd_hmu_currenterror_error': s === 'idle' ? '1100' : 'unknown',
 });
+// Samsung EHS (esphome-samsung-nasa): entity names of Beormund's example.yaml, valve and error code as text sensors.
+const samsungStates = (s) => ({
+  'sensor.heat_pump_flow_temp_out': [{ heat: '32.6', dhw: '45.1', defrost: '22.0', idle: '28.0' }[s], '°C'],
+  'sensor.heat_pump_flow_temp_return': [{ heat: '30.5', dhw: '40.3', defrost: '25.5', idle: '27.5' }[s], '°C'],
+  'sensor.heat_pump_flow_rate_sensor': [s === 'idle' ? '0' : '14.5', 'L/min'],
+  'binary_sensor.heat_pump_compressor_status': s === 'idle' ? 'off' : 'on',
+  'sensor.heat_pump_compressor_frequency': [{ heat: '47', dhw: '58', defrost: '62', idle: '0' }[s], 'Hz'],
+  'sensor.heat_pump_3_way_valve': s === 'dhw' ? 'Tank (DHW)' : 'Room (Heating)',
+  'binary_sensor.heat_pump_defrost': s === 'defrost' ? 'on' : 'off',
+  'binary_sensor.heat_pump_primary_water_pump': s === 'idle' ? 'off' : 'on',
+  'binary_sensor.heat_pump_booster_heater': 'off',
+  'sensor.heat_pump_power_consumed_last_minute': [{ heat: '1190', dhw: '1450', defrost: '1300', idle: '12' }[s], 'W'],
+  'sensor.heat_pump_power_produced_last_minute': [{ heat: '4300', dhw: '4700', defrost: '0', idle: '0' }[s], 'W'],
+  'sensor.heat_pump_outdoor_temperature': ['9.3', '°C'],
+  'sensor.heat_pump_dhw_temperature': [s === 'dhw' ? '38.2' : '42.4', '°C'],
+  'number.heat_pump_dhw_target_temperature': { state: '43', attributes: { unit_of_measurement: '°C', min: 30, max: 50, step: 1 } },
+  'sensor.heat_pump_zone_1_indoor_temp': ['20.8', '°C'], 'number.heat_pump_zone_1_target_temp': ['21', '°C'],
+  'sensor.heat_pump_error_code': s === 'idle' ? 'Communication Error (ODU Time-out 3m)' : 'No Error',
+  'switch.heat_pump_away_mode': 'off',
+  'sensor.heat_pump_total_consumed_energy': { state: '1843.2', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heat_pump_total_produced_energy': { state: '6912.0', attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+  'sensor.heat_pump_daily_energy_consumed': ['4.3', 'kWh'], 'sensor.heat_pump_daily_heat_generated': ['16.1', 'kWh'],
+  'sensor.heat_pump_cop_daily': '3.74', 'sensor.heat_pump_cop_total': '3.75',
+});
 const regOf = (fn, platform) => Object.fromEntries(Object.keys(fn('heat')).map((id) => [id, { platform }]));
 
 // Kronoterm via the Kronoterm integration (Cloud API), resolved via translation_key. Entity ids and values as on a real
@@ -451,6 +475,11 @@ const setups = [
       preset: 'ebusd', title: 'aroTHERM plus', hc_count: 2, hc_name: 'Underfloor', hc2_type: 'radiator', hc2_name: 'Radiators',
       tiles: ['cop_live', 'cop_total', 'energy', 'env_energy', 'starts', 'hours_per_start', 'hc_pressure'],
     },
+  },
+  {
+    name: 'Samsung EHS', sub: 'esphome-samsung-nasa, underfloor heating',
+    states: samsungStates, registry: regOf(samsungStates, 'esphome'),
+    config: { preset: 'samsung', title: 'Samsung EHS' },
   },
 ];
 const scenarios = [['heat', 'Heating'], ['dhw', 'Hot water'], ['defrost', 'Defrost'], ['idle', 'Standby + error']];

@@ -29,7 +29,7 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 | `emsesp` | **Bosch**, **Buderus**, **Junkers**, **Nefit**, **Worcester**, **Sieger**, **elm.leblanc**, **iVT** – EMS/EMS+ heat pumps such as Buderus Logatherm WLW, Bosch Compress, Nefit EnviLine | [EMS-ESP](https://github.com/emsesp/EMS-ESP32) gateway (MQTT discovery) | Bosch Compress 5800i/6800i AW | untested |
 | `ebusd` | **Vaillant** aroTHERM / aroTHERM plus (HMU) with a VWZ hydraulic station and sensoCOMFORT / multiMATIC controller | [ebusd](https://github.com/john30/ebusd) with Home Assistant MQTT discovery | Vaillant aroTHERM plus | mapped from and checked live on one real installation (aroTHERM plus cascade, two circuits) |
 | `wolf` | **Wolf** air/water heat pumps (CHA monoblock) with a WOLF Link gateway | [Wolf SmartSet Service](https://www.home-assistant.io/integrations/wolflink/) (core, `wolflink`) | generic fan | untested |
-| `samsung` *(in preparation)* | **Samsung EHS** (Mono, Split, TDM) | [esphome-samsung-nasa](https://github.com/Beormund/esphome-samsung-nasa) via ESPHome | Samsung EHS Mono HT Quiet; manual until the preset ships | untested; pending [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16), not included in the current release |
+| `samsung` | **Samsung** EHS (Mono, Split, TDM) on the NASA bus | [esphome-samsung-nasa](https://github.com/Beormund/esphome-samsung-nasa) (ESPHome) | Samsung EHS Mono HT Quiet | tested on a real installation |
 
 Additional real-installation reports with manual entity mappings are tracked separately from preset validation:
 
@@ -41,8 +41,6 @@ Additional real-installation reports with manual entity mappings are tracked sep
 > [!NOTE]
 > The **Viessmann**, **Open3E**, **Vaillant**, **EMS-ESP** and **Wolf** presets are **not yet tested with a real installation**. They are built from the source code of the respective integrations (Wolf also from the entity states of one CHA installation) and checked with simulated data. Feedback is very welcome: please [open a preset feedback issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and paste the card's diagnostic report after reviewing its entity ids for private names. The Lambda and HeishaMon presets have been confirmed on real installations.
 > Manual mappings reported above confirm that the vendor-neutral configuration can cover those systems; they do not validate any zero-config preset.
->
-> **Samsung EHS support is in preparation in [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16).** It remains marked untested until the contributor changes have been reviewed, merged and validated; `preset: samsung` is not available in the current release yet.
 
 ![Animated Lambda demo: heating, hot water, defrost and standby with timeline, quick controls and statistics](docs/demo.gif)
 
@@ -52,7 +50,7 @@ Additional real-installation reports with manual entity mappings are tracked sep
 
 The current release is **[0.11.0](https://github.com/Sturmi77/heatpump-hydraulic-card/releases/tag/v0.11.0)**. Its HACS, quality, Chromium and Firefox checks pass, including 524 browser self-tests. The shipped presets and features are covered with simulated data; Lambda and HeishaMon have also been confirmed on real installations.
 
-Real-installation feedback for Viessmann (ViCare, Open3E), Vaillant and EMS-ESP is therefore the highest-priority follow-up; reports from additional HeishaMon models and generations remain welcome. Please use the [tester issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) or the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and review the diagnostic report for private entity names before posting it. Samsung EHS remains in preparation in contributor-owned [PR #16](https://github.com/Sturmi77/heatpump-hydraulic-card/pull/16) and is not part of 0.11.0.
+Real-installation feedback for Viessmann (ViCare, Open3E), Vaillant and EMS-ESP is therefore the highest-priority follow-up; reports from additional HeishaMon models and generations remain welcome. Please use the [tester issue](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/1) or the [preset feedback form](https://github.com/Sturmi77/heatpump-hydraulic-card/issues/new?template=preset_feedback.yml) and review the diagnostic report for private entity names before posting it.
 
 The completed release history and the prioritized post-0.11.0 backlog are maintained in the [development plan](docs/ROADMAP.md).
 
@@ -110,7 +108,7 @@ The completed release history and the prioritized post-0.11.0 backlog are mainta
 | `saunier` | Saunier Duval GeniaAir Mono | Saunier Duval | Manual override because myPyllant does not identify the brand reliably |
 | `bosch` | Bosch Compress 5800i/6800i AW | Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc and iVT through EMS-ESP | `preset: emsesp` |
 | `panasonic` | Panasonic Aquarea | Panasonic Aquarea | `preset: heishamon` |
-| `samsung` | Samsung EHS Mono HT Quiet | Samsung EHS Mono / Mono HT Quiet | Manual until the Samsung preset is included |
+| `samsung` | Samsung EHS Mono HT Quiet | Samsung EHS Mono / Mono HT Quiet | `preset: samsung` |
 
 These are deliberately simplified original drawings without manufacturer logos. Related brands can share an integration even when their enclosures differ; set `unit_style` explicitly whenever the automatic family drawing does not match the installed unit.
 
@@ -318,6 +316,28 @@ entities:
 
 HeishaMon has no "current activity" value: the card shows heating while the compressor runs, hot water when the valve is on "Tank", and defrost from the defrost state. If you use HeishaMon with your own MQTT YAML instead of the integration, map the entities manually (see below).
 
+### Samsung EHS (esphome-samsung-nasa)
+```yaml
+type: custom:heatpump-flow-card
+preset: samsung
+```
+For Samsung EHS heat pumps (Mono, Split, TDM) with an ESP32 on the F1/F2 (NASA) bus and Beormund's [esphome-samsung-nasa](https://github.com/Beormund/esphome-samsung-nasa) component. The preset is based on its message mapping and builds on top of it: the entity names come from its `example.yaml` and README, plus the names of the installation the preset was tested on (EHS Mono AE050JXYDEH). ESPHome entity ids are `<node>_<name>`, and the names are set in your own YAML, so the node prefix is detected from the 3-way valve together with the error code (`sensor.<node>_3_way_valve`, `sensor.<node>_error_code`). If you named your sensors differently, map those entities manually; the preset fills in the rest.
+
+What you get:
+- outlet and return water temperature, flow rate
+- compressor status (or the compressor frequency) and defrost
+- 3-way valve (`Room (Heating)` / `Tank (DHW)` as a text sensor, or 0/1 as a plain sensor)
+- power consumed and produced (last minute), giving a live COP
+- outdoor temperature
+- DHW tank temperature and target, booster heater in the tank, backup heater
+- zone 1 room temperature and target, water law target as the circuit setpoint
+- away (outing) mode as the holiday chip
+- error code: "No Error" is fine, any other text shows the error chip
+- tiles: energy, heat and COP today from the template sensors of `example.yaml`, totals from the NASA counters
+- details: total energy consumed and produced, compressor frequency, discharge temperature, expansion valve
+
+Samsung has no "current activity" value: like HeishaMon, the card shows heating while the compressor runs, hot water when the valve is on the tank, and defrost from the defrost sensor. The primary water pump runs for hot water as well, so the heating circuit follows the valve. Some values are not fitted on every unit (no flow sensor, no wattmeter); they stay unknown. Without a wattmeter, add `power` from a meter of your own.
+
 ### Vaillant aroTHERM (ebusd) – checked on one real installation; more feedback welcome
 ```yaml
 type: custom:heatpump-flow-card
@@ -429,7 +449,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 
 | Option | Description |
 |---|---|
-| `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon`, `wolf`, `kronoterm`, `ebusd`, `open3e` or omit. Fills entities, mode maps and error sensors. |
+| `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon`, `wolf`, `kronoterm`, `ebusd`, `open3e`, `samsung` or omit. Fills entities, mode maps and error sensors. |
 | `prefix` | Preset prefix (Lambda device name, Vaillant home slug, EMS-ESP instance prefix, HeishaMon MQTT prefix, Wolf device slug, ebusd topic prefix). Omit for auto-detection, `""` for unprefixed Lambda ids. |
 | `device` | Device id: restricts preset detection to one device (several heat pumps of the same brand). |
 | `index` | Unit numbers for presets: `{hp, dhw, buffer, hc}` (default 1; Vaillant counts from 0). |
@@ -538,6 +558,7 @@ What the presets provide:
 - **ViCare:** COP and SPF, electricity per day, week, month and year (total, heating, DHW, cooling), compressor hours, starts and load classes, heater rod hours and starts, PV and solar thermal yield.
 - **EMS-ESP:** totals for electricity, heat, starts and hours per mode; other periods from long-term statistics.
 - **HeishaMon:** heat and electricity per mode as current power, so the COP tiles work for "now"; operating hours and starts.
+- **Samsung:** electricity, heat and COP today (template sensors of `example.yaml`) and in total; other periods from long-term statistics.
 - **Vaillant:** daily electricity and heat for heating and DHW.
 - **Kronoterm:** electricity today in total and per heating, DHW and heater (Cloud API); week, month and year from the electricity counter; COP total from the SCOP; heating, DHW and cooling compressor starts as totals.
 
@@ -707,7 +728,7 @@ npm run dev
 Animiertes Hydraulikschema für Luft-Wasser-Wärmepumpen: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw.
 Puffer → Heizkreis.
 Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon); Wolf-Wärmepumpen wie CHA (wolflink); Kronoterm (Kronoterm-Integration, Cloud oder Modbus); Vaillant aroTHERM über ebusd.
-Samsung EHS über esphome-samsung-nasa ist in PR #16 in Vorbereitung, noch nicht im aktuellen Release enthalten und bleibt bis zur abgeschlossenen Prüfung als ungetestet markiert.
+Samsung EHS über esphome-samsung-nasa.
 Lambda, HeishaMon und Kronoterm (Cloud-API) sind inzwischen mit echten Anlagen bestätigt; Viessmann, Vaillant, EMS-ESP und Wolf warten noch auf diesen Praxistest – Rückmeldungen gern über das Preset-Formular mit dem zuvor geprüften Diagnosebericht.
 Andere Hersteller werden über `entities` und `mode_map` angebunden.
 Schnellbedienung (Schalter, Tasten, Auswahl, Zahlen) und ein aufklappbarer Detailbereich mit Betriebsstunden, Zählern und Kältekreis.
