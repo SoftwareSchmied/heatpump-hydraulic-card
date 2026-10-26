@@ -1,0 +1,29 @@
+{
+  "preset": "wolf",
+  "reviewed": {
+    "date": "2026-10-26",
+    "version": null,
+    "note": "Baseline: changes before this date were not tracked."
+  },
+  "sources": [
+    {
+      "repo": "home-assistant/core",
+      "branch": "dev",
+      "releases": false,
+      "paths": [
+        "homeassistant/components/wolflink/const.py",
+        "homeassistant/components/wolflink/sensor.py",
+        "homeassistant/components/wolflink/strings.json",
+        "homeassistant/components/wolflink/coordinator.py"
+      ]
+    },
+    {
+      "repo": "janrothkegel/wolf-comm",
+      "branch": "master",
+      "paths": [
+        "wolf_comm/wolf_client.py",
+        "parameters-examples/heatpumpparameter.json"
+      ]
+    }
+  ]
+}
