@@ -28,7 +28,7 @@ It shows electricity flowing from **PV, battery and grid** into the heat pump, t
 | `vaillant` | **Vaillant** (aroTHERM, aroTHERM plus), **Saunier Duval**, **Bulex**, **Glow-worm**, **DemirDöküm** | [myPyllant](https://github.com/signalkraft/mypyllant-component) (HACS) | Vaillant aroTHERM plus by default; Saunier Duval GeniaAir Mono by manual override | untested |
 | `emsesp` | **Bosch**, **Buderus**, **Junkers**, **Nefit**, **Worcester**, **Sieger**, **elm.leblanc**, **iVT** – EMS/EMS+ heat pumps such as Buderus Logatherm WLW, Bosch Compress, Nefit EnviLine | [EMS-ESP](https://github.com/emsesp/EMS-ESP32) gateway (MQTT discovery) | Bosch Compress 5800i/6800i AW | untested |
 | `ebusd` | **Vaillant** aroTHERM / aroTHERM plus (HMU) with a VWZ hydraulic station and sensoCOMFORT / multiMATIC controller | [ebusd](https://github.com/john30/ebusd) with Home Assistant MQTT discovery | Vaillant aroTHERM plus | mapped from and checked live on one real installation (aroTHERM plus cascade, two circuits) |
-| `wolf` | **Wolf** air/water heat pumps (CHA monoblock) with a WOLF Link gateway | [Wolf SmartSet Service](https://www.home-assistant.io/integrations/wolflink/) (core, `wolflink`) | generic fan | untested |
+| `wolf` | **Wolf** air/water heat pumps (CHA monoblock) with a WOLF Link gateway | [Wolf SmartSet Service](https://www.home-assistant.io/integrations/wolflink/) (core, `wolflink`) or [Wolf SmartSet (read/write)](https://github.com/tibuntu/homeassistant-wolf-smartset) (HACS, `wolf_smartset`) | generic fan | untested |
 | `luxtronik` | **Alpha Innotec**, **Novelan**, **Roth**, **Siemens**, **Elco**, **Buderus**, **Nibe**, **Wolf** heat pumps with a Luxtronik controller | [Luxtronik](https://github.com/BenPru/luxtronik) (HACS, `luxtronik2`) | generic fan, loop symbol with `source_type` | untested |
 | `samsung` | **Samsung** EHS (Mono, Split, TDM) on the NASA bus | [esphome-samsung-nasa](https://github.com/Beormund/esphome-samsung-nasa) (ESPHome) | Samsung EHS Mono HT Quiet | tested on a real installation |
 
@@ -297,6 +297,7 @@ What you get:
 - outdoor temperature
 - DHW temperature and target
 - zone 1 water and room temperature; zone 2 becomes heating circuit 2 with `hc_count: 2`. The room temperature is `…_main_z1_temp` when the zone sensor setting is "Internal Thermostat" or "Thermistor"; otherwise `z1_temp` is the zone water temperature and the card uses the remote control sensor `…_main_room_thermostat_temp`
+- heating curve shift (`hc_curve_offset`) in the heating mode "compensation curve": the circuit label shows the target with its parts, for example "Target 36 °C (curve 34 °C + 2 K shift)", from the heat request temperature (`number.<prefix>_main_z1_heat_request_temp`, `z2_` for circuit 2). The heating mode is read when the card is built, so reload the dashboard after changing it; in direct mode the entity is the flow target itself and is not used
 - internal backup heater
 - details: operating hours and counter, heater hours, compressor frequency, discharge temperature, high and low pressure, expansion valve
 
@@ -394,12 +395,14 @@ Notes from the reference installation (Hydro S 2 + ADAPT 0312, Cloud API):
   ```
 - The reservoir has no tank sensor (the Cloud reports a calculated value, Modbus the HP return), so no buffer is drawn.
 
-### Wolf (wolflink) – untested, feedback welcome
+### Wolf (wolflink, wolf_smartset) – untested, feedback welcome
 ```yaml
 type: custom:heatpump-flow-card
 preset: wolf
 ```
 For Wolf air/water heat pumps such as the CHA monoblock with a WOLF Link home gateway and the core [Wolf SmartSet Service](https://www.home-assistant.io/integrations/wolflink/) integration. Entity ids are `sensor.<device>_<parameter name>`; the device slug is detected from `sensor.<device>_compressor_status`. Wolf gas and oil boilers use the same integration but have no compressor status, so they are not taken for a heat pump. With several Wolf devices, set `prefix:` (the device slug, e.g. `zuhause`) or pick one with `device:`. The parameter names follow the language of the Wolf portal; the preset expects English names. With another language the entity ids differ, so map them manually.
+
+The same preset also serves the custom [Wolf SmartSet (read/write)](https://github.com/tibuntu/homeassistant-wolf-smartset) integration (HACS, `wolf_smartset`, version 0.3.0 or newer). Its entities are found through the entity registry by translation key, so entity ids and the language do not matter, and `prefix:` is not needed. When both integrations are installed, `wolf_smartset` is used. Leave `device:` unset for it: its entities are spread over several Home Assistant devices (heater, operating module, mixer module, the system). Differences: one mixer circuit only, no party or holiday program and no fault code (set `errors` by hand), and the DHW target comes from the adjustable number. Details and the full mapping for both integrations: [docs/presets/wolf.md](docs/presets/wolf.md).
 
 What you get:
 - operating mode (heating, hot water, run-on, defrost, standby; cooling and frost protection where the unit reports them) and compressor status
@@ -487,7 +490,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 | Option | Description |
 |---|---|
 | `preset` | `lambda`, `vicare`, `vaillant`, `emsesp`, `heishamon`, `wolf`, `kronoterm`, `ebusd`, `open3e`, `luxtronik`, `samsung` or omit. Fills entities, mode maps and error sensors. |
-| `prefix` | Preset prefix (Lambda device name, Vaillant home slug, EMS-ESP instance prefix, HeishaMon MQTT prefix, Wolf device slug, ebusd topic prefix). Omit for auto-detection, `""` for unprefixed Lambda ids. |
+| `prefix` | Preset prefix (Lambda device name, Vaillant home slug, EMS-ESP instance prefix, HeishaMon MQTT prefix, Wolf device slug (`wolflink` only), ebusd topic prefix). Omit for auto-detection, `""` for unprefixed Lambda ids. |
 | `device` | Device id: restricts preset detection to one device (several heat pumps of the same brand). |
 | `index` | Unit numbers for presets: `{hp, dhw, buffer, hc}` (default 1; Vaillant counts from 0). |
 | `hc_type` | Circuit 1: `underfloor` (default), `radiator` (panel radiator) or `column` (column radiator). |
@@ -534,7 +537,7 @@ Everything can be set in the **UI editor**. With a preset, the editor shows whet
 **Entity keys:**
 - **Heat pump:** `mode`, `status`, `compressor` (binary, or frequency/speed > 0), `defrost` (binary), `power` (W or kW), `heat` (kW or W), `flow`, `return`, `volume`, `source_volume`, `source_in`, `source_out`, `brine_pressure` (bar, kPa, Pa, hPa, MPa or psi), `outdoor`, `valve` (binary, or a state like `Tank`/`DHW`), `heater` (backup / inline heater)
 - **Storage:** `dhw_top`, `dhw_middle`, `dhw_bottom`, `dhw_target`, `dhw_mode`, `circulation`, `dhw_heater`, `buffer_top`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` (needs the DHW tank)
-- **Heating circuit and house:** `hc_flow`, `hc_return`, `hc_setpoint`, `hc_mode`, `hc_pump`, `hc_volume`, `hc_pressure` (bar, kPa, Pa, hPa, MPa or psi), `room`, `room_target`, `program` (eco, night, party, holiday)
+- **Heating circuit and house:** `hc_flow`, `hc_return`, `hc_setpoint`, `hc_mode`, `hc_pump`, `hc_volume`, `hc_curve_offset` (shift of the heating curve in K, see HeishaMon; also `hc2_` to `hc6_`), `hc_pressure` (bar, kPa, Pa, hPa, MPa or psi), `room`, `room_target`, `program` (eco, night, party, holiday)
 - **Direct systems:** without a buffer and without circuit-specific temperature sensors, circuit 1 uses the heat pump's `flow` and `return` and remains connected in the schematic.
 - **Thermostats as temperature sources:** a temperature key also takes a `climate` or `water_heater` entity. The card reads its `current_temperature`, and its target `temperature` for `dhw_target`, `room_target` and the `_setpoint` keys. One DHW thermostat can serve as `dhw_top` and `dhw_target`.
 - **Circuits 2 to 6:** the same keys with `hc2_` to `hc6_` (`hc2_flow`, `hc6_pump`, …)
@@ -777,7 +780,7 @@ npm run dev
 ## Deutsch (Kurzfassung)
 Animiertes Hydraulikschema für Wärmepumpen mit Luft, Erdreich (Sole) oder Grundwasser als Quelle: Strom aus PV, Akku und Netz (automatisch aus dem Energie-Dashboard oder aus eigenen Sensoren) → Wärmepumpe → Umschaltventil → Warmwasser bzw.
 Puffer → Heizkreis.
-Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon); Wolf-Wärmepumpen wie CHA (wolflink); Kronoterm (Kronoterm-Integration, Cloud oder Modbus); Vaillant aroTHERM über ebusd; Luxtronik-Regler (Alpha Innotec, Novelan, Roth, Siemens, Elco, Buderus, Nibe, Wolf).
+Voreinstellungen erkennen die Entitäten automatisch für: Lambda; Viessmann (ViCare); Vaillant, Saunier Duval, Bulex, Glow-worm, DemirDöküm (myPyllant); Bosch, Buderus, Junkers, Nefit, Worcester, Sieger, elm.leblanc, iVT (EMS-ESP); Panasonic Aquarea (HeishaMon); Wolf-Wärmepumpen wie CHA (wolflink oder wolf_smartset); Kronoterm (Kronoterm-Integration, Cloud oder Modbus); Vaillant aroTHERM über ebusd; Luxtronik-Regler (Alpha Innotec, Novelan, Roth, Siemens, Elco, Buderus, Nibe, Wolf).
 Samsung EHS über esphome-samsung-nasa.
 Lambda, HeishaMon und Kronoterm (Cloud-API) sind inzwischen mit echten Anlagen bestätigt; Viessmann, Vaillant, EMS-ESP, Wolf und Luxtronik warten noch auf diesen Praxistest – Rückmeldungen gern über das Preset-Formular mit dem zuvor geprüften Diagnosebericht.
 Andere Hersteller werden über `entities` und `mode_map` angebunden.
