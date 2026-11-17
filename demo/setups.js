@@ -695,7 +695,8 @@ function pointtGenerator(modules) {
     primary: { family: main.family, construction: main.construction, power_kw: main.power_kw, brand_family: 'bosch_group', outdoor_power_kw: outdoor ? outdoor.power_kw : null },
     outdoor_unit: outdoor ? outdoor.product_name : null, source: 'local', table_version: 1, known: list.every((m) => m.family || m.construction) } };
 }
-function pointtSetup(scenario = 'heat', gateway = 'demo-pointt', suffix = '', access = 'cloud', generator) {
+// `brine`: a brine-to-water heat pump, with the readings of its brine circuit and without the air unit's intake and fan.
+function pointtSetup(scenario = 'heat', gateway = 'demo-pointt', suffix = '', access = 'cloud', generator, brine = false) {
   const local = access !== 'cloud';
   const pick = (values) => values[scenario] ?? values.heat;
   const rows = [
@@ -708,7 +709,7 @@ function pointtSetup(scenario = 'heat', gateway = 'demo-pointt', suffix = '', ac
     ['sensor', 'gateway:system_pressure', 1.7, 'bar'],
     ['sensor', 'gateway:hot_water_temperature', 48, '°C'],
     ['sensor', 'dhwCircuits:dhw1:currentSetpoint', 50, '°C'],
-    ['sensor', 'heatSources:hs1:heatPumpType', 'air_water', '', { translation_key: 'heat_pump_type' }],
+    ['sensor', 'heatSources:hs1:heatPumpType', brine ? 'brine_water' : 'air_water', '', { translation_key: 'heat_pump_type' }],
     ['sensor', 'heatSources:hs1:numberOfStarts:total', 120],
     ['sensor', 'heatSources:hs1:numberOfStarts:ch', 90],
     ['sensor', 'heatSources:hs1:numberOfStarts:dhw', 30],
@@ -730,6 +731,11 @@ function pointtSetup(scenario = 'heat', gateway = 'demo-pointt', suffix = '', ac
     ['sensor', 'heatSources:emon:totalConsumption:eheater', 0, 'kWh'],
     ['sensor', 'heatSources:emon:coolingConsumption:compressor', 20, 'kWh'],
     ['sensor', 'heatSources:emon:coolingConsumption:outputProduced', 80, 'kWh'],
+    // Brine-to-water: the brine temperatures are cloud resources, enabled by default.
+    ...(brine ? [
+      ['sensor', 'heatSources:hs1:brineCircuit:collectorOutflowTemp', scenario === 'idle' ? 6 : 4.5, '°C'],
+      ['sensor', 'heatSources:hs1:brineCircuit:collectorInflowTemp', scenario === 'idle' ? 6 : 1.5, '°C'],
+    ] : []),
     ['binary_sensor', 'system_fault', scenario === 'idle' ? 'on' : 'off'],
     ['binary_sensor', 'holiday_active', scenario === 'idle' ? 'on' : 'off'],
     ...[1, 2].flatMap((n) => [
@@ -764,8 +770,13 @@ function pointtSetup(scenario = 'heat', gateway = 'demo-pointt', suffix = '', ac
     ['sensor', 'local_only:heatSources:compressor:powerElecActual', pick({ heat: 910, dhw: 1450, defrost: 620, idle: 0 }), 'W'],
     ['sensor', 'local_only:heatSources:eHeater:powerElecActual', 0, 'W'],
     ['sensor', 'local_only:heatSources:hs1:pumpVolumeFlow', pick({ heat: 1450, dhw: 2080, defrost: 1900, idle: 0 }), 'L/h', { translation_key: 'volume_flow' }],
-    ['sensor', 'local_only:heatSources:hs1:oduFanSpeed', pick({ heat: 42, dhw: 60, defrost: 0, idle: 0 }), '%'],
-    ['sensor', 'local_only:heatSources:sensors:evaporatorTemp_tl2', pick({ heat: 7.5, defrost: 3.5 }), '°C'],
+    ...(brine ? [
+      // The brine pump speed of the local access, disabled by default.
+      ['sensor', 'local_only:heatSources:hs1:brineCircuit:pumpSpeed', run ? 60 : 0, '%', { disabled_by: 'integration' }],
+    ] : [
+      ['sensor', 'local_only:heatSources:hs1:oduFanSpeed', pick({ heat: 42, dhw: 60, defrost: 0, idle: 0 }), '%'],
+      ['sensor', 'local_only:heatSources:sensors:evaporatorTemp_tl2', pick({ heat: 7.5, defrost: 3.5 }), '°C'],
+    ]),
     ['sensor', 'local_only:heatSources:currentSupplySetpoint', pick({ heat: 34, dhw: 55 }), '°C'],
     ['sensor', 'local_only:heatingCircuits:hc1:pumpStatus', run ? 'on' : 'off', '', { translation_key: 'on_off_state' }],
     ['sensor', 'local_only:heatSources:hs1:refrigerant:compressorActualSpeed', pick({ heat: 40, dhw: 65, defrost: 50, idle: 0 }), '%'],
@@ -1006,6 +1017,15 @@ setups.push({
   devices: { 'device-demo-pointt': { manufacturer: 'Buderus' } },
   config: { preset: 'bosch_buderus_heating', title: 'Home Comfort', power_sources: 'manual',
     tiles: ['cop_live', 'power', 'volume', 'energy:total', 'heat:total', 'starts:total'] },
+});
+// Home Comfort 0.9.2: a brine-to-water heat pump. The heat generator sensor reports heat_source_type brine, so the card draws the ground loop
+// without an outdoor unit; the brine circuit readings fill the source fields.
+const homeComfortBrine = pointtGenerator([['heat_source', 'Demo brine heat pump', null, 'monobloc']]);
+homeComfortBrine.attributes.heat_source_type = 'brine';
+setups.push({
+  name: 'Bosch/Buderus Home Comfort (brine)', sub: 'cloud and local access, brine-to-water heat pump, heat source type from the heat generator, synthetic data',
+  states: (s) => pointtSetup(s, 'demo-pointt', '', 'both', homeComfortBrine, true).states, registry: pointtSetup('heat', 'demo-pointt', '', 'both', homeComfortBrine, true).registry,
+  config: { preset: 'bosch_buderus_heating', title: 'Home Comfort', power_sources: 'manual', tiles: ['power', 'volume', 'energy:total', 'heat:total'] },
 });
 setups.push({
   name: 'Bosch/Buderus Home Comfort (local only)', sub: 'local access without the cloud, synthetic data; detection not yet seen on a real installation',

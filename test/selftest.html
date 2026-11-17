@@ -1800,6 +1800,68 @@
     shown.remove();
   }
 
+  // Home Comfort 0.9.2: the heat source (air, brine or water) from the heat generator sensor, the brine circuit readings, no outdoor
+  // unit for a ground source, and the further heating circuits of a new card.
+  {
+    const cfg = { preset: 'bosch_buderus_heating', power_sources: 'manual', tiles: [] };
+    const setupOf = (name) => setups.find((s) => s.name === name);
+    const brineSetup = setupOf('Bosch/Buderus Home Comfort (brine)'); const airSetup = setupOf('Bosch/Buderus Home Comfort (cloud and local)');
+    const cloudSetup = setupOf('Bosch/Buderus Home Comfort');
+    const idOf = (f, key) => Object.keys(f.registry).find((id) => f.registry[id].unique_id.slice(f.registry[id].unique_id.indexOf(':') + 1) === key);
+    const show = async (setup, extra = {}, change = () => {}) => {
+      const st = toStates(setup.states('heat')); const registry = structuredClone(setup.registry); change(st, registry);
+      const card = mount({ ...cfg, ...extra }, hassOf(st, registry, null, setup)); await wait(20);
+      const out = { src: card._sourceType, unit: card._unitKey(), ok: ok(card), e: { ...card._e }, fans: card.shadowRoot.querySelectorAll('.fan').length,
+        ground: !!card.shadowRoot.querySelector('.ground'), pressure: !!card.shadowRoot.getElementById('t-brine-pressure'),
+        report: C._diagnosticReport({ ...cfg, ...extra }, hassOf(st, registry, null, setup)), resolved: C._resolve({ ...cfg, ...extra }, hassOf(st, registry, null, setup)) };
+      card.remove(); return out;
+    };
+    const L = (key) => `local_only:${key}`;
+    let o = await show(brineSetup);
+    check(o.ok && o.src === 'brine', `the heat source type of the heat generator draws a ground source without source_type (${o.src})`);
+    check(o.unit === 'generic' && o.ground && o.fans === 1, 'a brine unit draws the generic heat pump and the ground loop, not a Bosch or Buderus outdoor unit');
+    check(o.e.source_in === idOf(brineSetup, 'heatSources:hs1:brineCircuit:collectorOutflowTemp') && o.e.source_out === idOf(brineSetup, 'heatSources:hs1:brineCircuit:collectorInflowTemp'),
+      'brine inlet is the collector outflow, brine outlet the collector inflow');
+    check(!o.e.source_volume && !o.e.brine_pressure && !o.pressure, 'no brine flow rate or pressure is guessed: the integration has no entity for them');
+    check(!o.e.fan_speed, 'a brine unit has no outdoor fan reading');
+    check(/Source type: brine, read from the installation/.test(o.report), 'the report says where the source type comes from');
+    const pump = idOf(brineSetup, L('heatSources:hs1:brineCircuit:pumpSpeed'));
+    check(!o.resolved.details.includes(pump), 'the brine pump speed is left out while it is disabled');
+    o = await show(brineSetup, {}, (st, reg) => { delete reg[pump].disabled_by; });
+    check(o.resolved.details.includes(pump), 'the brine pump speed is an additional value once enabled');
+    // The configuration wins; without the sensor the brine readings of the unit tell the ground source, an air unit stays air.
+    check((await show(brineSetup, { source_type: 'air' })).src === 'air', 'source_type: air in the configuration wins over the heat generator');
+    o = await show(brineSetup, {}, (st, reg) => { const g = idOf(brineSetup, 'heat_generator'); delete st[g]; delete reg[g]; });
+    check(o.src === 'brine' && o.unit === 'generic', 'without the heat generator sensor the brine circuit readings tell a ground source');
+    o = await show(brineSetup, {}, (st) => { st[idOf(brineSetup, 'heat_generator')].attributes.heat_source_type = null; });
+    check(o.src === 'brine', 'without a kind the brine circuit readings still tell a ground source');
+    o = await show(brineSetup, {}, (st) => { st[idOf(brineSetup, 'heat_generator')].state = 'unknown'; });
+    check(o.src === 'brine', 'the kind counts while the heat generator has no product name');
+    o = await show(brineSetup, {}, (st, reg) => { reg[idOf(brineSetup, 'heat_generator')].disabled_by = 'user'; });
+    check(o.src === 'brine', 'a disabled heat generator sensor leaves the brine readings to tell the source');
+    o = await show(brineSetup, {}, (st) => { st[idOf(brineSetup, 'heat_generator')].attributes.heat_source_type = 'water'; });
+    check(o.src === 'water', 'a reported water source is drawn as two wells');
+    o = await show(airSetup);
+    check(o.src === 'air' && !o.e.source_out && o.fans === 1 && o.e.source_in === idOf(airSetup, L('heatSources:sensors:evaporatorTemp_tl2')),
+      'an air unit stays as it was: air intake TL2, fan, no brine fields');
+    o = await show(airSetup, {}, (st) => { st[idOf(airSetup, 'heat_generator')].attributes.heat_source_type = 'air'; });
+    check(o.src === 'air' && o.unit === 'buderus-large', 'heat_source_type air keeps the outdoor unit of the heat generator');
+    o = await show(cloudSetup);
+    check(o.src === 'air' && o.report.includes('Source type: air'), 'the cloud alone without the sensor stays air');
+    // A new card: the source type and the further heating circuits the gateway reports; air and one circuit write nothing.
+    const stubOf = (setup, change = () => {}) => {
+      const st = toStates(setup.states('heat')); const registry = structuredClone(setup.registry); change(st, registry);
+      return C.getStubConfig(hassOf(st, registry, null, setup));
+    };
+    let stub = stubOf(brineSetup);
+    check(stub.preset === 'bosch_buderus_heating' && stub.source_type === 'brine', 'a new card for a brine unit has source_type brine');
+    check(!('source_type' in stubOf(airSetup)), 'a new card for an air unit does not write source_type');
+    stub = stubOf(cloudSetup);
+    check(stub.hc_count === 2, `a new card shows the second heating circuit the gateway reports (${stub.hc_count})`);
+    check(!('hc_count' in stubOf(brineSetup)), 'a gateway with one circuit has no hc_count in a new card');
+    check((await show(cloudSetup, { hc_count: 1 })).ok && (await show(cloudSetup, { hc_count: 2 })).ok, 'hc_count in the configuration works as before');
+  }
+
   // Home Comfort 0.9.1: the outdoor-unit drawing, the buffer cylinder and the primary pump from the heat generator sensor; the
   // operating settings of the circuit and the DHW circuit; the DHW heater, circulation and SG Ready signals.
   {

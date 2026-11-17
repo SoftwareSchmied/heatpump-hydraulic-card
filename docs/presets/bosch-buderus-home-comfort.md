@@ -7,14 +7,14 @@ type: custom:heatpump-hydraulic-card
 preset: bosch_buderus_heating
 ```
 
-With integration 0.9.1 the preset selects the outdoor-unit drawing, the buffer cylinder and the primary pump from the heat generator the gateway reports (see [Outdoor-unit drawing and hydraulic defaults](#outdoor-unit-drawing-and-hydraulic-defaults)). Without that sensor it draws the Buderus unit for a gateway of the brand Buderus and the Bosch unit otherwise. Choose another `unit_style` by hand if it fits your unit better, `source_type: brine` for a ground-source installation, and adjust the emitter type to match the installation.
+With integration 0.9.1 the preset selects the outdoor-unit drawing, the buffer cylinder and the primary pump from the heat generator the gateway reports (see [Outdoor-unit drawing and hydraulic defaults](#outdoor-unit-drawing-and-hydraulic-defaults)). Without that sensor it draws the Buderus unit for a gateway of the brand Buderus and the Bosch unit otherwise. Choose another `unit_style` by hand if it fits your unit better, and adjust the emitter type to match the installation. With a later integration version the preset also reads the heat source (air, brine or water) from that sensor, see [Ground-source heat pumps](#ground-source-heat-pumps).
 
 ## Setup
 
 ```yaml
 type: custom:heatpump-hydraulic-card
 preset: bosch_buderus_heating
-source_type: air        # air (default) or brine
+source_type: air        # air (default), brine or water; the preset reads it from the heat generator sensor where that reports it
 # Only needed before integration 0.9.1, or where the reported indoor unit does not tell it:
 # an indoor unit with a parallel buffer cylinder and a primary pump PC0 next to the circuit pump PC1 (for example TP70 units)
 buffer: true
@@ -24,6 +24,19 @@ primary_pump: true
 The preset finds the entities through the stable resource identities of the integration in the local entity registry (the card reads the registry once, and only for this preset), so entity names, entity ids and the Home Assistant language do not matter. It only uses enabled entities. With several gateways select the gateway's device with `device`.
 
 The buffer cylinder and the primary pump depend on the indoor unit. There are indoor units without a buffer. Where there is one, it is a parallel buffer: it is connected to the flow and return through a tee, not in series, and it has no temperature sensor of its own. With integration 0.9.1 the preset turns `buffer` on for a TP70 indoor unit and `primary_pump` on for the WLW176i and WLW186i indoor units; for any other unit, and before 0.9.1, set them by hand. Turning the primary pump on for every installation would move the circuit pump of installations without one, so the preset never does that without the indoor unit. With the local access the primary flow rate PC0 drives the primary pump when the primary pump is drawn.
+
+## Ground-source heat pumps
+
+Integration 0.9.2 adds the attribute `heat_source_type` (`air`, `brine` or `water`) to the heat generator sensor. It comes from the heat pump type the gateway reports or, without it, from readings that exist on one kind of heat pump only (see the integration's calculated values). The preset uses it as follows:
+
+- `source_type` of the card configuration always wins. Without it the card draws the source the heat generator sensor reports (`brine` the ground loop, `water` the two wells, `air` the outdoor unit). A new card written by the card editor gets `source_type: brine` or `water` in its configuration; `air` stays the default and is not written.
+- Where the sensor reports no kind (the integration before 0.9.2, or no evidence yet), the brine circuit readings below decide: a brine outlet reading means a ground source. An air unit has none of them, so it stays air.
+- A ground source has no outdoor unit and no outdoor fan: the card draws the ground loop instead of a `unit_style` drawing.
+- The source fields are mapped from the brine circuit of the first heat source: brine inlet (`heatSources:hs1:brineCircuit:collectorOutflowTemp`, the collector outflow) as `source_in` and brine outlet (`…:collectorInflowTemp`, the collector inflow) as `source_out`. An air unit keeps the air intake TL2 as `source_in`. The names follow the integration's heating-system perspective, as in the integration's documentation. The brine spread of the card is the difference of the two.
+- The brine pump speed (`…:brineCircuit:pumpSpeed`, a reading of the local access, disabled by default in the integration) is an additional value in the details once you enable it; the card has no input for the brine pump itself. The integration reports its unit as it comes from the gateway.
+- The integration has no entity for the brine flow rate or the collector pressure, so the card maps neither (`source_volume` and `brine_pressure` stay free for your own entities).
+
+I took these paths and the meaning of the attribute from the integration source (0.9.2). I tested them only with the card's self-test and synthetic data; I have not seen them on a ground-source installation with this card.
 
 ## Outdoor-unit drawing and hydraulic defaults
 
@@ -161,7 +174,7 @@ The operation modes of the heating circuit (`off`, `manual`, `auto`) and of the 
 
 JR0 and JR1 are the saturation temperatures of the low and the high pressure. Their values fit evaporating and condensing on a real installation; I take that assignment from these readings, not from a manufacturer document.
 
-Use `index: {hc: 2, dhw: 2}` to select a different circuit. Set `hc_count` to show further hydraulic circuits; their individual flow readings and circuit pumps are mapped when the integration supplies them. The supply temperature behind the buffer and the current supply setpoint belong to the heat source and go to the first circuit only. The room display and quick controls refer to the circuit selected by `index.hc`; a missing circuit never falls back to HC1. Set the count explicitly because this preset does not infer it from temperature settings.
+Use `index: {hc: 2, dhw: 2}` to select a different circuit. Set `hc_count` to show further hydraulic circuits; their individual flow readings and circuit pumps are mapped when the integration supplies them. A new card written by the card editor sets `hc_count` itself to the number of circuits that report a flow temperature, circuit mode or pump of their own; an existing card keeps its `hc_count`. The supply temperature behind the buffer and the current supply setpoint belong to the heat source and go to the first circuit only. The room display and quick controls refer to the circuit selected by `index.hc`; a missing circuit never falls back to HC1. The count is never inferred from temperature settings.
 
 The statistics catalog receives total electricity and heat for heating/DHW, total auxiliary electricity, environmental energy, compressor starts by operating mode and total runtime. A complete cooling electricity total is used when available. A compressor-only cooling counter stays in Details: the integration itself derives a total only from the compressor and the auxiliary heater counters together. Calendar-period tiles need the corresponding Home Assistant long-term statistics; cumulative values are never substituted for a daily reading.
 
