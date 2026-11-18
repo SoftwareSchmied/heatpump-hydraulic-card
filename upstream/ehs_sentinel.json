@@ -1,0 +1,29 @@
+{
+  "preset": "ehs_sentinel",
+  "reviewed": {
+    "date": "2026-11-17",
+    "version": "v2.2.2",
+    "note": "Built from the NASA repository and the entity naming (sensor.py, message_processor._normalize_name, coordinator.device_info) of v2.2.2, checked against the installation and cross-match of #403."
+  },
+  "unmapped": {
+    "hc_flow": "The NASA bus reports the water outlet of the indoor unit; a zone outlet (0x42D8) exists only with a mixing kit and is not mapped.",
+    "hc_return": "The NASA bus reports the return of the heat pump (0x4236), not one per circuit.",
+    "hc_pump": "The primary water pump (0x4089) also runs for hot water; it is the primary pump, and the circuit follows the diverter valve.",
+    "room_target": "The zone 1 target (0x4201) keeps the controller setting and does not follow a schedule of the house (#403).",
+    "hours": "The integration counts active minutes of the indoor unit (0x4424), not compressor hours."
+  },
+  "sources": [
+    {
+      "repo": "echoDaveD/ehs_sentinel_hacs_integration",
+      "branch": "main",
+      "releases": true,
+      "paths": [
+        "custom_components/ehs_sentinel/data/nasa_repository.yml",
+        "custom_components/ehs_sentinel/sensor.py",
+        "custom_components/ehs_sentinel/binary_sensor.py",
+        "custom_components/ehs_sentinel/message_processor.py",
+        "custom_components/ehs_sentinel/const.py"
+      ]
+    }
+  ]
+}

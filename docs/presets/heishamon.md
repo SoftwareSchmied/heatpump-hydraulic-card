@@ -50,6 +50,7 @@ HeishaMon has no "current activity" value: the card shows heating while the comp
 
 - Error chip from TOP44 "Last Error" (`sensor.<prefix>_main_error`). "No error" is no error; an H/F code (H76, F12 …) stays until the error is reset.
 - Electricity and heat total (`energy_total`, `heat_total`) from `sensor.aquarea_pump_total_consumption_total` and `sensor.aquarea_pump_total_production_total` (kWh). They also fill the energy, heat and total COP tiles. The tiles per mode get `sensor.aquarea_heat_power_consumed_total`, `…_heat_power_produced_total`, `…_dhw_power_consumed_total`, `…_dhw_power_produced_total` and the cooling totals, so all periods come from the long-term statistics.
+- Compressor starts and defrosts (#407): `…_main_operations_counter` also counts the two restarts of every defrost, both while `defrosting_state` is on. The starts of today, yesterday and the week therefore come from the recorder history and leave out every counter step during a defrost (and up to a minute after it). Month, year and total keep the raw counter, as the recorder keeps about ten days. The defrosts tile counts the off → on changes of `defrosting_state` in the same periods. With `tile_sources.starts` your own counter is used as it is.
 - Refrigerant circuit in the details drawer, in heating mode:
   - evaporation (`evap_temp`) from the outdoor heat exchanger pipe, `…_main_outside_pipe_temp`
   - suction gas (`suction_temp`) from the evaporator outlet, `…_main_eva_outlet_temp`

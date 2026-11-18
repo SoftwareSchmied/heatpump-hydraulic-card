@@ -257,6 +257,9 @@ const HFC_PRESETS = {
       };
     },
     errors: (p, i, ctx) => [hfcPointT(ctx)?.find('binary_sensor', 'system_fault')].filter(Boolean),
+    // The gateway reports totals only, so the default row (COP and energy of today from own entities) stays empty except for spread
+    // and flow rate (#413). Without `tiles` the card shows these catalog tiles instead; the periods come from the statistics.
+    default_tiles: ['cop_total:today', 'energy:today', 'heat:today', 'starts:today', 'spread', 'volume'],
     tiles: (p, i, ctx) => {
       const pointt = hfcPointT(ctx); if (!pointt) return {};
       const t = (...keys) => ({ total: pointt.find('sensor', ...keys) });
@@ -922,6 +925,9 @@ const HFC_PRESETS = {
         aux_hours: { total: `${m}room_heater_operations_hours` },
       };
     },
+    // The operations counter also counts the two restarts of every defrost, both while defrosting_state is on (#407). Starts of
+    // today, yesterday and the week leave them out (recorder history); longer periods keep the raw counter.
+    defrost_restarts: true,
   },
 
   // Wolf heat pumps (CHA …) via the core wolflink integration or the custom wolf_smartset integration (both WOLF Link home and
@@ -1433,6 +1439,100 @@ const HFC_PRESETS = {
     },
   },
 
+  // Samsung EHS over the F1/F2 bus with the HACS integration "EHS Sentinel" by echoDaveD (domain ehs_sentinel, RS485 bridge, #403).
+  // Each entity is named after its NASA message: the prefix (ENUM_, LVAR_, NASA_, VAR_) dropped, camel case, so
+  // NASA_INDOOR_WATER_OUT_TEMP becomes indoorWaterOutTemp and sensor.<device>_indoorwaterouttemp. The device is the instance
+  // name ("Samsung EHSSentinel" → samsung_ehssentinel). The names stay English in every language. With write mode on, writable
+  // messages become number, switch or select entities instead of sensors.
+  ehs_sentinel: {
+    name: 'Samsung EHS (EHS Sentinel)',
+    unit_style: 'samsung',
+    // The primary water pump (0x4089) runs for hot water, too.
+    primary_pump: true,
+    auto_circuits: false,
+    // The outdoor unit draws about 250 W while the compressor is off (#403); the compressor status tells running.
+    power_threshold: 300,
+    // The room sensor counts only while it reports a temperature, and the bus delivers values only when they are polled: the card
+    // looks again every minute, so a room reading that arrives late still appears (Codex review).
+    dynamic: true,
+    // The flow temperature and the compressor status together, both on platform ehs_sentinel.
+    detect: (ctx) => {
+      const re = /^sensor\.(.+)_indoorwaterouttemp$/;
+      const id = ctx.match(re, 'ehs_sentinel');
+      const p = id && id.match(re)[1];
+      return p && ctx.ids.includes(`binary_sensor.${p}_outdoorcomp1status`) ? p : undefined;
+    },
+    entities: (p, i, ctx) => {
+      const s = (...ks) => ks.map((k) => `sensor.${p}_${k}`);
+      const b = (...ks) => ks.map((k) => `binary_sensor.${p}_${k}`);
+      // Writable messages: number (write mode) or sensor.
+      const w = (k) => [`number.${p}_${k}`, `sensor.${p}_${k}`];
+      // The room sensor of the controller (0x4203) reads -50 when none is fitted.
+      const room = s('currenttemp').filter((id) => parseFloat(ctx.state(id)) > -40);
+      return {
+        compressor: b('outdoorcomp1status'),
+        compressor_speed: s('outdoorcomp1runhz'),
+        defrost: b('indoordefroststatus'),
+        // 0x4067: ROOM or TANK.
+        valve: s('dhwvalve'),
+        // Backup heater 0x406C: OFF, STEP 1, STEP 2.
+        heater: s('inbackupheater'),
+        dhw_heater: b('inboosterheater'),
+        primary_pump_state: b('instatewaterpump'),
+        // 0x8413 as kW; the heat output is the integration's own value from flow rate and spread (W).
+        power: s('outdoorcontrolwattmeterallunit'),
+        heat: s('ehssentinelheatoutput'),
+        flow: s('indoorwaterouttemp'),
+        return: s('indoorwaterintemp'),
+        volume: s('inflowsensorcalc'),
+        outdoor: s('outdoorouttemp'),
+        fan_speed: s('outdoorfanrpm1'),
+        dhw_top: s('indoordhwcurrenttemp'),
+        dhw_target: w('indoordhwsettemp'),
+        // The integration's current target flow (0x9995), else the zone 1 water outlet target (0x4247).
+        hc_setpoint: i.hc === 1 ? [...s('ehssentinelcurrenttargetflowtemp'), ...w('indoorsettempwaterout')] : undefined,
+        room: i.hc === 1 && room.length ? room : undefined,
+        // Outing mode (0x406D) as a binary sensor, or a switch in write mode.
+        program: [`switch.${p}_indooroutgoing`, `binary_sensor.${p}_indooroutgoing`],
+        energy_today: s('ehssentineldailyconsumedpower'),
+        energy_total: s('outdoorcontrolwattmeterallunitaccum'),
+        heat_total: s('intotalgeneratedpower'),
+        starts_total: s('ehssentinelstartcounter'),
+        cop_heating_today: s('ehssentineldailycopheatmode'),
+        cop_dhw_today: s('ehssentineldailycopdhwmode'),
+        hot_gas: s('outdoordischargetemp1'),
+        suction_temp: s('outdoorsuction1temp'),
+        // Saturation temperatures at low and high pressure (0x82A0, 0x829F).
+        evap_temp: s('outdoorlowpresstemp'),
+        cond_temp: s('outdoorhighpresstemp'),
+        low_pressure: s('outdoorlowpress'),
+        high_pressure: s('outdoorhighpress'),
+        eev: s('outdoormaineev1'),
+      };
+    },
+    // 0x8235: 0 is no error, any other number a fault code.
+    errors: (p) => [`sensor.${p}_outerrorcode`],
+    valve_map: { ROOM: 'heating', TANK: 'dhw' },
+    program_map: { on: 'holiday', off: 'none' },
+    // The integration's own day and lifetime counters; per mode for heating and hot water.
+    tiles: (p) => {
+      const s = (...ks) => ks.map((k) => `sensor.${p}_${k}`);
+      return {
+        energy: { today: s('ehssentineldailyconsumedpower'), total: s('outdoorcontrolwattmeterallunitaccum') },
+        heat: { today: s('ehssentineldailygeneratedpower'), total: s('intotalgeneratedpower') },
+        energy_heating: { today: s('ehssentineldailyconsumedpowerheatmode'), total: s('ehssentineltotalconsumedpowerheatmode') },
+        energy_dhw: { today: s('ehssentineldailyconsumedpowerdhwmode'), total: s('ehssentineltotalconsumedpowerdhwmode') },
+        heat_heating: { today: s('ehssentineldailygeneratedpowerheatmode'), total: s('ehssentineltotalgeneratedpowerheatmode') },
+        heat_dhw: { today: s('ehssentineldailygeneratedpowerdhwmode'), total: s('ehssentineltotalgeneratedpowerdhwmode') },
+        cop_total: { today: s('ehssentineldailycop'), total: s('ehssentineltotalcop') },
+        cop_heating: { today: s('ehssentineldailycopheatmode'), total: s('ehssentineltotalcopheatmode') },
+        cop_dhw: { today: s('ehssentineldailycopdhwmode'), total: s('ehssentineltotalcopdhwmode') },
+        starts: { total: s('ehssentinelstartcounter') },
+        defrosts: { total: s('ehssentineldefrostcounter') },
+      };
+    },
+  },
+
   // Daikin Altherma / ROTEX through ESPAltherma (ESP32 on the X10A port, MQTT device discovery, beta branch, #254). Every value of
   // the model definition becomes <prefix>_<label>: the label lowercased, letters and digits only, spaces as underscores. The labels
   // stay English in every language and are the same in the Altherma 3, LT, EPRA, ERGA and EBLA definitions. The prefix is the
@@ -1912,6 +2012,15 @@ const HFC_EDITOR = {
     assistant_intro: 'Exact English and German names, units and device classes are checked. Select every proposal you want to save.',
     assistant_apply: 'Use selected proposals',
     assistant_none: 'No unambiguous proposals were found on this device.',
+    confirm_title: 'Check your installation',
+    confirm_intro: 'The integration does not tell this, and the answer changes the drawing. The preview shows your choice at once; nothing is saved until you press Save.',
+    confirm_buffer: 'Is there a buffer tank between the heat pump and the heating circuits?',
+    confirm_buffer_help: 'A buffer separates the heat pump circuit from the heating circuits. A hot-water tank does not count.',
+    confirm_primary_pump: 'Does the pump the integration reports also run while hot water is charging?',
+    confirm_primary_pump_help: 'Yes: it is the heat pump’s own pump in front of the diverter valve. No: it is the pump of the heating circuit.',
+    confirm_circuits: 'The integration reports heating circuits {from} to {to}, but no circuit {missing}. Show these circuits?',
+    confirm_circuits_help: 'Yes: the card starts at circuit {from}. No: it keeps circuit {missing} first.',
+    confirm_yes: 'Yes', confirm_no: 'No', confirm_unknown: 'I don’t know',
     preset_help: 'Found entities are filled in below. Pick another entity to override one, clear a field to hide it.',
     from_energy: 'Empty: taken from the Energy dashboard',
     errors: 'Error entities', error_ok_text: 'Text states that mean no error',
@@ -2005,6 +2114,15 @@ const HFC_EDITOR = {
     assistant_intro: 'Exakte englische und deutsche Namen, Einheiten und Geräteklassen werden geprüft. Jeden gewünschten Vorschlag auswählen.',
     assistant_apply: 'Ausgewählte Vorschläge übernehmen',
     assistant_none: 'Auf diesem Gerät wurden keine eindeutigen Vorschläge gefunden.',
+    confirm_title: 'Anlage prüfen',
+    confirm_intro: 'Die Integration meldet das nicht, und die Antwort ändert die Zeichnung. Die Vorschau zeigt deine Wahl sofort; gespeichert wird erst mit Speichern.',
+    confirm_buffer: 'Gibt es einen Pufferspeicher zwischen Wärmepumpe und Heizkreisen?',
+    confirm_buffer_help: 'Ein Puffer trennt den Wärmepumpenkreis von den Heizkreisen. Ein Warmwasserspeicher zählt nicht.',
+    confirm_primary_pump: 'Läuft die Pumpe, die die Integration meldet, auch beim Warmwasserladen?',
+    confirm_primary_pump_help: 'Ja: Es ist die Pumpe der Wärmepumpe vor dem Umschaltventil. Nein: Es ist die Pumpe des Heizkreises.',
+    confirm_circuits: 'Die Integration meldet die Heizkreise {from} bis {to}, aber keinen Kreis {missing}. Diese Kreise zeigen?',
+    confirm_circuits_help: 'Ja: Die Karte beginnt bei Kreis {from}. Nein: Kreis {missing} bleibt der erste.',
+    confirm_yes: 'Ja', confirm_no: 'Nein', confirm_unknown: 'Weiß ich nicht',
     preset_help: 'Gefundene Entitäten sind unten eingetragen. Andere Entität wählen zum Überschreiben, Feld leeren zum Ausblenden.',
     from_energy: 'Leer: aus dem Energie-Dashboard',
     errors: 'Fehler-Entitäten', error_ok_text: 'Textzustände ohne Fehler',
@@ -2797,6 +2915,9 @@ const HFC_LOSS = { hours: 48, minWindow: 3, settle: 0.5, drawOff: 1.5, rise: 1.0
 // Runs of the timeline: a standstill of `seriesGap` minutes or more starts a new series; a stretch without data shorter than
 // `dataGap` minutes between two running states does not end a run (a Modbus timeout or an integration reload).
 const HFC_RUNS = { seriesGap: 60, dataGap: 2 };
+// Tiles counted from the recorder history (#407): the periods it keeps (about ten days by default), and the seconds after a defrost
+// in which a counter step still belongs to it (the counter can be published a moment after the defrost flag).
+const HFC_HISTORY_COUNT = { periods: ['today', 'yesterday', 'week'], grace: 60 };
 // Runs from fast signals (`run_signal`, #365): a unit of a cascade runs above `unitW` or its `power_threshold`; a dip below the threshold shorter than
 // `dip` minutes does not end a run, and a stretch above it shorter than `min` minutes is no run (a short spike without the compressor).
 const HFC_RUN_SIGNAL = { values: ['auto', 'units', 'power'], unitW: 50, dip: 2, min: 1 };
@@ -3327,7 +3448,8 @@ class HeatpumpFlowCard extends HTMLElement {
     this._hcType = config.hc_type || preset?.hc_type || 'underfloor';
     this._hcCount = hfcHcCount(config);
     this._hcTypes = [this._hcType, ...[2, 3, 4, 5, 6].map((n) => config[`hc${n}_type`] || 'underfloor')];
-    this._threshold = Number.isFinite(+config.power_threshold) && config.power_threshold !== '' && config.power_threshold !== undefined ? +config.power_threshold : 100;
+    // A preset may raise the default for units with a high standby draw (Samsung EHS Sentinel, #403); the configuration wins.
+    this._threshold = Number.isFinite(+config.power_threshold) && config.power_threshold !== '' && config.power_threshold !== undefined ? +config.power_threshold : (preset?.power_threshold ?? 100);
     this._needsBuild = true;
     this._lastTry = 0;
     this._rendered = false;
@@ -3529,6 +3651,50 @@ class HeatpumpFlowCard extends HTMLElement {
     return fill(L[`check_${f.code}`] || f.code);
   }
 
+  // Questions about the installation that the integration cannot answer and whose answer changes the drawing (#299), from the most
+  // common case to the rarer one: [{ id, key, answered }]. An answer sets the option `key` to true or false. A question is listed
+  // while it applies, also once answered, so the editor can keep showing the choice made in this session.
+  //  1. buffer: no buffer sensor, no answer from the heat generator (preset defaults), no combined storage or series buffer;
+  //  2. primary_pump: with no buffer (answered or reported) and one circuit, a preset with `shared_pump` reports one pump that can
+  //     be the heat pump's own pump in front of the diverter valve (#344) or the circuit's pump.
+  static _layoutQuestions(config, hass, r) {
+    if (!config || !hass?.states || !r || (r.preset && !r.ready)) return [];
+    const has = (k) => { const id = r.entities[k]; return !!(id && hass.states[id]); };
+    // Nothing to ask before the heat pump itself is mapped.
+    if (!['flow', 'mode', 'compressor', 'power'].some(has)) return [];
+    let found = {};
+    try { found = typeof r.preset?.defaults === 'function' ? r.preset.defaults(r.entities, hass) || {} : {}; } catch (err) { found = {}; }
+    const out = [];
+    const storageFixed = config.storage === 'combined' || !!config.series_buffer;
+    const bufferSensors = ['buffer_top', 'buffer_middle', 'buffer_bottom', 'buffer_mode'].some(has);
+    const bufferKnown = storageFixed || bufferSensors || typeof found.buffer === 'boolean';
+    if (!bufferKnown) out.push({ id: 'buffer', key: 'buffer', answered: typeof config.buffer === 'boolean' });
+    const noBuffer = !storageFixed && !bufferSensors && (config.buffer === false || (config.buffer === undefined && found.buffer === false));
+    const ownPump = config.entities?.hc_pump;
+    if (noBuffer && r.preset?.shared_pump && hfcHcCount(config) === 1 && has('hc_pump') && (ownPump === undefined || ownPump === null)
+      && typeof found.primary_pump !== 'boolean' && !has('primary_pump_state')) {
+      out.push({ id: 'primary_pump', key: 'primary_pump', answered: typeof config.primary_pump === 'boolean' });
+    }
+    // 3. circuits: a preset that numbers its circuits (`index.hc`) finds none at 1 but further ones, such as the Open3E circuits 2
+    //    to 4 (#269). Without an answer the card draws an empty first circuit; "yes" starts at the first one found.
+    if (r.preset?.index?.hc !== undefined && r.preset.auto_circuits !== false) {
+      const live = (id) => [].concat(id || []).some((x) => hass.states[x] && !['unknown', 'unavailable'].includes(hass.states[x].state));
+      // The same installation as the card (a selected or detected prefix), from the preset's own first circuit on.
+      const all = HeatpumpFlowCard._resolve({ preset: config.preset, device: config.device, prefix: r.prefix || config.prefix, hc_count: HFC_MAX_HC }, hass).fromPreset;
+      const found = (n) => ['flow', 'mode', 'pump'].some((k) => live(all[n === 1 ? `hc_${k}` : `hc${n}_${k}`]));
+      let pos = 0;
+      for (let n = 2; n <= HFC_MAX_HC && !pos; n++) if (found(n)) pos = n;
+      if (pos && !found(1)) {
+        let last = pos;
+        while (last < HFC_MAX_HC && found(last + 1)) last++;
+        // Positions on the card are counted from 1; the integration counts from the preset's index base (myPyllant from 0).
+        const base = +r.preset.index.hc;
+        out.push({ id: 'circuits', key: 'index', base, first: base + pos - 1, count: last - pos + 1, answered: config.index?.hc !== undefined });
+      }
+    }
+    return out;
+  }
+
   // Entities the preset would map but that are disabled in Home Assistant (#146), from the full entity registry (`disabled`:
   // [{entity_id, platform, translation_key, device_id, name}]). Disabled entities are missing from hass.states and hass.entities, so
   // the preset is resolved once more with them added; keys whose entity is then a disabled one and not live today are returned.
@@ -3679,7 +3845,7 @@ class HeatpumpFlowCard extends HTMLElement {
       `Layout: ${config.layout || 'default'}`,
       // Where runs and the running state come from (#365).
       `Runs from: ${(() => {
-        const threshold = Number.isFinite(+config.power_threshold) && config.power_threshold !== '' && config.power_threshold !== undefined && config.power_threshold !== null ? +config.power_threshold : 100;
+        const threshold = Number.isFinite(+config.power_threshold) && config.power_threshold !== '' && config.power_threshold !== undefined && config.power_threshold !== null ? +config.power_threshold : (r.preset?.power_threshold ?? 100);
         if (config.run_signal === 'units') return Array.isArray(config.units) && config.units.length ? `unit power above ${[...new Set(config.units.map((u) => `${hfcUnitRunW(u)} W`))].join(' / ')} (run_signal: units)` : 'compressor or operating mode (run_signal: units, but no units are configured)';
         if (config.run_signal === 'power') return r.entities.power ? `power above ${threshold} W (run_signal: power)` : 'compressor or operating mode (run_signal: power, but power is not mapped)';
         return 'compressor or operating mode';
@@ -4116,6 +4282,9 @@ class HeatpumpFlowCard extends HTMLElement {
     if (!this._has(key)) return 0;
     const s = String(this._s(key)).toLowerCase();
     if (['on', 'true', 'open', 'ein'].includes(s)) return 1;
+    // A stage as text: "STEP 1", "Stage 2", "Stufe 2" (Samsung backup heater 0x406C, #403).
+    const step = s.match(/^(?:step|stage|stufe)\s*(\d)$/);
+    if (step) return Math.min(+step[1], 3);
     const v = parseFloat(s);
     if (!Number.isFinite(v) || v <= 0) return 0;
     return ['w', 'kw', '%'].includes(this._unit(key)) ? 1 : Math.min(Math.round(v), 3);
@@ -4773,8 +4942,11 @@ class HeatpumpFlowCard extends HTMLElement {
       return valueOf(s.key, s.period);
     }).filter(Boolean);
     value.forEach((v) => { if (!options.some((o) => o.value === v)) options.push({ value: v, label: v }); });
-    const defaults = ['cop_heating', 'cop_dhw', 'energy', 'starts', 'spread', 'volume', 'heat_estimated']
-      .filter((k) => periodsOf[k].length).map((k) => valueOf(k));
+    // Switching the own selection on starts from the preset's default tiles (#413), else from the default row.
+    const presetDefaults = HFC_PRESETS[config.preset]?.default_tiles;
+    const defaults = Array.isArray(presetDefaults)
+      ? presetDefaults.map((t) => HeatpumpFlowCard._tileSpec(t)).filter((s) => s?.key && periodsOf[s.key]?.length).map((s) => valueOf(s.key, s.period))
+      : ['cop_heating', 'cop_dhw', 'energy', 'starts', 'spread', 'volume', 'heat_estimated'].filter((k) => periodsOf[k].length).map((k) => valueOf(k));
     return { options, value, editable, defaults };
   }
 
@@ -4808,6 +4980,12 @@ class HeatpumpFlowCard extends HTMLElement {
     if (period === 'today' && legacy && !Object.entries(map).some(([p, id]) => p !== 'today' && id === legacy)) return { id: legacy };
     if (map[period]) return { id: map[period] };
     const total = map.total;
+    // From the recorder history (#407): starts without the restarts of a defrost (preset flag `defrost_restarts`), and defrosts from
+    // the off → on changes of the defrost entity where no counter exists.
+    // An own tile source (`tile_sources`, also "none") is taken as it is: a counter without defrosts must not lose them twice.
+    const recent = HFC_HISTORY_COUNT.periods.includes(period) && this._has('defrost') && !Object.hasOwn(this._config.tile_sources || {}, key);
+    if (recent && key === 'starts' && total && this._preset?.defrost_restarts) return { history: 'starts', counter: total };
+    if (recent && key === 'defrosts' && !total) return { history: 'defrosts' };
     const stateClass = this._hass.states[total]?.attributes?.state_class;
     if (total && HFC_STAT_PERIODS[period] && ['total', 'total_increasing'].includes(stateClass)) return { stat: total };
     // A start or hour counter that the integration reports as a measurement (myPyllant On/Off Cycles, #1) has no "change" in the
@@ -4876,6 +5054,37 @@ class HeatpumpFlowCard extends HTMLElement {
       : (res) => res?.change;
     const v = this._wsCached(`${id}|${period}${range ? '|range' : ''}`, msg, pick);
     return typeof v === 'number' ? this._toBase(v, this._hass.states[id]?.attributes?.unit_of_measurement, kind, period) : NaN;
+  }
+
+  // Defrosts, or starts without the restarts of a defrost, in a period from the recorder history (#407). A defrost is an off → on
+  // change of the defrost entity; one that was already going at the start of the period belongs to the period before. A start is a
+  // step of the counter; a step while the defrost entity is on, or up to HFC_HISTORY_COUNT.grace seconds after, is a restart of that
+  // defrost. NaN while the history loads or when it is not available.
+  _historyCount(src, period) {
+    const range = this._periodRange(period); const defrost = this._e.defrost;
+    if (!range || !defrost) return NaN;
+    const ids = [defrost, src.counter].filter(Boolean);
+    const hist = this._wsCached(`hcount|${ids.join(',')}|${period}`, {
+      type: 'history/history_during_period', start_time: range[0], ...(range[1] ? { end_time: range[1] } : {}), entity_ids: ids,
+      minimal_response: true, no_attributes: true, significant_changes_only: false,
+    }, (res) => this._timelineHistory(res, ids));
+    if (!hist) return NaN;
+    const known = (s) => !['unknown', 'unavailable', 'none', ''].includes(String(s ?? '').trim().toLowerCase());
+    const on = (s) => hfcCompressorOn(s);
+    const d = hist[defrost] || [];
+    if (src.history === 'defrosts') return d.filter((e, n) => n > 0 && on(e.s) && known(d[n - 1].s) && !on(d[n - 1].s)).length;
+    // Defrost windows [from, to + grace).
+    const windows = d.map((e, n) => (on(e.s) ? [e.t, (d[n + 1]?.t ?? Infinity) + HFC_HISTORY_COUNT.grace * 1000] : null)).filter(Boolean);
+    const inDefrost = (t) => windows.some(([a, b]) => t >= a && t < b);
+    let starts = 0; let last = NaN;
+    (hist[src.counter] || []).forEach((e) => {
+      const v = parseFloat(e.s);
+      if (!Number.isFinite(v)) return;
+      // A counter that drops (reset, replaced unit) starts over; only steps upwards count.
+      if (Number.isFinite(last) && v > last && !inDefrost(e.t)) starts += v - last;
+      last = v;
+    });
+    return starts;
   }
 
   // Price per kWh from the tile's or the card's `price`: a number or an entity; ct/kWh and per-MWh prices are converted.
@@ -4963,6 +5172,7 @@ class HeatpumpFlowCard extends HTMLElement {
     if (!src) return NaN;
     if (src.id) return this._tileRead(src.id, kind, period);
     if (src.stat) return this._statChange(src.stat, kind, period, !!src.range);
+    if (src.history) return this._historyCount(src, period);
     if (src.ratio) { const [a, b] = src.ratio.map(([s, k]) => this._srcValue(s, k, period)); return b > 0 && a >= 0 ? a / b : NaN; }
     if (src.envCop) {
       const environmental = this._srcValue(src.envCop[0], 'energy', period); const electricity = this._srcValue(src.envCop[1], 'energy', period);
@@ -4974,6 +5184,7 @@ class HeatpumpFlowCard extends HTMLElement {
   _tileEntity(src, period) {
     if (!src) return '';
     if (src.id || src.stat) return src.id || src.stat;
+    if (src.history) return src.counter || this._e.defrost;
     if (src.ratio) return this._tileEntity(src.ratio[0][0], period);
     if (src.envCop) return this._tileEntity(src.envCop[0], period);
     if (src.classes) return this._tileMap.load_class1;
@@ -5058,16 +5269,22 @@ class HeatpumpFlowCard extends HTMLElement {
     }
   }
 
-  // Tiles from the `tiles` option, in the configured order: catalog keys (with period) and free entities.
+  // The tile list: `tiles` of the configuration, else the preset's `default_tiles` (#413), else null for the default row.
+  _tileList() {
+    if (Array.isArray(this._config.tiles)) return this._config.tiles;
+    return Array.isArray(this._preset?.default_tiles) ? this._preset.default_tiles : null;
+  }
+
+  // Tiles from the `tiles` option (or the preset's default tiles), in their order: catalog keys (with period) and free entities.
   _catalogTiles(L) {
     const i = this._i; const out = [];
-    this._config.tiles.forEach((raw) => {
+    this._tileList().forEach((raw) => {
       const spec = HeatpumpFlowCard._tileSpec(raw);
       if (!spec) return;
       const def = HFC_TILES[spec.key];
       if (!def) {
         const st = spec.entity && this._hass.states[spec.entity];
-        if (st) out.push([spec.name || st.attributes.friendly_name || spec.entity, this._fmtState(null, spec), spec.entity, spec]);
+        if (st) out.push([spec.name || this._entityName(spec.entity), this._fmtState(null, spec), spec.entity, spec]);
         return;
       }
       if (def.live) {
@@ -5117,13 +5334,18 @@ class HeatpumpFlowCard extends HTMLElement {
     const hydraulic = [['brine_pressure', i.brine_pressure], ['hc_pressure', i.hc_pressure]].filter(([key]) => ok(key))
       .map(([key, label]) => [key, label, this._e[key], () => this._pressureText(key)]);
     // Superheat = suction gas − evaporation, subcooling = condensation − liquid line, unless the integration provides them or the
-    // preset's pipe sensors do not allow it (`refrigerant_derived: false`).
-    const diff = (a, b) => { const v = this._n(a) - this._n(b); return Number.isFinite(v) && !reversed(a) && !reversed(b) ? `${this._fmt(v, 1)} K` : '–'; };
+    // preset's pipe sensors do not allow it (`refrigerant_derived: false`). At standstill the refrigerant temperatures settle to the
+    // surroundings and their differences mean nothing (a negative subcooling, #413): '–' until the heat pump runs. Values the
+    // integration reports itself stay as reported.
+    const diff = (a, b) => {
+      const v = this._n(a) - this._n(b);
+      return Number.isFinite(v) && this._runningNow !== false && !reversed(a) && !reversed(b) ? `${this._fmt(v, 1)} K` : '–';
+    };
     const derive = this._preset?.refrigerant_derived !== false;
     rf.push(row('superheat') || (derive && ok('suction_temp') && ok('evap_temp') ? ['superheat', D.superheat, this._e.suction_temp, () => diff('suction_temp', 'evap_temp')] : null));
     rf.push(row('subcooling') || (derive && ok('cond_temp') && ok('liquid_temp') ? ['subcooling', D.subcooling, this._e.liquid_temp, () => diff('cond_temp', 'liquid_temp')] : null));
     const more = (this._details || []).map((d, n) => (typeof d === 'string' ? { entity: d } : d)).filter((d) => d && this._hass.states[d.entity])
-      .map((d, n) => [`x${n}`, d.name || this._hass.states[d.entity].attributes.friendly_name || d.entity, d.entity, () => this._fmtState(null, d)]);
+      .map((d, n) => [`x${n}`, d.name || this._entityName(d.entity), d.entity, () => this._fmtState(null, d)]);
     // Units of a cascade (#173): power → heat and COP of each unit; "heat not current" while its heat value is too old to pair.
     const units = (this._units() || []).map((u) => [`unit${u.n}`, u.name, u.entity, () => {
       const cur = this._units()?.[u.n - 1];
@@ -5133,6 +5355,19 @@ class HeatpumpFlowCard extends HTMLElement {
       return cur.fresh ? `${w} → ${this._fmt(cur.heat, 1)} kW${Number.isFinite(cur.cop) ? ` · COP ${this._fmt(cur.cop, 1)}` : ''}` : `${w} · ${i.unit_stale}`;
     }]);
     return [[i.sec_operation, op.filter(Boolean)], [i.sec_units, units], [i.sec_hydraulic, hydraulic], [i.sec_refrigerant, rf.filter(Boolean)], [i.sec_cutouts, cutouts], [i.sec_more, more]].filter(([, r]) => r.length);
+  }
+
+  // The name of an own entity in the details and in a free tile: the friendly name without a leading device name (#413). Home
+  // Assistant puts the device name in front of the entity's own name; the card already stands for the device. From the registry,
+  // not by text: only when the entity belongs to a device whose name (or the name the user gave it) starts the friendly name.
+  _entityName(id) {
+    const full = this._hass.states[id]?.attributes?.friendly_name || id;
+    const device = this._hass.devices?.[this._hass.entities?.[id]?.device_id];
+    const prefix = String(device?.name_by_user || device?.name || '').trim();
+    // The device name must end at a word boundary: a device "Heat" does not shorten "Heater power".
+    if (!prefix || !full.startsWith(prefix) || !/[\s:·\-–]/.test(full.charAt(prefix.length))) return full;
+    const rest = full.slice(prefix.length).replace(/^[\s:·\-–]+/, '');
+    return rest || full;
   }
 
   // Event counter: a whole number followed by "×"; text states stay as they are.
@@ -7066,6 +7301,8 @@ class HeatpumpFlowCard extends HTMLElement {
     const P = this._parts;
     const F = this._flowModel();
     const { rawMode, status, hp, dhwMode, bufMode, power, vol, running, boilerRunning, generatorMode, defrost, cooling, valveDhw, toDhw, toHeat, loop, flowLoop, bypass } = F;
+    // The details derive superheat and subcooling only while the heat pump runs (#413).
+    this._runningNow = running;
     const tFlow = this._n('flow'); const tRet = this._n('return');
     const tBoiler = this._n('boiler_flow');
     const tCommonFlow = boilerRunning && Number.isFinite(tBoiler) ? tBoiler : tFlow;
@@ -7465,9 +7702,9 @@ class HeatpumpFlowCard extends HTMLElement {
     err.classList.toggle('on', errs.length > 0);
     if (errs.length) err.dataset.entity = errs[0];
 
-    // statistics: the tile catalog when `tiles` is set, otherwise the default tiles
+    // statistics: the tile catalog when `tiles` is set or the preset has default tiles, otherwise the default row
     const share = this._n('pv_share_today');
-    const custom = Array.isArray(this._config.tiles);
+    const custom = !!this._tileList();
     const tiles = custom ? this._catalogTiles({ loop, flowLoop, spread, vol, heat, heatEstimated, power: hpPower, cop, circuits: F.circuits }) : [];
     const add = (key, label, value) => { if (!custom && this._has(key)) tiles.push([this._statLabel(key, label), value, this._e[key]]); };
     add('cop_heating_today', i.stat_cop_heating, this._fmt(this._n('cop_heating_today'), 2));
@@ -7481,7 +7718,7 @@ class HeatpumpFlowCard extends HTMLElement {
       const st = this._hass.states[s.entity]; if (!st) return;
       const v = parseFloat(st.state);
       const unit = s.unit ?? st.attributes.unit_of_measurement ?? '';
-      tiles.push([s.name || st.attributes.friendly_name || s.entity, Number.isFinite(v) ? `${this._fmt(v, s.decimals ?? 1)} ${unit}`.trim() : st.state, s.entity, s]);
+      tiles.push([s.name || this._entityName(s.entity), Number.isFinite(v) ? `${this._fmt(v, s.decimals ?? 1)} ${unit}`.trim() : st.state, s.entity, s]);
     });
     // Actions per tile (default: more-info of the tile's entity).
     this._tileActs = tiles.map(([, , id, s]) => ({ entity: id, ...Object.fromEntries(HFC_ACTIONS.filter((a) => s && s[a]).map((a) => [a, s[a]])) }));
@@ -8044,6 +8281,64 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     };
   }
 
+  // Questions about the installation (#299). An open question is shown above the form; once shown it stays for this editor session,
+  // with the choice marked, so it can be changed or taken back. An answer goes to the preview at once, through the existing option;
+  // Home Assistant saves it only with Save, and Cancel keeps the saved configuration. "I don't know" removes the option again.
+  _renderLayout(questions, L) {
+    if (!this._layout) return;
+    this._layoutShown = this._layoutShown || new Set();
+    questions.filter((q) => !q.answered).forEach((q) => this._layoutShown.add(q.id));
+    const list = questions.filter((q) => this._layoutShown.has(q.id));
+    const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const value = (q) => (q.id === 'circuits'
+      ? (this._config.index?.hc === q.first ? 'yes' : this._config.index?.hc === q.base ? 'no' : 'unknown')
+      : this._config[q.key] === true ? 'yes' : this._config[q.key] === false ? 'no' : 'unknown');
+    const text = (q, key) => String(L[`confirm_${q.id}${key}`] || '').replace(/\{from\}/g, q.first).replace(/\{to\}/g, q.first + q.count - 1)
+      .replace(/\{missing\}/g, q.base);
+    const html = list.length ? `<ha-alert alert-type="info" title="${esc(L.confirm_title)}">${esc(L.confirm_intro)}</ha-alert>${list.map((q) => `
+      <fieldset data-hfc-layout="${q.id}" style="border:0;margin:10px 2px 4px;padding:0">
+        <legend style="font-weight:500;padding:0;margin-bottom:6px">${esc(text(q, ''))}</legend>
+        <div style="font-size:0.9em;opacity:0.8;margin-bottom:6px">${esc(text(q, '_help'))}</div>
+        ${['yes', 'no', 'unknown'].map((choice) => `<label style="display:inline-flex;gap:6px;align-items:center;margin:0 16px 6px 0">
+          <input type="radio" name="hfc-layout-${q.id}" value="${choice}" data-hfc-layout-choice="${q.id}"${value(q) === choice ? ' checked' : ''}>${esc(L[`confirm_${choice}`])}</label>`).join('')}
+      </fieldset>`).join('')}` : '';
+    if (this._layout._html !== html) {
+      this._layout.innerHTML = html; this._layout._html = html; this._layout.style.marginBottom = html ? '12px' : '0';
+    }
+    this._layout.onchange = (ev) => {
+      const input = ev.target;
+      const q = list.find((x) => x.id === input?.dataset?.hfcLayoutChoice);
+      if (q && input.checked) this._answerLayout(q, input.value);
+    };
+  }
+
+  _answerLayout(q, choice) {
+    const config = { ...this._config };
+    if (q.id === 'circuits') {
+      // The circuit count as it was before the first answer, to restore it on "No" and "I don't know".
+      this._layoutCount = this._layoutCount || { hc_count: this._config.hc_count };
+      const index = { ...(config.index || {}) };
+      if (choice === 'unknown') delete index.hc; else index.hc = choice === 'yes' ? q.first : q.base;
+      if (Object.keys(index).length) config.index = index; else delete config.index;
+      const count = choice === 'yes' ? q.count : this._layoutCount.hc_count;
+      if (count === undefined || count === 1) delete config.hc_count; else config.hc_count = count;
+      this._config = config;
+      this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
+      this._render();
+      return;
+    }
+    if (choice === 'yes') config[q.key] = true;
+    else if (choice === 'no') config[q.key] = false;
+    else delete config[q.key];
+    // A parallel buffer and a series buffer exclude each other, as with the switches below.
+    if (q.key === 'buffer' && config.buffer === true) { delete config.series_buffer; delete config.series_bypass; }
+    // The pump question only applies without a buffer: a buffer after all takes back its answer from this session.
+    if (q.key === 'buffer' && config.buffer !== false && this._layoutShown?.has('primary_pump')) { delete config.primary_pump; this._layoutShown.delete('primary_pump'); }
+    this._config = config;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
+    this._render();
+  }
+
   _applyAssistant(proposals) {
     const entities = { ...(this._config.entities || {}) };
     proposals.forEach(({ key, id }) => { if (key && id) entities[key] = id; });
@@ -8059,8 +8354,10 @@ class HeatpumpFlowCardEditor extends HTMLElement {
       this._form = document.createElement('ha-form');
       this._form.addEventListener('value-changed', (ev) => { ev.stopPropagation(); this._changed(ev.detail.value); });
       this._assistant = document.createElement('div');
+      this._layout = document.createElement('div');
       this._warn = document.createElement('div');
       this.appendChild(this._assistant);
+      this.appendChild(this._layout);
       this.appendChild(this._warn);
       this.appendChild(this._form);
     }
@@ -8134,6 +8431,7 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     if (this._warn._html !== html) { this._warn.innerHTML = html; this._warn._html = html; this._warn.style.marginBottom = html ? '12px' : '0'; }
     const proposals = assistant ? HeatpumpFlowCard._assistantProposals(this._hass, this._assistantDevice, this._config) : [];
     this._renderAssistant(assistant, proposals, L, computeLabel);
+    this._renderLayout(HeatpumpFlowCard._layoutQuestions(this._config, this._hass, r), L);
     this._form.hass = this._hass;
     this._form.schema = schema;
     this._form.computeLabel = computeLabel;
@@ -8259,8 +8557,10 @@ class HeatpumpFlowCardEditor extends HTMLElement {
     const seriesChanged = !!value.series_buffer !== !!this._config.series_buffer;
     if (value.buffer && bufferChanged) { delete config.series_buffer; delete config.series_bypass; }
     else if (value.series_buffer && seriesChanged) delete config.buffer;
-    // A preset that reads the buffer from the installation (defaults) keeps an explicit false; otherwise off is the default.
-    if (!value.buffer && !(value.buffer === false && typeof HFC_PRESETS[config.preset]?.defaults === 'function')) delete config.buffer;
+    // A preset that reads the buffer from the installation (defaults) keeps an explicit false, and so does an answered "no buffer"
+    // (#299) while the switch stays off; otherwise off is the default.
+    const keepFalse = typeof HFC_PRESETS[config.preset]?.defaults === 'function' || this._config.buffer === false;
+    if (!value.buffer && !(value.buffer === false && keepFalse)) delete config.buffer;
     // series_bypass only matters as false next to a series buffer; the switch's default (true) is not written.
     if (!config.series_buffer || value.series_bypass !== false) delete config.series_bypass;
     if (!value.dhw_type || value.dhw_type === 'coil' || (value.dhw_type === 'tank_in_tank' && config.storage !== 'combined')) delete config.dhw_type;

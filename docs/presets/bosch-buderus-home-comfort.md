@@ -178,6 +178,8 @@ Use `index: {hc: 2, dhw: 2}` to select a different circuit. Set `hc_count` to sh
 
 The statistics catalog receives total electricity and heat for heating/DHW, total auxiliary electricity, environmental energy, compressor starts by operating mode and total runtime. A complete cooling electricity total is used when available. A compressor-only cooling counter stays in Details: the integration itself derives a total only from the compressor and the auxiliary heater counters together. Calendar-period tiles need the corresponding Home Assistant long-term statistics; cumulative values are never substituted for a daily reading.
 
+Without `tiles` in the card configuration the preset shows its default tiles: COP, electricity, heat and compressor starts of today, spread and flow rate (`default_tiles`, #413). The gateway reports totals only, so the default row of other presets (COP and energy of today from own entities) would show spread and flow rate alone. A tile whose statistics are missing is left out; `tiles` replaces the selection, `tiles: []` hides the row.
+
 Energy counters describe the gateway's complete heating or DHW operation. Selecting `index.hc` or `index.dhw` changes the circuit temperatures and controls; it does not apportion gateway energy totals to that circuit.
 
 General start counts, total system runtime, separate compressor/auxiliary electricity, per-mode runtime, TC3 condenser-outlet water temperature and the speed of the primary pump remain additional values in Details. TC3 is distinct from the refrigerant condensing temperature.

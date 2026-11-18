@@ -22,6 +22,16 @@ Colours (`--hfc-*`), layouts, names and which values are shown are configurable 
 
 Yes. Without `valve` the card takes the hot-water side from the operating mode (`dhw` in `mode_map`), and presets whose integration has no valve entity, such as Lambda, do that without any setting. Map `valve` only if your integration reports the valve itself; a valve that reports texts other than on/off needs `valve_map` (or the valve states in the editor under *Advanced*).
 
+## The editor asks whether there is a buffer, or about the pump
+
+Some things the integration cannot tell, and the drawing depends on them. Then the editor asks above the fields, from the most common question to the rarer ones:
+
+- **Buffer:** no buffer sensor is reported. "Yes" draws a parallel buffer (`buffer: true`), "No" keeps the circuits on the heat pump (`buffer: false`).
+- **Pump:** without a buffer and with one circuit, ViCare reports one pump that can be the heat pump's own pump in front of the diverter valve (it then runs for hot water too) or the circuit's pump (`primary_pump: true` or `false`).
+- **Circuits:** the integration reports circuits from number 2 on, but no circuit 1 (Open3E). "Yes" starts the card at the first circuit it found (`index: { hc: 2 }` and the count).
+
+The preview shows your answer at once; nothing is saved until you press *Save*, and *Cancel* keeps the saved card. "I don't know" leaves the card as the preset draws it. An answered question is not asked again; the same options are under *Advanced*.
+
 ## A stat tile stays empty or shows "–"
 
 Tiles for today, the week, the month or the year read the period from the long-term statistics of a total counter. Home Assistant keeps those statistics only for sensors with a `state_class`; check the attributes of the counter under *Developer tools → States*. Energy counters need `total` or `total_increasing`. Start and hour counters also work with `measurement` (myPyllant reports them that way): since they only count up, the card takes the period from their highest and lowest value. Without a `state_class`, map a counter of the period itself, or a total counter that has one, with `tile_sources` ([Stat tiles](../README.md#stat-tiles)). A newly mapped counter fills its periods as Home Assistant collects statistics.

@@ -315,6 +315,114 @@
     check(!supported._form.schema.some((f) => f.name === 'assistant_device'), 'a detected preset keeps priority and suppresses the assistant');
     supported.remove();
   }
+  {
+    // #299: questions about the installation that the integration cannot answer, shown in the editor only while they change the
+    // drawing; an answer goes to the preview through the existing option, "I don't know" takes it back.
+    const vit = setups.find((s) => s.name === 'Viessmann Vitocal');
+    const vh = hassOf(toStates(vit.states('heat')), vit.registry || {});
+    const ids = (cfg) => C._layoutQuestions(cfg, vh, C._resolve(cfg, vh)).map((q) => `${q.id}${q.answered ? '=' : ''}`).join();
+    check(ids({ preset: 'vicare' }) === 'buffer', `#299: ViCare without buffer sensors asks about the buffer first (${ids({ preset: 'vicare' })})`);
+    check(ids({ preset: 'vicare', buffer: false }) === 'buffer=,primary_pump' && ids({ preset: 'vicare', buffer: false, primary_pump: true }) === 'buffer=,primary_pump=',
+      `#299: after "no buffer" the shared ViCare pump is the next question (${ids({ preset: 'vicare', buffer: false })})`);
+    check(ids({ preset: 'vicare', buffer: true }) === 'buffer=' && ids({ preset: 'vicare', buffer: false, hc_count: 2 }) === 'buffer='
+      && ids({ preset: 'vicare', storage: 'combined' }) === '' && ids({ preset: 'vicare', series_buffer: true }) === '',
+      '#299: no pump question with a buffer or two circuits, no buffer question with combined storage or a series buffer');
+    const lam = setups.find((s) => s.name === 'Lambda');
+    const lh = hassOf(toStates(lam.states('heat')), lam.registry || {});
+    check(C._layoutQuestions(lam.config, lh, C._resolve(lam.config, lh)).length === 0, '#299: no question where the integration reports a buffer (Lambda)');
+    check(C._layoutQuestions({ preset: 'vicare' }, hassOf({}), C._resolve({ preset: 'vicare' }, hassOf({}))).length === 0, '#299: no question before the preset finds the heat pump');
+
+    let out; let changed = 0;
+    const ed = document.createElement('heatpump-flow-card-editor');
+    ed.addEventListener('config-changed', (ev) => { changed++; out = ev.detail.config; });
+    ed.setConfig({ preset: 'vicare', hc_type: 'radiator' }); ed.hass = vh; await wait(20);
+    const choose = async (id, value) => {
+      const input = ed.querySelector(`input[data-hfc-layout-choice="${id}"][value="${value}"]`);
+      if (!input) return false;
+      input.checked = true; input.dispatchEvent(new Event('change', { bubbles: true })); await wait(10); return true;
+    };
+    const shown = () => [...ed.querySelectorAll('fieldset[data-hfc-layout]')].map((f) => f.dataset.hfcLayout).join();
+    check(shown() === 'buffer' && changed === 0 && ed.querySelector('input[data-hfc-layout-choice="buffer"][value="unknown"]').checked,
+      `#299: the editor shows the open question without writing anything (${shown()}, ${changed} changes)`);
+    await choose('buffer', 'no');
+    check(changed === 1 && out.buffer === false && shown() === 'buffer,primary_pump', `#299: "no buffer" is written and brings the pump question (${JSON.stringify(out)} / ${shown()})`);
+    const draw = (cfg) => { const c = mount(cfg, vh); return c; };
+    let card = draw(out); await wait(20);
+    const sharedDefault = card._primaryPump() && !card._circuitPump(1);
+    card.remove();
+    await choose('primary_pump', 'no');
+    card = draw(out); await wait(20);
+    const inCircuit = out.primary_pump === false && !card._primaryPump() && card._circuitPump(1);
+    card.remove();
+    check(sharedDefault && inCircuit, `#299: the pump answer moves the pump from the heat pump into the circuit in the preview (${sharedDefault} / ${inCircuit})`);
+    // Other fields keep the answer: the form writes buffer: false back unchanged.
+    ed._changed({ ...ed._form.data, title: 'Vitocal' }); await wait(10);
+    check(out.buffer === false && out.primary_pump === false && out.title === 'Vitocal', `#299: editing another field keeps both answers (${JSON.stringify(out)})`);
+    await choose('buffer', 'yes');
+    check(out.buffer === true && out.primary_pump === undefined && shown() === 'buffer', `#299: a buffer after all takes back the pump answer (${JSON.stringify(out)} / ${shown()})`);
+    await choose('buffer', 'unknown');
+    check(out.buffer === undefined && shown() === 'buffer' && !('buffer' in out), `#299: "I don't know" removes the option and keeps the question (${JSON.stringify(out)})`);
+    let roundTrip = true; try { const c = document.createElement('heatpump-flow-card'); c.setConfig({ preset: 'vicare', buffer: false, primary_pump: false }); } catch (err) { roundTrip = false; }
+    check(roundTrip, '#299: the answers are valid card options');
+    ed.remove();
+    // Opened again with saved answers, nothing is asked.
+    const again = document.createElement('heatpump-flow-card-editor');
+    again.setConfig({ preset: 'vicare', buffer: false, primary_pump: true }); again.hass = vh; await wait(20);
+    check(!again.querySelector('fieldset[data-hfc-layout]'), '#299: saved answers are not asked again');
+    again.remove();
+    // Open3E with circuits 2 to 4 and no circuit 1 (#269): the card would draw an empty first circuit.
+    const st = {}; const reg = {};
+    const add = (domain, key, state) => { const id = `${domain}.vitocal_${key}`; st[id] = state; reg[id] = { platform: 'open3e', translation_key: key }; };
+    add('sensor', 'refrigeration_circuit_mode', 'heating'); add('binary_sensor', 'heat_pump_compressor_active', 'on');
+    add('sensor', 'flow_temperature', '42'); add('sensor', 'return_temperature', '35'); add('sensor', 'dhw_buffer_top_temperature', '50');
+    [2, 3, 4].forEach((n) => { add('sensor', `flow_circuit${n}_temperature`, String(30 + n)); add('binary_sensor', `circuit_${n}_pump`, 'on'); });
+    const oh = hassOf(toStates(st), reg);
+    const stub = C.getStubConfig(oh);
+    const qs = C._layoutQuestions(stub, oh, C._resolve(stub, oh));
+    const cq = qs.find((q) => q.id === 'circuits');
+    check(cq && cq.first === 2 && cq.count === 3 && !cq.answered, `#299: Open3E circuits 2 to 4 without circuit 1 bring the circuit question (${JSON.stringify(cq)} / ${JSON.stringify(stub)})`);
+    const ce = document.createElement('heatpump-flow-card-editor');
+    let cout;
+    ce.addEventListener('config-changed', (ev) => { cout = ev.detail.config; });
+    ce.setConfig(stub); ce.hass = oh; await wait(20);
+    const legend = ce.querySelector('fieldset[data-hfc-layout="circuits"] legend')?.textContent || '';
+    const pick = async (value) => { const i = ce.querySelector(`input[data-hfc-layout-choice="circuits"][value="${value}"]`); i.checked = true; i.dispatchEvent(new Event('change', { bubbles: true })); await wait(10); };
+    await pick('yes');
+    const yes = cout;
+    const ccard = mount(yes, oh); await wait(20);
+    const flowYes = ccard._e.hc_flow;
+    ccard.remove();
+    await pick('unknown');
+    check(/circuits 2 to 4/.test(legend) && yes.index?.hc === 2 && yes.hc_count === 3 && flowYes === 'sensor.vitocal_flow_circuit2_temperature',
+      `#299: "yes" starts the card at circuit 2 with three circuits (${legend} / ${JSON.stringify(yes)} / ${flowYes})`);
+    check(cout.index === undefined && cout.hc_count === stub.hc_count, `#299: "I don't know" restores the circuit count (${JSON.stringify(cout)})`);
+    ce.remove();
+    // Codex review: myPyllant counts circuits from 0, and with two homes the question looks at the selected one only.
+    const mp = {}; const mreg = {};
+    const madd = (id, state, unit) => { mp[id] = unit ? [state, unit] : state; mreg[id] = { platform: 'mypyllant' }; };
+    madd('sensor.home_system_flow_temperature', '35', '°C'); madd('sensor.home_circuit_1_current_flow_temperature', '33', '°C'); madd('sensor.home_circuit_2_current_flow_temperature', '31', '°C');
+    madd('sensor.other_system_flow_temperature', '36', '°C'); madd('sensor.other_circuit_0_current_flow_temperature', '34', '°C');
+    const mh = hassOf(toStates(mp), mreg);
+    const vq = (cfg) => C._layoutQuestions(cfg, mh, C._resolve(cfg, mh)).find((q) => q.id === 'circuits');
+    const home = vq({ preset: 'vaillant', prefix: 'home' });
+    check(home && home.base === 0 && home.first === 1 && home.count === 2 && !vq({ preset: 'vaillant', prefix: 'other' }),
+      `myPyllant: circuits 1 and 2 without circuit 0 in the selected home, none for the other home (${JSON.stringify(home)})`);
+    const ve = document.createElement('heatpump-flow-card-editor');
+    let vout;
+    ve.addEventListener('config-changed', (ev) => { vout = ev.detail.config; });
+    ve.setConfig({ preset: 'vaillant', prefix: 'home' }); ve.hass = mh; await wait(20);
+    const vlegend = ve.querySelector('fieldset[data-hfc-layout="circuits"] legend')?.textContent || '';
+    const vpick = async (value) => { const i = ve.querySelector(`input[data-hfc-layout-choice="circuits"][value="${value}"]`); i.checked = true; i.dispatchEvent(new Event('change', { bubbles: true })); await wait(10); return { ...vout }; };
+    const vyes = await vpick('yes'); const vno = await vpick('no');
+    const vflow = C._resolve(vyes, mh).entities.hc_flow;
+    check(/circuits 1 to 2, but no circuit 0/.test(vlegend) && vyes.index?.hc === 1 && vyes.hc_count === 2 && vflow === 'sensor.home_circuit_1_current_flow_temperature' && vno.index?.hc === 0,
+      `myPyllant: "yes" starts at circuit 1, "no" keeps circuit 0 (${vlegend} / ${JSON.stringify(vyes)} / ${vflow} / ${JSON.stringify(vno)})`);
+    ve.remove();
+    add('sensor', 'flow_circuit1_temperature', '38'); add('binary_sensor', 'circuit_1_pump', 'on');
+    const withOne = hassOf(toStates(st), reg);
+    check(!C._layoutQuestions({ preset: 'open3e', hc_count: 4 }, withOne, C._resolve({ preset: 'open3e', hc_count: 4 }, withOne)).some((q) => q.id === 'circuits'),
+      '#299: no circuit question where circuit 1 exists');
+  }
   const stub = (states, registry) => C.getStubConfig(hassOf(toStates(states), registry));
   const expect = { 0: 'lambda', 1: 'lambda', 2: 'vicare', 3: 'vaillant', 4: 'emsesp', 5: 'heishamon', 6: 'emsesp', 8: 'wolf', 9: 'kronoterm', 10: 'ebusd', 11: 'samsung', 12: 'luxtronik', 15: 'stiebel_isg' };
   for (const [i, p] of Object.entries(expect)) {
@@ -1366,6 +1474,65 @@
     satCard.remove();
     // The attribute sensor of older versions alone is no installation the preset can read.
     check(!detects('espaltherma', { 'sensor.althermasensors': 'Online' }, { 'sensor.althermasensors': { platform: 'mqtt' } }), 'ESPAltherma: the attribute sensor alone is not detected');
+  }
+  {
+    // #403: Samsung EHS with EHS Sentinel, the ids and values of ColinSainsbury's installation while heating (default instance name).
+    const p = 'samsung_ehssentinel';
+    const states = toStates(Object.fromEntries(Object.entries({
+      'binary_sensor.%_outdoorcomp1status': 'on', 'sensor.%_outdoorcomp1runhz': ['53', 'Hz'], 'binary_sensor.%_indoordefroststatus': 'off',
+      'sensor.%_dhwvalve': 'ROOM', 'sensor.%_inbackupheater': 'OFF', 'binary_sensor.%_inboosterheater': 'off', 'binary_sensor.%_instatewaterpump': 'on',
+      'sensor.%_outdoorcontrolwattmeterallunit': ['3.34', 'kW'], 'sensor.%_ehssentinelheatoutput': ['11759.0', 'W'],
+      'sensor.%_indoorwaterouttemp': ['47.5', '°C'], 'sensor.%_indoorwaterintemp': ['42.8', '°C'], 'sensor.%_inflowsensorcalc': ['39.7', 'L/min'],
+      'sensor.%_outdoorouttemp': ['8.0', '°C'], 'sensor.%_outdoorfanrpm1': ['530', 'rpm'], 'sensor.%_indoordhwcurrenttemp': ['48.3', '°C'],
+      'sensor.%_indoordhwsettemp': ['47.0', '°C'], 'sensor.%_ehssentinelcurrenttargetflowtemp': ['49.8', '°C'], 'sensor.%_indoorsettempwaterout': ['48.2', '°C'],
+      'sensor.%_currenttemp': ['20.0', '°C'], 'binary_sensor.%_indooroutgoing': 'off',
+      'sensor.%_ehssentineldailyconsumedpower': ['20.58', 'kWh'], 'sensor.%_outdoorcontrolwattmeterallunitaccum': ['13807.16', 'kWh'],
+      'sensor.%_intotalgeneratedpower': ['52282.88', 'kWh'], 'sensor.%_ehssentinelstartcounter': '2316',
+      'sensor.%_ehssentineldailycopheatmode': '3.54', 'sensor.%_ehssentineldailycopdhwmode': '2.71',
+      'sensor.%_outdoordischargetemp1': ['59.8', '°C'], 'sensor.%_outdoorsuction1temp': ['-0.2', '°C'], 'sensor.%_outdoorlowpresstemp': ['-1.8', '°C'],
+      'sensor.%_outdoorhighpresstemp': ['47.6', '°C'], 'sensor.%_outdoorlowpress': ['6.87', 'bar'], 'sensor.%_outdoorhighpress': ['28.54', 'bar'],
+      'sensor.%_outdoormaineev1': '328', 'sensor.%_outerrorcode': '0',
+    }).map(([k, v]) => [k.replace('%', p), v])));
+    const registry = Object.fromEntries(Object.keys(states).map((id) => [id, { platform: 'ehs_sentinel' }]));
+    const hass = hassOf(states, registry);
+    check(C.getStubConfig(hass).preset === 'ehs_sentinel', `EHS Sentinel is detected (${JSON.stringify(C.getStubConfig(hass))})`);
+    const r = C._resolve({ preset: 'ehs_sentinel' }, hass); const e = r.entities;
+    check(r.ready && r.prefix === p && e.flow === `sensor.${p}_indoorwaterouttemp` && e.return === `sensor.${p}_indoorwaterintemp` && e.volume === `sensor.${p}_inflowsensorcalc`
+      && e.compressor === `binary_sensor.${p}_outdoorcomp1status` && e.valve === `sensor.${p}_dhwvalve` && e.defrost === `binary_sensor.${p}_indoordefroststatus`
+      && e.power === `sensor.${p}_outdoorcontrolwattmeterallunit` && e.heat === `sensor.${p}_ehssentinelheatoutput` && e.primary_pump_state === `binary_sensor.${p}_instatewaterpump` && !e.mode,
+    `EHS Sentinel core: flow, return, l/min, compressor, valve, defrost, power, heat, water pump, no mode (${r.prefix} / ${e.flow} / ${e.valve})`);
+    check(e.dhw_top === `sensor.${p}_indoordhwcurrenttemp` && e.dhw_target === `sensor.${p}_indoordhwsettemp` && e.hc_setpoint === `sensor.${p}_ehssentinelcurrenttargetflowtemp`
+      && e.room === `sensor.${p}_currenttemp` && e.program === `binary_sensor.${p}_indooroutgoing` && e.evap_temp === `sensor.${p}_outdoorlowpresstemp` && e.cond_temp === `sensor.${p}_outdoorhighpresstemp`,
+    'EHS Sentinel: tank and target, target flow, controller room sensor, outing mode, saturation temperatures');
+    const findings = C._checks({ preset: 'ehs_sentinel' }, hass, r).map((f) => `${f.key}:${f.code}`);
+    check(!findings.length, `EHS Sentinel: the mapping passes the plausibility checks (${findings.join(', ')})`);
+    const card = mount({ preset: 'ehs_sentinel' }, hass); await wait(20);
+    let F = card._flowModel();
+    check(F.running && F.hp === 'heating' && !card.shadowRoot.getElementById('chip-err')?.classList.contains('on'), `EHS Sentinel: heating while the compressor runs, error code 0 is no error (${F.hp})`);
+    card.hass = hassOf({ ...states, ...toStates({ [`sensor.${p}_dhwvalve`]: 'TANK' }) }, registry); await wait(5);
+    check(card._flowModel().hp === 'dhw', `EHS Sentinel: valve TANK means hot water (${card._flowModel().hp})`);
+    // Standby (#403): about 250 W with the compressor off is no run; the preset raises the default threshold to 300 W.
+    const standby = { ...states, ...toStates({ [`binary_sensor.${p}_outdoorcomp1status`]: 'off', [`sensor.${p}_outdoorcomp1runhz`]: ['0', 'Hz'], [`sensor.${p}_outdoorcontrolwattmeterallunit`]: ['0.25', 'kW'] }) };
+    card.hass = hassOf(standby, registry); await wait(5);
+    F = card._flowModel();
+    check(!F.running && F.hp === 'idle', `EHS Sentinel: 250 W standby with the compressor off is idle (${F.running} / ${F.hp})`);
+    card.remove();
+    const own = mount({ preset: 'ehs_sentinel', power_threshold: 200 }, hassOf(standby, registry)); await wait(20);
+    check(own._flowModel().running, 'EHS Sentinel: an own power_threshold below the standby draw wins over the preset default');
+    own.remove();
+    // Backup heater stages as text, a fitted room sensor only, and a code above 0 as an error.
+    const stage = mount({ preset: 'ehs_sentinel' }, hassOf({ ...states, ...toStates({ [`sensor.${p}_inbackupheater`]: 'STEP 2', [`sensor.${p}_currenttemp`]: ['-50.0', '°C'], [`sensor.${p}_outerrorcode`]: '425' }) }, registry)); await wait(20);
+    check(stage._level('heater') === 2 && !stage._e.room && stage.shadowRoot.getElementById('chip-err').classList.contains('on'),
+      `EHS Sentinel: backup heater STEP 2 is stage 2, -50 °C is no room sensor, code 425 is an error (${stage._level('heater')} / ${stage._e.room})`);
+    stage.remove();
+    // Codex review: a room reading that arrives after the card was built still appears (the preset looks again every minute).
+    const late = mount({ preset: 'ehs_sentinel' }, hassOf({ ...states, ...toStates({ [`sensor.${p}_currenttemp`]: 'unknown' }) }, registry)); await wait(20);
+    const before = late._e.room;
+    late._checkedAt = 0; late.hass = hassOf(states, registry); await wait(20);
+    check(before === undefined && late._e.room === `sensor.${p}_currenttemp`, `EHS Sentinel: a room sensor that reports late is mapped (${before} → ${late._e.room})`);
+    late.remove();
+    check(!detects('ehs_sentinel', { [`sensor.${p}_indoorwaterouttemp`]: '30', [`binary_sensor.${p}_outdoorcomp1status`]: 'on' },
+      { [`sensor.${p}_indoorwaterouttemp`]: { platform: 'esphome' }, [`binary_sensor.${p}_outdoorcomp1status`]: { platform: 'esphome' } }), 'EHS Sentinel: the same ids from another integration are not detected');
   }
   {
     // #253: NIBE F470 with the core integration NIBE Heat Pump, the ids and values of wlouckx's installation (alarm 183 = defrost).
@@ -3600,7 +3767,7 @@
     check(o.samsung === 1 && o.ring === 0 && o.fans === 1 && o.ok, `Samsung preset draws the EHS Mono unit (${JSON.stringify(o)})`);
     // Automatic drawing per preset, as listed in the README table "Outdoor-unit style coverage" (#151). A new preset needs an entry here.
     const unitOf = { lambda: 'lambda', vicare: 'viessmann', open3e: 'viessmann', vaillant: 'vaillant', ebusd: 'vaillant', emsesp: 'bosch', bosch_buderus_heating: 'bosch',
-      heishamon: 'panasonic', samsung: 'samsung', wolf: 'wolf', kronoterm: 'kronoterm', luxtronik: 'alpha_innotec', stiebel_isg: 'stiebel', espaltherma: 'generic', nibe: 'generic' };
+      heishamon: 'panasonic', samsung: 'samsung', wolf: 'wolf', kronoterm: 'kronoterm', luxtronik: 'alpha_innotec', stiebel_isg: 'stiebel', espaltherma: 'generic', ehs_sentinel: 'samsung', nibe: 'generic' };
     const unitWrong = Object.keys(HFC_PRESETS).filter((p) => (HFC_PRESETS[p].unit_style || 'generic') !== unitOf[p]);
     check(!unitWrong.length, `every preset selects the outdoor-unit drawing the README lists (${unitWrong.join(', ') || 'all match'})`);
     check(Object.values(unitOf).every((s) => HFC_UNIT_STYLES.includes(s)), 'the expected drawings are valid unit_style values');
@@ -4597,6 +4764,52 @@
       '#23: the diagnostic report names averaged and summed members');
   }
 
+  // 18e2. #407: defrosts and HeishaMon starts without the two restarts of each defrost, from the recorder history. The counter steps
+  // and defrost windows of 13.11.2026 from the report: 10 steps, 2 real starts, 4 defrosts.
+  {
+    const p = 'panasonic_heat_pump'; const counter = `sensor.${p}_main_operations_counter`; const df = `binary_sensor.${p}_main_defrosting_state`;
+    const T0 = Date.parse('2026-11-13T00:00:00Z'); const at = (hm, s) => { const [h, m] = hm.split(':').map(Number); return { s: String(s), lu: (T0 + (h * 60 + m) * 60000) / 1000 }; };
+    const history = {
+      [counter]: [at('00:00', 6515), at('01:09', 6516), at('08:03', 6517), at('08:57', 6518), at('09:02', 6519), at('10:34', 6520), at('10:39', 6521),
+        at('13:02', 6522), at('13:06', 6523), at('16:05', 6524), at('16:09', 6525)],
+      [df]: [at('00:00', 'off'), at('08:55', 'on'), at('09:03', 'off'), at('10:32', 'on'), at('10:41', 'off'), at('13:00', 'on'), at('13:08', 'off'), at('16:03', 'on'), at('16:11', 'off')],
+    };
+    const st = toStates({
+      [`sensor.${p}_main_main_outlet_temp`]: ['36', '°C'], [`sensor.${p}_main_main_inlet_temp`]: ['32', '°C'], [`sensor.${p}_main_compressor_freq`]: ['19', 'Hz'],
+      [counter]: { state: '6525', attributes: { state_class: 'total_increasing' } }, [df]: 'off',
+    });
+    const queries = [];
+    const hassH = (h) => ({ ...hassOf(st), callWS: (q) => { queries.push(q); return q.type === 'history/history_during_period' ? Promise.resolve(h) : Promise.reject(new Error('n/a')); } });
+    const tileVals = (c) => Object.fromEntries([...c.shadowRoot.querySelectorAll('.stat')].map((x) => [x.querySelector('.sl').textContent, x.querySelector('.sv').textContent]));
+    let card = mount({ preset: 'heishamon', tiles: ['starts:today', 'defrosts:today', 'starts:month'] }, hassH(history)); await wait(40);
+    let v = tileVals(card);
+    const hq = queries.find((q) => q.type === 'history/history_during_period');
+    check(v['Compressor starts · today'] === '2' && v['Defrosts · today'] === '4', `#407: HeishaMon starts today leave out the restarts of 4 defrosts (${JSON.stringify(v)})`);
+    check(card._tileSource('starts', 'month')?.stat === counter && !card._tileSource('defrosts', 'month'),
+      '#407: longer periods keep the raw counter; defrosts exist for the periods within the history only');
+    check(hq && hq.entity_ids.includes(df) && hq.entity_ids.includes(counter) && hq.no_attributes, `#407: one history query for the defrost entity and the counter (${JSON.stringify(hq?.entity_ids)})`);
+    card.remove();
+    // A defrost already going at midnight belongs to the day before; a counter step 30 s after a defrost still belongs to it.
+    const edge = {
+      [counter]: [at('00:00', 100), at('00:03', 101), { s: '102', lu: (T0 + (5 * 60 + 10) * 60000 + 30000) / 1000 }, at('07:00', 103)],
+      [df]: [at('00:00', 'on'), at('00:05', 'off'), at('05:00', 'on'), at('05:10', 'off'), at('06:00', 'unavailable'), at('06:01', 'on'), at('06:04', 'off')],
+    };
+    card = mount({ preset: 'heishamon', tiles: ['starts:today', 'defrosts:today'] }, hassH(edge)); await wait(40);
+    v = tileVals(card);
+    check(v['Compressor starts · today'] === '1' && v['Defrosts · today'] === '1',
+      `#407: no defrost from midnight or after unavailable, a step within ${HFC_HISTORY_COUNT.grace} s after a defrost is its restart (${JSON.stringify(v)})`);
+    card.remove();
+    // An own tile source is taken as it is; another preset counts defrosts but not its starts.
+    card = mount({ preset: 'heishamon', tiles: ['starts:today'], tile_sources: { starts: counter } }, hassH(history)); await wait(40);
+    check(card._tileSource('starts', 'today')?.stat === counter, '#407: tile_sources.starts keeps the plain counter');
+    card.remove();
+    const other = mount({ entities: { compressor: 'sensor.c', defrost: df, flow: 'sensor.f', return: 'sensor.r' }, tiles: ['defrosts:today'] },
+      { ...hassOf(toStates({ 'sensor.c': 'on', [df]: 'off', 'sensor.f': ['35', '°C'], 'sensor.r': ['30', '°C'] })), callWS: (q) => (q.type === 'history/history_during_period' ? Promise.resolve(history) : Promise.reject(new Error('n/a'))) });
+    await wait(40);
+    check(tileVals(other)['Defrosts · today'] === '4' && !other._tileSource('starts', 'today')?.history, '#407: any configuration with a defrost entity counts defrosts; only the flagged preset changes the starts');
+    other.remove();
+  }
+
   // 18f. HeishaMon: refrigerant temperatures and the superheat computed from them
   {
     const p = 'panasonic_heat_pump';
@@ -4625,6 +4838,70 @@
     const own = mount({ preset: 'heishamon', entities: { evap_temp: `sensor.${p}_main_outside_pipe_temp` } }, hassOf(toStates({ ...st, [`switch.${p}_main_defrosting_state`]: 'on' }))); await wait(20);
     check(value(own, 'evap_temp') !== '–' && value(own, 'suction_temp') === '–', 'an entity set in the config keeps its value in defrost');
     own.remove();
+    // #413: at standstill the refrigerant temperatures settle to the surroundings, so the derived superheat and subcooling show '–';
+    // a superheat the integration reports itself stays.
+    const still = { ...st, [`sensor.${p}_main_compressor_freq`]: ['0', 'Hz'] };
+    const off = mount({ preset: 'heishamon' }, hassOf(toStates(still))); await wait(20);
+    check(!off._flowModel().running && value(off, 'superheat') === '–' && /1/.test(value(off, 'evap_temp')),
+      `#413: no derived superheat while the compressor is off, the temperatures stay (${value(off, 'superheat')} / ${value(off, 'evap_temp')})`);
+    off.hass = hassOf(toStates(st)); await wait(5);
+    check(value(off, 'superheat') === '2.0 K', `#413: the derived superheat returns when the compressor runs (${value(off, 'superheat')})`);
+    off.remove();
+    const reported = mount({ preset: 'heishamon', entities: { superheat: 'sensor.own_superheat' } }, hassOf(toStates({ ...still, 'sensor.own_superheat': ['-3.1', 'K'] }))); await wait(20);
+    check(value(reported, 'superheat') === '-3.1 K', `#413: a reported superheat stays at standstill (${value(reported, 'superheat')})`);
+    reported.remove();
+  }
+  {
+    // #413: the name of an own entity in the details and in a free tile loses a leading device name, from the registry.
+    const states = toStates({
+      'sensor.flow': ['35', '°C'], 'sensor.return': ['30', '°C'],
+      'sensor.hc_pc0_flow': { state: '12', attributes: { friendly_name: 'Buderus WLW186i PC0 flow', unit_of_measurement: 'l/h' } },
+      'sensor.heater_power': { state: '0', attributes: { friendly_name: 'Heater power', unit_of_measurement: 'W' } },
+      'sensor.plain': { state: '3', attributes: { friendly_name: 'Buderus WLW186i' } },
+    });
+    const registry = { 'sensor.hc_pc0_flow': { device_id: 'd1' }, 'sensor.heater_power': { device_id: 'd2' }, 'sensor.plain': { device_id: 'd1' } };
+    const hass = { ...hassOf(states, registry), devices: { d1: { name: 'Buderus WLW186i' }, d2: { name: 'Heat' } } };
+    const card = mount({ entities: { flow: 'sensor.flow', return: 'sensor.return' }, details: ['sensor.hc_pc0_flow', 'sensor.heater_power', 'sensor.plain'],
+      tiles: [{ entity: 'sensor.hc_pc0_flow' }] }, hass); await wait(20);
+    const more = card._drawerRows().flatMap(([, list]) => list).filter((x) => /^x\d$/.test(x[0])).map((x) => x[1]);
+    check(more.join('|') === 'PC0 flow|Heater power|Buderus WLW186i', `#413: device name dropped at a word boundary only, a name of the device alone stays (${more.join('|')})`);
+    const tile = card.shadowRoot.querySelector('.stat .sl')?.textContent;
+    check(tile === 'PC0 flow', `#413: a free tile uses the short name as well (${tile})`);
+    card.hass = { ...hass, devices: { d1: { name: 'Buderus WLW186i', name_by_user: 'Heat pump' } } }; await wait(5);
+    check(card._entityName('sensor.hc_pc0_flow') === 'Buderus WLW186i PC0 flow', 'the name the user gave the device is the one that counts');
+    card.remove();
+  }
+  {
+    // #413: a preset's default tiles replace the default row while `tiles` is not set; `tiles` and an empty list still win.
+    const s = setups[0];
+    const states = toStates(s.states('heat'));
+    const saved = HFC_PRESETS.lambda.default_tiles;
+    HFC_PRESETS.lambda.default_tiles = ['spread', 'volume'];
+    const labels = (c) => [...c.shadowRoot.querySelectorAll('.stat .sl')].map((x) => x.textContent);
+    const base = { ...s.config }; delete base.tiles;
+    let card = mount(base, hassOf(states)); await wait(20);
+    const def = labels(card);
+    card.remove();
+    card = mount({ ...base, tiles: ['outdoor'] }, hassOf(states)); await wait(20);
+    const own = labels(card);
+    card.remove();
+    card = mount({ ...base, tiles: [] }, hassOf(states)); await wait(20);
+    const none = card.shadowRoot.getElementById('stats').style.display;
+    card.remove();
+    const opts = C._tileOptions({ preset: 'lambda', ...base }, C._resolve({ preset: 'lambda', ...base }, hassOf(states)), hassOf(states));
+    if (saved === undefined) delete HFC_PRESETS.lambda.default_tiles; else HFC_PRESETS.lambda.default_tiles = saved;
+    check(def.length === 2 && !def.some((l) => /COP/.test(l)), `#413: default tiles of the preset instead of the default row (${def.join(', ')})`);
+    check(own.length === 1 && none === 'none', `#413: own tiles and an empty list still win (${own.join(', ')} / ${none})`);
+    check(opts.defaults.join() === 'spread,volume', `#413: the editor starts the own selection from the preset's default tiles (${opts.defaults.join()})`);
+    const bad = Object.entries(HFC_PRESETS).flatMap(([name, p]) => (p.default_tiles || []).map((t) => [name, C._tileSpec(t)]).filter(([, t]) => !HFC_TILES[t?.key]).map(([name, t]) => `${name}:${t?.key}`));
+    check(!bad.length && Array.isArray(HFC_PRESETS.bosch_buderus_heating.default_tiles), `#413: every default tile of a preset is a catalog tile, Bosch/Buderus has them (${bad.join(', ') || 'ok'})`);
+    // The demo "Bosch/Buderus Home Comfort" without its `tiles`: catalog tiles from the gateway's totals, not only spread and flow rate.
+    const hc = setups.find((x) => x.name === 'Bosch/Buderus Home Comfort');
+    const hcConfig = { ...hc.config }; delete hcConfig.tiles;
+    const bosch = mount(hcConfig, hassOf(toStates(hc.states('heat')), hc.registry || {}, hc.energy, hc)); await wait(60);
+    const bl = labels(bosch);
+    bosch.remove();
+    check(bl.length > 2 && bl.some((l) => /Electricity/.test(l)) && !bl.some((l) => /COP heating/.test(l)), `#413: Home Comfort shows its default catalog tiles (${bl.join(', ')})`);
   }
 
   // 18k. heating curve shift: target, curve and shift above the circuit pump, the flow temperature below it (HeishaMon heat request)
@@ -4944,7 +5221,7 @@
     card = await mountSetup('Kronoterm ADAPT');
     check(!!q(card, 'circle.pump[cx="720"]'), 'Kronoterm: the loop pump stays in the circuit next to the primary pump');
     card.remove();
-    check(Object.entries(HFC_PRESETS).filter(([, p]) => p.primary_pump).map(([k]) => k).sort().join() === 'espaltherma,heishamon,kronoterm,nibe,samsung', 'presets with a primary pump: ESPAltherma, HeishaMon, Kronoterm, NIBE, Samsung');
+    check(Object.entries(HFC_PRESETS).filter(([, p]) => p.primary_pump).map(([k]) => k).sort().join() === 'ehs_sentinel,espaltherma,heishamon,kronoterm,nibe,samsung', 'presets with a primary pump: EHS Sentinel, ESPAltherma, HeishaMon, Kronoterm, NIBE, Samsung');
   }
 
   // 18p. hot-water standby loss (#32): cool-down in K/h only in verified standby windows, charging and draw-off excluded
