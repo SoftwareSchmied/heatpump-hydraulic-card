@@ -1,3 +1,0 @@
-- A preset can name default tiles from the catalog (`default_tiles`), shown while `tiles` is not set. Bosch/Buderus Home Comfort uses COP, electricity, heat and starts of today from the gateway's totals, plus spread and flow rate, instead of a row that showed only spread and flow rate (#413).
-- Derived superheat and subcooling show "–" while the heat pump is off: at standstill the refrigerant temperatures settle to the surroundings (a negative subcooling). Values the integration reports itself stay as reported (#413).
-- Own entities in the details and in free tiles drop a leading device name ("Buderus WLW186i PC0 flow" becomes "PC0 flow"), taken from the device registry (#413).

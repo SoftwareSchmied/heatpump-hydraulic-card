@@ -41,6 +41,7 @@ Run `npm run check` before opening a pull request. CI requires `HACS validation`
 - Is there a test that would have failed before the fix?
 - Did the drawing change without a matching topology baseline update, or the baseline change without a reason in the pull request?
 - Does a new or moved label whose text depends on the language, a name or a value have a width budget (`data-fit`) up to the next pipe or part? Do not loosen the collision checks to make a test pass. `KNOWN` in `test/topology.html` only takes conflicts that a new check finds in the drawing as it already was, each narrowed to the cases it hits and naming the issue that will fix it; a change never adds an entry for a conflict it causes itself.
+- Does a label that competes with a neighbour for room get alternatives (`data-avoid`, `data-alt`, see "Layout step" in docs/TOPOLOGY.md) rather than a coordinate moved by hand?
 - Does a layout fix come with the field case of its report (`scripts/report-fixture.mjs`, `test/field-cases.js`)? Does a new option that puts a label into a circuit row or the heat source extend that zone matrix in `test/topology.html`?
 - For a baseline change, look at the pictures in the `drawing-changes` artifact, not only at the fingerprints.
 - Are entity ids backed by evidence, or guessed?

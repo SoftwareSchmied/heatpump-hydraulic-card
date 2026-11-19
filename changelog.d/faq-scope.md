@@ -1,2 +1,0 @@
-- Questions about settings and configuration now go to the Q&A discussions of the repository, and `docs/FAQ.md` answers the common ones (valves without an entity, empty stat tiles, quick controls, moving parts of the drawing). The issue forms point there; blank issues are off.
-- `CONTRIBUTING.md` states the scope of the drawing: it is drawn from fixed slots, the same for every installation. Layout bugs are fixed within the slot, new hydraulic variants are weighed by how common they are, and requests to move a part for one installation are declined.

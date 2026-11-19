@@ -15,7 +15,7 @@ The integration takes each entity id from the coil name of the [nibe library](ht
 The preset was built from the coil lists of the nibe library 2.26 (every mapped coil exists in all five F model files) and the entity list of an F470 (#253). It is not confirmed on a running installation yet, so the editor marks it as untested. Reports are welcome, from brine models in particular.
 
 What you get:
-- the priority (`Prio`, 43086) as the operating mode: HEAT is heating, HOT WATER is hot water, COOLING is cooling, OFF is idle, POOL and POOL 2 count as heating
+- the priority (`Prio`, 43086) as the operating mode: HEAT is heating, HOT WATER is hot water, COOLING is cooling, OFF is idle, POOL and POOL 2 count as heating. TRANSFER, which follows a hot-water charge on the F370/F470 and keeps the compressor at the hot-water stop temperature, counts as hot water (#253)
 - the compressor from its state (43427): STARTING and RUNNING are on, STOPPED and STOPPING are off
 - supply (BT2, 40008) and return (BT3, 40012), outdoor temperature (BT1, 40004)
 - the heating medium pump GP1 (supply pump state, 43431) as the primary pump, drawn on the flow next to the heat pump: it runs for heating and for hot water. ON is on; STARTING, 10-DAY MODE and CALIBRATION are not
@@ -35,11 +35,5 @@ No superheat is derived: BT16 measures the evaporator surface, not the saturatio
 - **Diverter valve:** no coil; hot water comes from the priority.
 - **Defrost:** reported only as alarm 183, so the card shows no defrost state of its own. The alarm does not show the error chip.
 - **Hot-water target:** the water heater entity has start and stop temperatures (`target_temp_low`, `target_temp_high`) but no single target. A template sensor on `target_temp_high` can be mapped as `dhw_target`.
-- **TRANSFER:** the priority also reports TRANSFER. It is not mapped until it is known whether the unit heats, charges hot water or does something else then (#253). Until then the card counts it neither as heating nor as hot water; map it yourself if you know it:
-
-  ```yaml
-  mode_map:
-    TRANSFER: heating
-  ```
 - **Climate systems 2 to 4:** the preset maps circuit 1. Add `hc2_flow` and the other keys with `entities` for further circuits.
 - **Ventilation:** fan speeds, supply air (BT22) and the ventilation part of the exhaust air models are not drawn.

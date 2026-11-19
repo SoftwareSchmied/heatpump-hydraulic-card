@@ -1,1 +1,0 @@
-- A period of a run shorter than a minute no longer appears as a run of its own: it folds into the period next to it, as a whole run under a minute is no run. The hot-water flag of a cascade ended about 30 s before the compressor had ramped down, which left a heating piece of 30 s after every charge (#173). A short period that is still going keeps its place.

@@ -1,3 +1,0 @@
-- New entity `aux_starts`: the starts of the heater, shown in the details next to the heater hours. The Vaillant (myPyllant) and ViCare presets fill it; before, the heater starts were only a stat tile and could not be shown in the details (#1).
-- Start and hour counters that the integration reports as `state_class: measurement` (myPyllant On/Off Cycles and operation time) now give their stat tiles for today, the week, the month and the year: since they only count up, the card takes the period from their highest and lowest value in the long-term statistics. Before, only the total was shown (#1).
-- `docs/FAQ.md` answers which sensor the hot-water standby-loss tile needs.

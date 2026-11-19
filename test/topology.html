@@ -156,18 +156,11 @@
     return d;
   };
   const base = window.HFC_TOPOLOGY_SNAPSHOT;
-  // Known layout conflicts: found by the zone matrices, left for the layout step of #395 (stage 3, label positions and priorities
-  // on narrow cards) because no fixed coordinate fits them. A matching collision is not counted; an entry that no longer matches
-  // anything in a full run fails, so the fix that solves it also removes it here. Never add an entry to make a new change pass.
-  const KNOWN = [
-    // Hits two circuits (narrow in English, every layout with long texts) and one circuit with a buffer on a narrow card with long
-    // texts; in the nightly sweep, where every layout is drawn at the sweep width, one circuit with a buffer in every layout. One
-    // circuit without a buffer must stay clear.
-    { why: 'narrow card or long texts: with a heating curve shift the two-line target next to a buffer or further circuits reaches the circuit title',
-      case: /^(zone circuit .*\bcurve\b.* hc2( buffer)? narrow|[^:]+: zone circuit .*\bcurve\b.* (hc2( buffer)? [a-z]+|hc1 buffer narrow)|[a-z]{2} \d+ px: zone circuit .*\bcurve\b.* hc1 buffer [a-z]+)$/, hit: /^t-hc\d* (overlaps|is closer than \d+ units to) tank-title / },
-    { why: 'cards narrower than 400 px (nightly sweep): with a heating curve shift and a mixer the flow temperature under the pump reaches the mixer bypass',
-      case: /^[a-z]{2} 3\d\d px: zone circuit .*\bmixer curve\b/, hit: /^t-hc-now\d* lies on pipe p-hc-mix\d*$/, sweepOnly: true },
-  ];
+  // Known layout conflicts: found by the zone matrices and not solved yet by a coordinate or the layout step (#395, data-alt). A
+  // matching collision is not counted; an entry that no longer matches anything in a full run fails, so the fix that solves it also
+  // removes it here. Never add an entry to make a new change pass. Empty since the layout step moved the circuit title and the flow
+  // temperature at the mixer.
+  const KNOWN = [];
   const knownSeen = new Set();
   const known = (name, hit) => {
     const k = KNOWN.findIndex((x) => x.case.test(name) && x.hit.test(hit));

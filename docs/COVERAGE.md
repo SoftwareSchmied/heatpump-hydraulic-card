@@ -20,20 +20,23 @@ The percentage says how complete a preset is, not how well it was tested: see th
 
 | Preset | Core fields | Open core fields | Core fields not offered | Further roles | Stat tiles | Error chip | Quick controls | Preset texts in |
 |---|---|---|---|---|---|---|---|---|
-| [`bosch_buderus_heating`](#bosch_buderus_heating) | 100 % | – | `hc_return` | 22 of 49 | 21 of 29 | yes | yes | – |
+| [`bosch_buderus_heating`](#bosch_buderus_heating) | 100 % | – | `hc_return` | 24 of 49 | 21 of 29 | yes | yes | – |
 | [`lambda`](#lambda) | 100 % | – | `hc_pump` | 26 of 49 | 21 of 29 | yes | – | de, en |
-| [`vicare`](#vicare) | 75 % | `power`, `dhw_target`, `hc_flow` | `heat`, `hc_return`, `room` | 20 of 49 | 16 of 29 | – | – | de, en |
+| [`vicare`](#vicare) | 76 % | `power`, `dhw_target`, `hc_flow` | `hc_return`, `room` | 20 of 49 | 18 of 29 | – | – | de, en |
 | [`open3e`](#open3e) | 92 % | `volume` | `hc_return` | 20 of 49 | 15 of 29 | – | – | – |
 | [`vaillant`](#vaillant) | 100 % | – | `heat`, `return`, `volume`, `hc_return`, `hc_pump` | 11 of 49 | 11 of 29 | yes | – | de, en |
 | [`emsesp`](#emsesp) | 100 % | – | `hc_return` | 22 of 49 | 20 of 29 | – | – | – |
 | [`heishamon`](#heishamon) | 92 % | `hc_pump` | `hc_return` | 20 of 49 | 17 of 29 | yes | – | – |
 | [`wolf`](#wolf) | 100 % | – | `hc_return` | 10 of 49 | 6 of 29 | – | – | de, en |
+| [`airahome`](#airahome) | 100 % | – | `hc_return` | 18 of 49 | 4 of 29 | yes | – | – |
 | [`kronoterm`](#kronoterm) | 100 % | – | `volume`, `hc_return` | 11 of 49 | 9 of 29 | yes | – | – |
-| [`luxtronik`](#luxtronik) | 93 % | `hc_return` | – | 19 of 49 | 15 of 29 | – | – | – |
+| [`luxtronik`](#luxtronik) | 93 % | `hc_return` | – | 20 of 49 | 15 of 29 | – | – | – |
 | [`stiebel_isg`](#stiebel_isg) | 100 % | – | `heat`, `hc_return` | 17 of 49 | 9 of 29 | yes | yes | – |
 | [`ebusd`](#ebusd) | 100 % | – | `hc_return` | 20 of 49 | 8 of 29 | yes | – | – |
 | [`samsung`](#samsung) | 100 % | – | `hc_return`, `hc_pump` | 11 of 49 | 4 of 29 | yes | – | – |
+| [`ehs_sentinel`](#ehs_sentinel) | 100 % | – | `hc_flow`, `hc_return`, `hc_pump` | 17 of 49 | 12 of 29 | yes | – | – |
 | [`espaltherma`](#espaltherma) | 92 % | `hc_pump` | `hc_flow`, `hc_return` | 14 of 49 | 9 of 29 | yes | – | – |
+| [`nibe`](#nibe) | 80 % | `hc_return`, `hc_pump` | `power`, `heat`, `volume`, `dhw_target`, `hc_flow` | 9 of 49 | 0 of 29 | yes | – | – |
 
 ## Languages
 
@@ -42,10 +45,10 @@ English is the reference. A text without a translation shows in English.
 | Language | Card texts | Editor |
 |---|---|---|
 | Deutsch (`de`) | 100 % | 100 % |
-| Polski (`pl`) | 100 % | 100 % |
-| Slovenčina (`sk`) | 100 % | 100 % |
-| Čeština (`cs`) | 100 % | 100 % |
-| Nederlands (`nl`) | 100 % | 100 % |
+| Polski (`pl`) | 100 % | 96 % (11 missing) |
+| Slovenčina (`sk`) | 100 % | 96 % (11 missing) |
+| Čeština (`cs`) | 100 % | 96 % (11 missing) |
+| Nederlands (`nl`) | 100 % | 96 % (11 missing) |
 
 ## Details per preset
 
@@ -58,7 +61,7 @@ Bosch/Buderus Home Comfort. Core fields 100 %, stat tiles: `cop_heating`, `cop_d
 | Area | Mapped | Shown without its own entity | Not mapped, with reason | Open |
 |---|---|---|---|---|
 | Heat pump | **`mode`**, `status`, **`compressor`**, `fan_speed`, `defrost`, **`power`**, **`heat`**, **`flow`**, **`return`**, **`volume`**, `source_in`, **`outdoor`**, **`valve`**, `heater` | – | – | `source_volume`, `source_out`, `brine_pressure`, `pv_boost` |
-| Tanks | **`dhw_top`**, **`dhw_target`** | – | – | `dhw_middle`, `dhw_bottom`, `dhw_mode`, `circulation`, `dhw_heater`, `buffer_top`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` |
+| Tanks | **`dhw_top`**, **`dhw_target`**, `circulation`, `dhw_heater` | – | – | `dhw_middle`, `dhw_bottom`, `dhw_mode`, `buffer_top`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` |
 | Heating circuit | **`hc_flow`**, `hc_setpoint`, **`hc_pump`**, `hc_volume`, `hc_pressure`, **`room`**, `room_target`, `program` | – | **`hc_return`** | `hc_mode`, `hc_curve_offset`, `hc_mixer` |
 | Details | `hours`, `starts_total`, `energy_total`, `env_energy`, `heat_total`, `compressor_speed`, `evap_temp`, `cond_temp`, `suction_temp`, `hot_gas`, `liquid_temp`, `eev` | – | – | `aux_hours`, `low_pressure`, `high_pressure`, `superheat`, `subcooling`, `cutout_high_pressure`, `cutout_low_pressure`, `cutout_temperature` |
 
@@ -83,18 +86,17 @@ Not mapped:
 
 ### vicare
 
-Viessmann (ViCare). Core fields 75 %, stat tiles: `cop_heating`, `cop_dhw`, `cop_cooling`, `cop_total`, `spf`, `energy`, `energy_heating`, `energy_dhw`, `energy_cooling`, `starts`, `hours`, `hours_per_start`, `aux_hours`, `aux_starts`, `pv_production`, `solar_thermal`.
+Viessmann (ViCare). Core fields 76 %, stat tiles: `cop_heating`, `cop_dhw`, `cop_cooling`, `cop_total`, `spf`, `energy`, `energy_heating`, `energy_dhw`, `energy_cooling`, `heat_heating`, `heat_dhw`, `starts`, `hours`, `hours_per_start`, `aux_hours`, `aux_starts`, `pv_production`, `solar_thermal`.
 
 | Area | Mapped | Shown without its own entity | Not mapped, with reason | Open |
 |---|---|---|---|---|
-| Heat pump | **`mode`**, **`compressor`**, `defrost`, **`flow`**, **`return`**, **`volume`**, `source_in`, `source_out`, **`outdoor`**, **`valve`** | – | **`heat`** | `status`, `fan_speed`, **`power`**, `source_volume`, `brine_pressure`, `heater`, `pv_boost` |
+| Heat pump | **`mode`**, **`compressor`**, `defrost`, **`heat`**, **`flow`**, **`return`**, **`volume`**, `source_in`, `source_out`, **`outdoor`**, **`valve`** | – | – | `status`, `fan_speed`, **`power`**, `source_volume`, `brine_pressure`, `heater`, `pv_boost` |
 | Tanks | **`dhw_top`**, `dhw_bottom`, `circulation`, `buffer_top`, `buffer_bottom`, `solar_collector`, `solar_pump` | – | – | `dhw_middle`, **`dhw_target`**, `dhw_mode`, `dhw_heater`, `buffer_middle`, `buffer_mode`, `buffer_heater` |
 | Heating circuit | **`hc_pump`** | – | **`hc_return`**, **`room`** | **`hc_flow`**, `hc_setpoint`, `hc_mode`, `hc_volume`, `hc_curve_offset`, `hc_mixer`, `hc_pressure`, `room_target`, `program` |
 | Details | `hours`, `starts_total`, `aux_hours`, `compressor_speed`, `suction_temp`, `hot_gas`, `liquid_temp`, `low_pressure`, `high_pressure`, `superheat`, `subcooling` | – | – | `energy_total`, `env_energy`, `heat_total`, `evap_temp`, `cond_temp`, `eev`, `cutout_high_pressure`, `cutout_low_pressure`, `cutout_temperature` |
 
 Not mapped:
 
-- `heat`: ViCare reports no live heat output, only consumption and production counters; the card estimates it from flow rate and spread.
 - `hc_return`: ViCare has no return temperature per heating circuit; return_temperature belongs to the heat generator.
 - `room`: Room temperatures come from ViCare room controls, one device per room without a translation key, so there is no unambiguous room per circuit.
 
@@ -177,6 +179,23 @@ Not mapped:
 
 - `hc_return`: Both integrations report one return temperature, at the heat pump; no circuit has its own.
 
+### airahome
+
+Aira (ha-airahome). Core fields 100 %, stat tiles: `cop_total`, `spf`, `energy`, `heat`.
+
+| Area | Mapped | Shown without its own entity | Not mapped, with reason | Open |
+|---|---|---|---|---|
+| Heat pump | **`mode`**, **`compressor`**, `fan_speed`, `defrost`, **`power`**, **`heat`**, **`flow`**, **`return`**, **`volume`**, **`outdoor`**, `heater` | **`valve`** | – | `status`, `source_volume`, `source_in`, `source_out`, `brine_pressure`, `pv_boost` |
+| Tanks | **`dhw_top`**, **`dhw_target`**, `buffer_top` | – | `circulation` | `dhw_middle`, `dhw_bottom`, `dhw_mode`, `dhw_heater`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` |
+| Heating circuit | **`hc_flow`**, `hc_setpoint`, `hc_mode`, **`hc_pump`**, **`room`**, `room_target`, `program` | – | **`hc_return`**, `hc_mixer` | `hc_volume`, `hc_curve_offset`, `hc_pressure` |
+| Details | `energy_total`, `heat_total`, `compressor_speed`, `evap_temp`, `cond_temp`, `suction_temp`, `hot_gas`, `low_pressure`, `high_pressure`, `eev` | – | – | `hours`, `starts_total`, `aux_hours`, `env_energy`, `liquid_temp`, `superheat`, `subcooling`, `cutout_high_pressure`, `cutout_low_pressure`, `cutout_temperature` |
+
+Not mapped:
+
+- `hc_return`: Each zone reports a supply temperature only.
+- `hc_mixer`: Zone N valve position is reported in %, but it is not documented whether it is a mixing or a zone valve.
+- `circulation`: No circulation pump entity.
+
 ### kronoterm
 
 Kronoterm. Core fields 100 %, stat tiles: `cop_total`, `energy`, `energy_heating`, `energy_dhw`, `energy_aux`, `cycles_heating`, `cycles_dhw`, `cycles_cooling`, `aux_hours`.
@@ -202,7 +221,7 @@ Luxtronik (Alpha Innotec, Novelan, Roth …). Core fields 93 %, stat tiles: `cop
 | Heat pump | **`mode`**, **`compressor`**, `defrost`, **`power`**, **`heat`**, **`flow`**, **`return`**, **`volume`**, `source_volume`, `source_in`, `source_out`, **`outdoor`**, `heater` | **`valve`** | – | `status`, `fan_speed`, `brine_pressure`, `pv_boost` |
 | Tanks | **`dhw_top`**, **`dhw_target`**, `solar_collector`, `solar_pump` | – | – | `dhw_middle`, `dhw_bottom`, `dhw_mode`, `circulation`, `dhw_heater`, `buffer_top`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater` |
 | Heating circuit | **`hc_flow`**, `hc_setpoint`, **`hc_pump`**, **`room`**, `room_target`, `program` | – | – | **`hc_return`**, `hc_mode`, `hc_volume`, `hc_curve_offset`, `hc_mixer`, `hc_pressure` |
-| Details | `hours`, `starts_total`, `aux_hours`, `heat_total`, `suction_temp`, `hot_gas`, `low_pressure`, `high_pressure`, `superheat` | – | – | `energy_total`, `env_energy`, `compressor_speed`, `evap_temp`, `cond_temp`, `liquid_temp`, `eev`, `subcooling`, `cutout_high_pressure`, `cutout_low_pressure`, `cutout_temperature` |
+| Details | `hours`, `starts_total`, `aux_hours`, `heat_total`, `compressor_speed`, `suction_temp`, `hot_gas`, `low_pressure`, `high_pressure`, `superheat` | – | – | `energy_total`, `env_energy`, `evap_temp`, `cond_temp`, `liquid_temp`, `eev`, `subcooling`, `cutout_high_pressure`, `cutout_low_pressure`, `cutout_temperature` |
 
 ### stiebel_isg
 
@@ -251,6 +270,25 @@ Not mapped:
 - `hc_return`: The NASA bus reports the return of the heat pump (0x4236), not one per circuit.
 - `hc_pump`: The primary water pump (0x4089) also runs for hot water, so the circuit follows the diverter valve instead of a pump of its own.
 
+### ehs_sentinel
+
+Samsung EHS (EHS Sentinel). Core fields 100 %, stat tiles: `cop_heating`, `cop_dhw`, `cop_total`, `spf`, `energy`, `energy_heating`, `energy_dhw`, `heat`, `heat_heating`, `heat_dhw`, `starts`, `defrosts`.
+
+| Area | Mapped | Shown without its own entity | Not mapped, with reason | Open |
+|---|---|---|---|---|
+| Heat pump | **`compressor`**, `fan_speed`, `defrost`, **`power`**, **`heat`**, **`flow`**, **`return`**, **`volume`**, **`outdoor`**, **`valve`**, `heater` | **`mode`** | – | `status`, `source_volume`, `source_in`, `source_out`, `brine_pressure`, `pv_boost` |
+| Tanks | **`dhw_top`**, **`dhw_target`**, `dhw_heater` | – | – | `dhw_middle`, `dhw_bottom`, `dhw_mode`, `circulation`, `buffer_top`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` |
+| Heating circuit | `hc_setpoint`, **`room`**, `program` | – | **`hc_flow`**, **`hc_return`**, **`hc_pump`**, `room_target` | `hc_mode`, `hc_volume`, `hc_curve_offset`, `hc_mixer`, `hc_pressure` |
+| Details | `starts_total`, `energy_total`, `heat_total`, `compressor_speed`, `evap_temp`, `cond_temp`, `suction_temp`, `hot_gas`, `low_pressure`, `high_pressure`, `eev` | – | `hours` | `aux_hours`, `env_energy`, `liquid_temp`, `superheat`, `subcooling`, `cutout_high_pressure`, `cutout_low_pressure`, `cutout_temperature` |
+
+Not mapped:
+
+- `hc_flow`: The NASA bus reports the water outlet of the indoor unit; a zone outlet (0x42D8) exists only with a mixing kit and is not mapped.
+- `hc_return`: The NASA bus reports the return of the heat pump (0x4236), not one per circuit.
+- `hc_pump`: The primary water pump (0x4089) also runs for hot water; it is the primary pump, and the circuit follows the diverter valve.
+- `room_target`: The zone 1 target (0x4201) keeps the controller setting and does not follow a schedule of the house (#403).
+- `hours`: The integration counts active minutes of the indoor unit (0x4424), not compressor hours.
+
 ### espaltherma
 
 Daikin Altherma (ESPAltherma). Core fields 92 %, stat tiles: `cop_heating`, `cop_dhw`, `cop_cooling`, `energy_heating`, `energy_dhw`, `energy_cooling`, `heat_heating`, `heat_dhw`, `heat_cooling`.
@@ -266,6 +304,26 @@ Not mapped:
 
 - `hc_flow`: ESPAltherma reports the leaving water of the heat pump, no flow per circuit.
 - `hc_return`: ESPAltherma reports the inlet water of the heat pump, no return per circuit.
+
+### nibe
+
+NIBE F series (NIBE Heat Pump). Core fields 80 %, stat tiles: –.
+
+| Area | Mapped | Shown without its own entity | Not mapped, with reason | Open |
+|---|---|---|---|---|
+| Heat pump | **`mode`**, **`compressor`**, **`flow`**, **`return`**, `source_in`, `source_out`, **`outdoor`**, `heater` | **`valve`** | `defrost`, **`power`**, **`heat`**, **`volume`** | `status`, `fan_speed`, `source_volume`, `brine_pressure`, `pv_boost` |
+| Tanks | **`dhw_top`**, `dhw_bottom` | – | **`dhw_target`** | `dhw_middle`, `dhw_mode`, `circulation`, `dhw_heater`, `buffer_top`, `buffer_middle`, `buffer_bottom`, `buffer_mode`, `buffer_heater`, `solar_collector`, `solar_pump` |
+| Heating circuit | `hc_setpoint`, **`room`**, `program` | – | **`hc_flow`** | **`hc_return`**, `hc_mode`, **`hc_pump`**, `hc_volume`, `hc_curve_offset`, `hc_mixer`, `hc_pressure`, `room_target` |
+| Details | `compressor_speed`, `evap_temp`, `suction_temp` | – | – | `hours`, `starts_total`, `aux_hours`, `energy_total`, `env_energy`, `heat_total`, `cond_temp`, `hot_gas`, `liquid_temp`, `low_pressure`, `high_pressure`, `eev`, `superheat`, `subcooling`, `cutout_high_pressure`, `cutout_low_pressure`, `cutout_temperature` |
+
+Not mapped:
+
+- `power`: The F series reports no electrical power of the compressor; only the electric addition has a power coil (mapped as heater).
+- `heat`: No heat output coil in the F series model files.
+- `volume`: No flow rate coil on the exhaust air models; the card cannot estimate the heat output.
+- `defrost`: A defrost is reported only as alarm 183 (alarm-45001), not as a state of its own; the alarm is excluded from the error chip.
+- `dhw_target`: The water heater entity holds start and stop temperatures (target_temp_low, target_temp_high), no single target.
+- `hc_flow`: BT2 is the supply of climate system 1 and already the heat pump flow; the card draws it as a direct circuit.
 
 ## Improving a number
 

@@ -1,5 +1,0 @@
-- A compressor entity whose state is a text such as `RUNNING` or `STARTING` (NIBE: STOPPED, STARTING, RUNNING, STOPPING) now counts as running in the drawing, the timeline and the runs. Before, only on/off, 1/0 and numbers above 0 did (#253).
-- `error_ok` also names numeric codes that are no error, for example `error_ok: ["183"]` for the NIBE alarm code of a defrost. Other codes than 0 stay errors (#253).
-- ViCare: the heat production sensors of Home Assistant 2026.12 give the live heat output and the heat for heating and hot water today. Without them the card keeps estimating the heat from flow rate and spread.
-- Luxtronik: the compressor speed of inverters (`pump_frequency`, in Hz from the integration release after 2026.11.01) is mapped.
-- Upstream review of 2026-11-17 for ten presets (#428 to #437): no entity id, translation key or state text the presets use changed.

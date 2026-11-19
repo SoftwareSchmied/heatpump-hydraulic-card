@@ -1,0 +1,27 @@
+{
+  "preset": "airahome",
+  "reviewed": {
+    "date": "2026-11-17",
+    "version": null,
+    "note": "Built from ha-airahome main (manifest 1.0.0, pyairahome 2.3.0): translation keys from the unique id suffixes in sensor.py, binary_sensor.py, climate.py and water_heater.py, states from translations/en.json; checked against the installation of #417."
+  },
+  "unmapped": {
+    "hc_return": "Each zone reports a supply temperature only.",
+    "hc_mixer": "Zone N valve position is reported in %, but it is not documented whether it is a mixing or a zone valve.",
+    "circulation": "No circulation pump entity."
+  },
+  "sources": [
+    {
+      "repo": "Invy55/ha-airahome",
+      "branch": "main",
+      "releases": false,
+      "paths": [
+        "custom_components/airahome/sensor.py",
+        "custom_components/airahome/binary_sensor.py",
+        "custom_components/airahome/climate.py",
+        "custom_components/airahome/water_heater.py",
+        "custom_components/airahome/translations/en.json"
+      ]
+    }
+  ]
+}

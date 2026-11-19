@@ -1,2 +1,0 @@
-- The defrosts tile counts the off → on changes of the defrost entity from the recorder history for today, yesterday and the week, for every preset or configuration with a `defrost` entity and no defrost counter (#407).
-- HeishaMon: compressor starts of today, yesterday and the week leave out the two restarts of every defrost, which the operations counter also counts. On the reporting installation one winter day read 10 starts instead of 2. Longer periods keep the raw counter; an own `tile_sources.starts` is used as it is (#407).

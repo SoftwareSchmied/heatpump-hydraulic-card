@@ -1,3 +1,0 @@
-- New preset `ehs_sentinel` for Samsung EHS heat pumps with the integration EHS Sentinel (NASA bus over RS485): compressor, valve, defrost, power and heat, primary pump, backup and booster heater, tank, target flow, outing mode, error code and the integration's day and lifetime counters as tiles. Built from the integration's NASA repository and an installation's entity list (#403).
-- A preset can set its own default `power_threshold`; EHS Sentinel uses 300 W, as the outdoor unit draws about 250 W in standby. Your own `power_threshold` still wins.
-- Heater stages reported as text (`STEP 1`, `Stage 2`, `Stufe 2`) count as that stage.

@@ -6,7 +6,7 @@
  *
  * https://github.com/Sturmi77/heatpump-hydraulic-card · MIT License
  */
-const HFC_VERSION = '0.19.0';
+const HFC_VERSION = '0.20.0-beta.2';
 // Address this file was loaded from: shows at once when a dashboard resource still points to an old file.
 const HFC_SCRIPT_URL = (() => {
   try {
@@ -1021,6 +1021,75 @@ const HFC_PRESETS = {
     },
   },
 
+  // Aira heat pumps (6, 8 and 12 kW) through the HACS integration "ha-airahome" by Invy55 (domain airahome, Bluetooth, #417).
+  // Every entity carries its key as translation key, so entity ids (sensor.ah_<id>_…) and the HA language do not matter.
+  // The outdoor unit feeds a buffer: the indoor unit supply temperature is the buffer tank (integration wiki), the outdoor unit's
+  // supply and return are the heat pump circuit, and each zone has its own supply sensor and circulator.
+  airahome: {
+    name: 'Aira (ha-airahome)',
+    // The outdoor unit's primary circulator feeds the buffer and the hot-water coil.
+    primary_pump: true,
+    // Each zone has its own thermostat: room, target and humidity go to the numbered keys of zone 2 (Codex review).
+    circuit_rooms: true,
+    detect: (ctx) => (ctx.key('airahome', 'sensor', 'active_state') && ctx.key('airahome', 'sensor', 'ou_supply_temp') ? '' : undefined),
+    entities: (p, i, ctx) => {
+      const s = (tk) => ctx.key('airahome', 'sensor', tk);
+      const b = (tk) => ctx.key('airahome', 'binary_sensor', tk);
+      const n = i.hc;
+      return {
+        mode: s('active_state'),
+        compressor: s('ou_compressor_speed'),
+        compressor_speed: s('ou_compressor_speed'),
+        defrost: b('defrosting'),
+        // The kW sensors are enabled by default, the W ones are not.
+        power: [s('instant_power_kw'), s('instant_power_w')].filter(Boolean),
+        // The integration's heat from the primary flow and the outdoor unit's spread.
+        heat: [s('instant_heat_kw'), s('instant_heat_w')].filter(Boolean),
+        flow: s('ou_supply_temp'),
+        return: s('ou_return_temp'),
+        volume: s('flow_meter_1'),
+        primary_pump_state: b('ou_pump'),
+        outdoor: s('outdoor_temp'),
+        fan_speed: s('ou_fan_1_speed'),
+        heater: b('inline_heater'),
+        dhw_top: s('hot_water_temp'),
+        // The water heater's target follows the schedule of the Aira app; the sensor only holds the default temperature (#417).
+        dhw_target: [ctx.key('airahome', 'water_heater', 'water_heater'), s('target_hot_water_temp')].filter(Boolean),
+        buffer_top: s('indoor_supply_temp'),
+        hc_flow: s(`zone_${n}_supply_temp`),
+        hc_setpoint: s(`zone_${n}_calculated_supply_temp`),
+        hc_mode: s(`zone_${n}_active_state`),
+        hc_pump: b(`zone_${n}_circulator`),
+        room: s(`zone_${n}_temp`),
+        room_target: ctx.key('airahome', 'climate', `zone_${n}_climate`),
+        room_humidity: s(`zone_${n}_humidity`),
+        program: b('away_mode'),
+        energy_total: [s('electricity_kwh'), s('electricity_wh')].filter(Boolean),
+        heat_total: [s('heat_kwh'), s('heat_wh')].filter(Boolean),
+        evap_temp: s('evaporating_temp'),
+        cond_temp: s('condensing_temp'),
+        hot_gas: s('gas_discharge_temp'),
+        suction_temp: s('gas_return_temp'),
+        low_pressure: s('ou_evaporator_pressure'),
+        high_pressure: s('ou_condenser_pressure'),
+        eev: s('eev_step'),
+      };
+    },
+    tiles: (p, i, ctx) => {
+      const s = (tk) => ctx.key('airahome', 'sensor', tk);
+      return {
+        energy: { total: [s('electricity_kwh'), s('electricity_wh')].filter(Boolean) },
+        heat: { total: [s('heat_kwh'), s('heat_wh')].filter(Boolean) },
+      };
+    },
+    // Alarms is a problem sensor (critical and error severities): on is an error.
+    errors: (p, i, ctx) => [ctx.key('airahome', 'binary_sensor', 'alarms')].filter(Boolean),
+    // Raw states of hp_active_state (PUMP_ACTIVE_STATE_ without the prefix, lower case); anti-legionella is a hot-water run.
+    mode_map: { idle: 'idle', heating: 'heating', cooling: 'cooling', dhw: 'dhw', anti_legionella: 'dhw', defrosting: 'defrost', unspecified: 'idle' },
+    hc_mode_map: { idle: 'idle', heating: 'heating', cooling: 'cooling', heating_cooling: 'heating', unspecified: 'idle' },
+    program_map: { on: 'holiday', off: 'none' },
+  },
+
   // Kronoterm (ADAPT, ETERA, VERSI, WPLV …) via the "Kronoterm" integration (HACS), Cloud API or Modbus. Entities are
   // found by translation_key, so entity ids and the HA language do not matter. Cloud and Modbus name the circuit
   // temperatures differently (loop_1_inlet_temperature, loop_1_temp); both spellings are candidates.
@@ -1657,8 +1726,9 @@ const HFC_PRESETS = {
     errors: (p, i, ctx) => [ctx.match(/^sensor\.alarm_45001(?:_\d+)?$/, 'nibe_heatpump')].filter(Boolean),
     // Alarm 0 is none; 183 is "defrosting in progress", an information, not a fault (#253).
     error_ok: ['183'],
-    // Prio (coil 43086). TRANSFER stays unmapped until it is known what the unit does then (#253).
-    mode_map: { OFF: 'idle', HEAT: 'heating', 'HOT WATER': 'dhw', POOL: 'heating', 'POOL 2': 'heating', COOLING: 'cooling' },
+    // Prio (coil 43086). TRANSFER follows a hot water charge on the F370/F470 and keeps the compressor on the hot water stop
+    // temperature; the heating supply does not rise then, so it counts as hot water (#253).
+    mode_map: { OFF: 'idle', HEAT: 'heating', 'HOT WATER': 'dhw', TRANSFER: 'dhw', POOL: 'heating', 'POOL 2': 'heating', COOLING: 'cooling' },
     program_map: { ACTIVE: 'holiday', INACTIVE: 'none' },
   },
 };
@@ -2915,6 +2985,8 @@ const HFC_LOSS = { hours: 48, minWindow: 3, settle: 0.5, drawOff: 1.5, rise: 1.0
 // Runs of the timeline: a standstill of `seriesGap` minutes or more starts a new series; a stretch without data shorter than
 // `dataGap` minutes between two running states does not end a run (a Modbus timeout or an integration reload).
 const HFC_RUNS = { seriesGap: 60, dataGap: 2 };
+// Least gap between two labels in schematic units, or they read as one text (#395; the same as LABEL_GAP of the drawing tests).
+const HFC_LABEL_GAP = 2;
 // Tiles counted from the recorder history (#407): the periods it keeps (about ten days by default), and the seconds after a defrost
 // in which a counter step still belongs to it (the counter can be published a moment after the defrost flag).
 const HFC_HISTORY_COUNT = { periods: ['today', 'yesterday', 'week'], grace: 60 };
@@ -3067,6 +3139,14 @@ class HeatpumpFlowCard extends HTMLElement {
 
   static getConfigForm() { return HeatpumpFlowCard._formSchema(); }
 
+  // The heat source the card draws: the configuration, else the kind the preset reads from the installation, else air (as _sourceType).
+  static _sourceTypeOf(config, hass, entities) {
+    if (config?.source_type) return config.source_type;
+    const fn = HFC_PRESETS[config?.preset]?.defaults;
+    if (typeof fn !== 'function' || !hass) return 'air';
+    try { return (fn(entities || {}, hass) || {}).source_type || 'air'; } catch (err) { return 'air'; }
+  }
+
   // Form schema. With a config, circuit fields and groups are limited to hc_count.
   // opts.valve: a valve entity is mapped, so the editor offers its states for hot water and heating (valve_map, #126).
   // opts.assistant: no supported preset was detected, so the editor offers the confirmed-proposal assistant (#149).
@@ -3144,7 +3224,7 @@ class HeatpumpFlowCard extends HTMLElement {
         // them. Source fields of an air heat pump are left out unless the configuration sets them (so they can be cleared).
         ...groups.map(([sec, keys]) => {
           const ownSet = (k) => { const v = config?.entities?.[k]; return v !== undefined && v !== null && v !== 'none' && v !== ''; };
-          const air = (config?.source_type || 'air') === 'air';
+          const air = (opts.sourceType || config?.source_type || 'air') === 'air';
           const shown = keys.filter((k) => !(air && HFC_SOURCE_KEYS.includes(k) && !ownSet(k)));
           const core = shown.filter((k) => HFC_CORE_FIELDS.includes(k.replace(/^hc[2-6]_/, 'hc_').replace(/^hc_room/, 'room')));
           const more = shown.filter((k) => !core.includes(k));
@@ -3498,7 +3578,7 @@ class HeatpumpFlowCard extends HTMLElement {
       Object.entries(rawN).filter(([k]) => k.startsWith('hc_') && k !== 'hc_pressure').forEach(([k, v]) => take(`hc${n}_${k.slice(3)}`, v));
       // Room keys are not prefixed with hc_ in a preset because circuit 1 uses room/room_target. Carry the circuit-specific
       // result into the numbered public keys so the house overview receives the rooms of circuits 2 to 6.
-      if (preset.circuit_rooms) ['room', 'room_target'].forEach((k) => take(`hc${n}_${k}`, rawN[k]));
+      if (preset.circuit_rooms) ['room', 'room_target', 'room_humidity'].forEach((k) => take(`hc${n}_${k}`, rawN[k]));
     }
     const e = { ...fromPreset };
     const sums = { ...presetSums };
@@ -3617,7 +3697,7 @@ class HeatpumpFlowCard extends HTMLElement {
       if (typeof id === 'string' && id && id === r.entities[b]) out.push({ key: b, id, code: 'same', other: a });
     });
     // Source fields of an air heat pump: the card draws no brine or well loop, an own entity there is a mix-up (#180).
-    if ((config.source_type || 'air') === 'air') {
+    if (HeatpumpFlowCard._sourceTypeOf(config, hass, r.entities) === 'air') {
       ['source_volume', 'source_out', 'brine_pressure'].forEach((key) => {
         const own = config.entities?.[key];
         if (own && own !== 'none') out.push({ key, id: Array.isArray(own) ? own.join(', ') : own, code: 'air' });
@@ -4515,6 +4595,78 @@ class HeatpumpFlowCard extends HTMLElement {
     }
     el._fit = { font, max, full, shown: el.textContent };
   }
+  // Layout step (#395, stage 3): instead of a fixed coordinate a label can name places to go (data-alt) and the parts it must keep
+  // clear of (data-avoid: ids of labels or pipes in the drawing). After the widths are fitted the card measures it at its own place
+  // and then at each alternative, and keeps the first where it stays HFC_LABEL_GAP units from every visible part (and lies on no
+  // pipe). An alternative is "x anchor", several separated by ";"; one ending in "fit" shortens the label to the room up to the
+  // nearest part instead. Without a free place the label keeps its own. The same rules as the drawing tests: schematic units,
+  // text height from the font size.
+  _placeLabels() {
+    const svg = this._rendered && this._$('svg'); if (!svg) return;
+    const items = svg.querySelectorAll('text[data-alt]');
+    if (!items.length) return;
+    let root;
+    try { root = svg.getScreenCTM().inverse(); } catch (err) { return; }
+    const matrix = (el) => { try { return root.multiply(el.getScreenCTM()); } catch (err) { return null; } };
+    const visible = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible';
+    const box = (el) => {
+      let b; try { b = el.getBBox(); } catch (err) { return null; }
+      const m = matrix(el); if (!m || !(b.width > 0)) return null;
+      let top = b.y; let bottom = b.y + b.height;
+      const chars = el.getNumberOfChars ? el.getNumberOfChars() : 0;
+      if (chars) {
+        const size = Math.max(...[el, ...el.querySelectorAll('tspan')].map((n) => parseFloat(getComputedStyle(n).fontSize)).filter(Number.isFinite));
+        top = Infinity; bottom = -Infinity;
+        for (let n = 0; n < chars; n++) {
+          let y; try { ({ y } = el.getStartPositionOfChar(n)); } catch (err) { continue; }
+          top = Math.min(top, y - 0.72 * size); bottom = Math.max(bottom, y + 0.22 * size);
+        }
+        if (!Number.isFinite(top)) { top = b.y; bottom = b.y + b.height; }
+      }
+      const pts = [b.x, b.x + b.width].flatMap((x) => [top, bottom].map((y) => new DOMPoint(x, y).matrixTransform(m)));
+      return { l: Math.min(...pts.map((p) => p.x)), r: Math.max(...pts.map((p) => p.x)), t: Math.min(...pts.map((p) => p.y)), b: Math.max(...pts.map((p) => p.y)) };
+    };
+    const dots = (pipe) => {
+      const m = matrix(pipe); if (!m) return [];
+      const r = parseFloat(getComputedStyle(pipe).strokeWidth) / 2 || 2;
+      let len = 0; try { len = pipe.getTotalLength(); } catch (err) { return []; }
+      const out = [];
+      for (let at = 0; at <= len; at += 4) { const { x, y } = pipe.getPointAtLength(at).matrixTransform(m); out.push({ l: x - r, r: x + r, t: y - r, b: y + r }); }
+      return out;
+    };
+    const overlap = (a, b, gap) => Math.min(a.r, b.r) - Math.max(a.l, b.l) > gap && Math.min(a.b, b.b) - Math.max(a.t, b.t) > gap;
+    for (const el of items) {
+      const obstacles = el.dataset.avoid.split(/\s+/).map((id) => this._$(id)).filter(visible).map((o) => (o.tagName === 'path'
+        ? { pipe: true, parts: dots(o) } : { pipe: false, parts: [box(o)].filter(Boolean) }));
+      // Labels keep the gap; a pipe may not be touched (the drawing tests: more than 1 unit of overlap with its stroke).
+      const clear = (b) => obstacles.every((o) => o.parts.every((p) => !overlap(b, p, o.pipe ? 1 : -HFC_LABEL_GAP)));
+      const home = el._home || (el._home = { x: el.getAttribute('x'), anchor: el.getAttribute('text-anchor') || 'start' });
+      const places = [home, ...el.dataset.alt.split(';').map((s) => s.trim().split(/\s+/)).filter((p) => p[0])
+        .map(([x, anchor, fit]) => ({ x, anchor: anchor || home.anchor, fit: fit === 'fit' }))];
+      const put = (p) => {
+        el.setAttribute('x', p.x); el.setAttribute('text-anchor', p.anchor);
+        el.querySelectorAll('tspan[x]').forEach((t) => t.setAttribute('x', p.x));
+      };
+      let done = false;
+      for (const p of places) {
+        put(p);
+        let b = box(el);
+        if (p.fit && b && !clear(b)) {
+          // The room up to the nearest part on the side the label grows to, among the parts beside it.
+          const beside = obstacles.flatMap((o) => o.parts).filter((q) => Math.min(b.b, q.b) - Math.max(b.t, q.t) > -HFC_LABEL_GAP);
+          const x = parseFloat(p.x);
+          const room = p.anchor === 'end'
+            ? x - Math.max(...beside.filter((q) => q.l < x).map((q) => q.r)) - HFC_LABEL_GAP - 1
+            : Math.min(...beside.filter((q) => q.r > x).map((q) => q.l)) - x - HFC_LABEL_GAP - 1;
+          if (Number.isFinite(room) && room > 0) { this._fitText(el, Math.min(room, parseFloat(el.dataset.fit) || room)); b = box(el); }
+        }
+        if (!b || clear(b)) { done = true; break; }
+      }
+      if (!done) put(home);
+      el.dataset.placed = done ? String(places.findIndex((p) => p.x === el.getAttribute('x') && p.anchor === el.getAttribute('text-anchor'))) : 'none';
+    }
+  }
+
   // Label whose tail (for example the humidity after the room target) the narrow focus view hides; a narrow schematic also hides
   // the humidity after the room target, which is wider than the house there.
   _txtTail(id, main, tail) {
@@ -5059,29 +5211,34 @@ class HeatpumpFlowCard extends HTMLElement {
   // Defrosts, or starts without the restarts of a defrost, in a period from the recorder history (#407). A defrost is an off → on
   // change of the defrost entity; one that was already going at the start of the period belongs to the period before. A start is a
   // step of the counter; a step while the defrost entity is on, or up to HFC_HISTORY_COUNT.grace seconds after, is a restart of that
-  // defrost. NaN while the history loads or when it is not available.
+  // defrost. The query starts the grace time before the period, so a defrost that ended just before midnight still claims its
+  // restart after it; only changes inside the period count. NaN while the history loads, and when a needed history has no usable
+  // state: missing data is no count of 0, and without the defrost history every restart would count as a start.
   _historyCount(src, period) {
     const range = this._periodRange(period); const defrost = this._e.defrost;
     if (!range || !defrost) return NaN;
     const ids = [defrost, src.counter].filter(Boolean);
+    const begin = Date.parse(range[0]); const grace = HFC_HISTORY_COUNT.grace * 1000;
     const hist = this._wsCached(`hcount|${ids.join(',')}|${period}`, {
-      type: 'history/history_during_period', start_time: range[0], ...(range[1] ? { end_time: range[1] } : {}), entity_ids: ids,
+      type: 'history/history_during_period', start_time: new Date(begin - grace).toISOString(), ...(range[1] ? { end_time: range[1] } : {}), entity_ids: ids,
       minimal_response: true, no_attributes: true, significant_changes_only: false,
     }, (res) => this._timelineHistory(res, ids));
     if (!hist) return NaN;
     const known = (s) => !['unknown', 'unavailable', 'none', ''].includes(String(s ?? '').trim().toLowerCase());
     const on = (s) => hfcCompressorOn(s);
     const d = hist[defrost] || [];
-    if (src.history === 'defrosts') return d.filter((e, n) => n > 0 && on(e.s) && known(d[n - 1].s) && !on(d[n - 1].s)).length;
+    if (!d.some((e) => known(e.s))) return NaN;
+    if (src.history === 'defrosts') return d.filter((e, n) => n > 0 && e.t >= begin && on(e.s) && known(d[n - 1].s) && !on(d[n - 1].s)).length;
+    const steps = (hist[src.counter] || []).filter((e) => Number.isFinite(parseFloat(e.s)));
+    if (!steps.length) return NaN;
     // Defrost windows [from, to + grace).
-    const windows = d.map((e, n) => (on(e.s) ? [e.t, (d[n + 1]?.t ?? Infinity) + HFC_HISTORY_COUNT.grace * 1000] : null)).filter(Boolean);
+    const windows = d.map((e, n) => (on(e.s) ? [e.t, (d[n + 1]?.t ?? Infinity) + grace] : null)).filter(Boolean);
     const inDefrost = (t) => windows.some(([a, b]) => t >= a && t < b);
     let starts = 0; let last = NaN;
-    (hist[src.counter] || []).forEach((e) => {
+    steps.forEach((e) => {
       const v = parseFloat(e.s);
-      if (!Number.isFinite(v)) return;
-      // A counter that drops (reset, replaced unit) starts over; only steps upwards count.
-      if (Number.isFinite(last) && v > last && !inDefrost(e.t)) starts += v - last;
+      // A counter that drops (reset, replaced unit) starts over; only steps upwards inside the period count.
+      if (Number.isFinite(last) && v > last && e.t >= begin && !inDefrost(e.t)) starts += v - last;
       last = v;
     });
     return starts;
@@ -5544,7 +5701,7 @@ class HeatpumpFlowCard extends HTMLElement {
     ? `<g class="tap" ${de(k('curve_offset'))}>${this._parts.buffer || this._hcCount > 1
       ? `<text class="pipe-label" id="t-hc${s}" x="${this._hcCount > 1 ? 688 : 648}" y="316" text-anchor="start" data-lines="2"></text>`
       : `<text class="pipe-label" id="t-hc${s}" x="736" y="334" text-anchor="end"></text>`}</g>
-      <g class="tap" ${de(k('flow'))}><text class="pipe-label" id="t-hc-now${s}" x="720" y="396" text-anchor="middle"></text></g>`
+      <g class="tap" ${de(k('flow'))}><text class="pipe-label" id="t-hc-now${s}" x="720" y="396" text-anchor="middle"${this._mixerSvg(n) ? ` data-avoid="p-hc-mix${s}" data-alt="753 end"` : ''}></text></g>`
     : `<g class="tap" ${de(k('flow'))}>${this._hcCount > 1
       ? `<text class="pipe-label" id="t-hc${s}" x="688" y="334" text-anchor="start"></text>`
       : `<text class="pipe-label" id="t-hc${s}" x="740" y="334" text-anchor="middle"></text>`}</g>`}
@@ -5563,7 +5720,7 @@ class HeatpumpFlowCard extends HTMLElement {
       <g class="tap" ${de(e[k('pump')] ? k('pump') : k('mode'))}>
         ${this._circuitPump(n) ? `<circle class="pump" cx="720" cy="360" r="16"/>
         <g class="impeller" id="impeller${s}"><path d="M720 348 L726 360 L714 360Z M720 372 L714 360 L726 360Z" class="imp"/></g>` : ''}
-        <text class="tank-title" x="880" y="302" text-anchor="middle" data-fit="230">${title}</text>
+        <text class="tank-title" id="t-hc-title${s}" x="880" y="302" text-anchor="middle" data-fit="230" data-avoid="t-hc${s}" data-alt="990 end; 990 end fit">${title}</text>
         <text class="small" id="t-hc-mode${s}" x="880" y="524" text-anchor="middle"></text>
       </g>
     </g>`;
@@ -6320,20 +6477,26 @@ class HeatpumpFlowCard extends HTMLElement {
       });
       // A period under a minute is no period of its own, as a whole run under a minute is no run (HFC_RUN_SIGNAL.min): it folds into
       // the period before it, the first one into the next. The hot-water flag can end about 30 s before the compressor has ramped
-      // down, which left a heating piece of 30 s after each charge (#173). A last period that is still going keeps its place.
+      // down, which left a heating piece of 30 s after each charge (#173). A last period that is still going keeps its place, and so
+      // does the first of a run that began before the window: only its end is known, not its length.
       const minMs = HFC_RUN_SIGNAL.min * 60000;
+      const split = parts.length > 1;
       for (let n = 0; parts.length > 1 && n < parts.length;) {
         const from = n ? parts[n].from : r.from; const to = parts[n + 1]?.from ?? r.to;
-        if (to - from >= minMs || (n === parts.length - 1 && r.ongoing)) { n++; continue; }
+        if (to - from >= minMs || (n === parts.length - 1 && r.ongoing) || (n === 0 && r.partial)) { n++; continue; }
         parts.splice(n, 1);
         // Neighbours of the same kind become one period again; start over, since earlier periods may have grown.
         for (let k = parts.length - 1; k > 0; k--) if (parts[k].kind === parts[k - 1].kind) parts.splice(k, 1);
         n = 0;
       }
-      if (parts.length < 2) return [r];
+      // A folded piece belongs to the period it folds into, in the phases as well: the run panel lists the time per kind from them,
+      // which showed "Hot water 33 min · Heating < 1 min" for a charge with its 29 s tail (#173). Defrost and SG-Ready keep their kind.
+      const own = (phases, kind) => (split ? phases.map((p) => (['defrost', 'sg-boost', 'sg-forced'].includes(p.kind) || (p.kind === 'pv' ? 'heat' : p.kind) === kind ? p : { ...p, kind })) : phases);
+      // A run folded into one period takes that period's kind, so its head and values follow what is left (Codex review of #444).
+      if (parts.length < 2) return [split && parts[0] ? { ...r, kind: parts[0].kind, phases: own(r.phases, parts[0].kind) } : r];
       return parts.map((part, n) => {
         const from = n ? part.from : r.from; const to = parts[n + 1]?.from ?? r.to;
-        return { ...r, from, to, kind: part.kind, phases: phasesIn(from, to), partial: r.partial && !n, ongoing: r.ongoing && n === parts.length - 1, pause: n ? null : r.pause };
+        return { ...r, from, to, kind: part.kind, phases: own(phasesIn(from, to), part.kind), partial: r.partial && !n, ongoing: r.ongoing && n === parts.length - 1, pause: n ? null : r.pause };
       });
     });
   }
@@ -7293,6 +7456,7 @@ class HeatpumpFlowCard extends HTMLElement {
   _update() {
     this._updateDrawing();
     this._fitLabels();
+    this._placeLabels();
   }
 
   _updateDrawing() {
@@ -8390,7 +8554,8 @@ class HeatpumpFlowCardEditor extends HTMLElement {
         Object.entries(this._hass.states).filter(([id, st]) => HeatpumpFlowCard._fit(name, id, st).verdict === 'ok').map(([id]) => id).sort()]));
     }
     const { schema, computeLabel, L } = HeatpumpFlowCard._formSchema(this._config, tiles,
-      { valve: !!valveId, matches: this._matches, fits: this._fits, all: !!this._allEntities, shown, assistant });
+      { valve: !!valveId, matches: this._matches, fits: this._fits, all: !!this._allEntities, shown, assistant,
+        sourceType: HeatpumpFlowCard._sourceTypeOf(this._config, this._hass, r.entities) });
     const found = Object.keys(this._fromPreset).length;
     // Core entities the card needs; warn about what is missing (not while a preset is not detected, its field says so).
     const has = (k) => { const id = r.entities[k]; return !!(id && this._hass.states[id]); };

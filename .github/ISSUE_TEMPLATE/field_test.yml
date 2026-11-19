@@ -39,6 +39,9 @@ body:
         - luxtronik (Luxtronik)
         - stiebel_isg (Stiebel Eltron ISG)
         - espaltherma (Daikin ESPAltherma)
+        - nibe (NIBE F series)
+        - ehs_sentinel (Samsung EHS Sentinel)
+        - airahome (Aira)
         - No preset (mapping assistant or own entities)
     validations:
       required: true

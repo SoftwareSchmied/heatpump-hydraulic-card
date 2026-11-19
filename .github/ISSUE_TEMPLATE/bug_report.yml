@@ -42,6 +42,9 @@ body:
         - stiebel_isg
         - samsung
         - espaltherma
+        - nibe
+        - ehs_sentinel
+        - airahome
         - none (manual entities)
     validations:
       required: true
